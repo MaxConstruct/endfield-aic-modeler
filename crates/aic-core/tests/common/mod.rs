@@ -1,0 +1,158 @@
+//! Builds small catalogs in code, so each test states exactly the recipes it uses.
+
+#![allow(
+    dead_code,
+    reason = "each test file uses a different part of this module"
+)]
+
+use aic_core::{Graph, NodeId, NodeKind, PortRef, Pos};
+use aic_data::{Catalog, ItemId, RegionId};
+use serde_json::{Value, json};
+
+pub const TUNDRA: &str = "tundra";
+pub const JINLONG: &str = "jinlong";
+
+/// A catalog written as factoriolab JSON and loaded through `Catalog::from_bytes`, like real data.
+#[derive(Default)]
+pub struct TestCatalog {
+    items: Vec<String>,
+    facilities: Vec<Value>,
+    recipes: Vec<Value>,
+}
+
+impl TestCatalog {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A facility with speed 1 and the given power draw, available in every region.
+    pub fn facility(self, id: &str, power_kw: f64) -> Self {
+        self.facility_with(id, 1.0, power_kw, &[])
+    }
+
+    pub fn facility_with(mut self, id: &str, speed: f64, power_kw: f64, regions: &[&str]) -> Self {
+        self.facilities.push(json!({
+            "id": id, "name": id, "category": "machine",
+            "machine": { "speed": speed, "type": "electric", "usage": power_kw, "locations": regions },
+        }));
+        self
+    }
+
+    /// A recipe available in every region.
+    pub fn recipe(
+        self,
+        id: &str,
+        facility: &str,
+        time_s: f64,
+        inputs: &[(&str, f64)],
+        outputs: &[(&str, f64)],
+    ) -> Self {
+        self.recipe_with(id, &[facility], time_s, inputs, outputs, None, &[])
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn recipe_with(
+        mut self,
+        id: &str,
+        facilities: &[&str],
+        time_s: f64,
+        inputs: &[(&str, f64)],
+        outputs: &[(&str, f64)],
+        power_kw: Option<f64>,
+        regions: &[&str],
+    ) -> Self {
+        for (item, _) in inputs.iter().chain(outputs) {
+            if !self.items.iter().any(|known| known == item) {
+                self.items.push((*item).to_owned());
+            }
+        }
+        let map = |pairs: &[(&str, f64)]| -> Value {
+            pairs
+                .iter()
+                .map(|(item, qty)| ((*item).to_owned(), json!(qty)))
+                .collect()
+        };
+        let mut recipe = json!({
+            "id": id, "name": id, "category": "material", "time": time_s,
+            "in": map(inputs), "out": map(outputs), "producers": facilities, "locations": regions,
+        });
+        if let Some(power) = power_kw {
+            recipe["usage"] = json!(power);
+        }
+        self.recipes.push(recipe);
+        self
+    }
+
+    pub fn build(self) -> Catalog {
+        let mut items: Vec<Value> = vec![
+            json!({ "id": "belt", "name": "belt", "category": "belt-and-pipe", "belt": { "speed": 0.5 } }),
+            json!({ "id": "pipe", "name": "pipe", "category": "belt-and-pipe", "pipe": { "speed": 2 } }),
+        ];
+        items.extend(
+            self.items
+                .iter()
+                .map(|id| json!({ "id": id, "name": id, "category": "material" })),
+        );
+        items.extend(self.facilities);
+        let data = json!({
+            "version": { "arknights-endfield": "test" },
+            "locations": [{ "id": TUNDRA, "name": TUNDRA }, { "id": JINLONG, "name": JINLONG }],
+            "items": items,
+            "recipes": self.recipes,
+        });
+        let i18n = json!({});
+        Catalog::from_bytes(
+            data.to_string().as_bytes(),
+            i18n.to_string().as_bytes(),
+            None,
+        )
+        .expect("test catalog loads")
+    }
+}
+
+pub fn region(id: &str) -> RegionId {
+    RegionId::from(id)
+}
+
+pub fn item(id: &str) -> ItemId {
+    ItemId::from(id)
+}
+
+/// Adds a recipe node on the recipe's first facility.
+pub fn add_recipe(
+    graph: &mut Graph,
+    catalog: &Catalog,
+    recipe: &str,
+    limit: Option<f64>,
+) -> NodeId {
+    let facility = catalog.recipe(recipe).expect("recipe exists").facilities[0].clone();
+    graph.add_node(
+        NodeKind::Recipe {
+            recipe: recipe.into(),
+            facility,
+            limit,
+        },
+        Pos::default(),
+    )
+}
+
+pub fn add(graph: &mut Graph, kind: NodeKind) -> NodeId {
+    graph.add_node(kind, Pos::default())
+}
+
+/// Links `item` from `from`'s output to `to`'s input. Logistics nodes ignore the item on their side.
+pub fn link(
+    graph: &mut Graph,
+    catalog: &Catalog,
+    from: NodeId,
+    to: NodeId,
+    item_id: &str,
+) -> aic_core::LinkId {
+    graph
+        .connect(
+            catalog,
+            PortRef::new(from, item_id),
+            PortRef::new(to, item_id),
+        )
+        .expect("link is valid")
+}
