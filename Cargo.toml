@@ -1,6 +1,13 @@
-[package]
-name = "endfield-aic-modeler"
+[workspace]
+resolver = "3"
+members = ["crates/aic-data", "crates/aic-core", "crates/aic-app"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
 
-[dependencies]
+[workspace.dependencies]
+aic-data = { path = "crates/aic-data" }
+aic-core = { path = "crates/aic-core" }

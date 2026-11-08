@@ -1,0 +1,38 @@
+{
+  "name": "Arknights: Endfield",
+  "version": { "arknights-endfield": "v1.10.0" },
+  "categories": { "material": "Material", "gen-power": "Power", "settlement": "Outpost" },
+  "locations": { "tundra": "Valley IV", "jinlong": "Wuling" },
+  "items": {
+    "belt": "Transport Belt",
+    "pipe": "Pipe",
+    "copper_ore": "Cuprium Ore",
+    "copper_nugget": "Cuprium",
+    "liquid_water": "Clean Water",
+    "liquid_sewage": "Sewage",
+    "plant_grass_2": "Yazhen",
+    "plant_grass_seed_2": "Yazhen Seed",
+    "proc_battery_1": "LC Valley Battery",
+    "tundra_coupon": "Valley IV Voucher",
+    "furnance_1": "Refining Unit",
+    "pump_1": "Fluid Pump",
+    "planter_1": "Planting Unit",
+    "seedcol_1": "Seed-Picking Unit",
+    "power_sta_1": "Thermal Bank",
+    "mix_pool_1": "Mixing Pool",
+    "mix_pool_2": "Large Mixing Pool",
+    "gas_pump_1": "Gas Pump",
+    "settlement-tundra_coupon": "Valley IV Outpost",
+    "__domain_transfer": "Metastorage Transfer"
+  },
+  "recipes": {
+    "copper_nugget": "Cuprium",
+    "liquid_water": "Clean Water",
+    "plant_grass_2": "Yazhen",
+    "plant_grass_seed_2": "Yazhen Seed",
+    "power_proc_battery_1": "Power (LC Valley Battery)",
+    "liquid_sewage-mix": "Sewage (Mix)",
+    "tundra_coupon-copper_nugget": "Valley IV Voucher (Cuprium)",
+    "transfer_tundra_copper_nugget": "Transfer (Cuprium)"
+  }
+}

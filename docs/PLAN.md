@@ -92,7 +92,7 @@ data/
    └─ SOURCE.md               # optional: where it came from, commit/date, any hand edits
 ```
 
-- The repo currently has the data at `src/data/1.5.3/` (no `icons.webp` yet). M0 moves it to `data/v1.5.3/`.
+- The repo has the data at `data/v1.5.3/` (no `icons.webp` yet). M0 moved it there from `src/data/1.5.3/`.
 - Max copies these files in by hand. Initial source: `endfield-calc/factoriolab`, `src/data/aef/`
   (`data.json`, `i18n/en.json`, `icons.webp`). In that repo, ignore `data-dsp.json`, `data-sfy.json`,
   `data-spa.json` and `defaults-spa.json`. Those are Dyson Sphere Program / Satisfactory / Factorio test
