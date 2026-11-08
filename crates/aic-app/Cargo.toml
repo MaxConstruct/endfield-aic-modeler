@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 aic-core.workspace = true
 eframe = "0.36"
+egui-snarl = "0.12"
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"
 
