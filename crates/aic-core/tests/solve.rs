@@ -625,3 +625,84 @@ fn missing_recipe_nodes_are_left_out_with_a_warning() {
     assert!(s.facility_count.is_empty() || s.facility_count.values().all(Option::is_none));
     assert!(s.warnings.iter().any(|w| matches!(w, Warning::Issue(_))));
 }
+
+// Cross-check with SatisfactoryTools' "Add producer of X" (docs/ref/sftools-add-node-flow.md).
+// SFTools sizes a new producer to the consumer's remaining demand by hand; here a producer added
+// with no limit should be sized the same way by the solver.
+
+fn ai_limiter_catalog() -> Catalog {
+    TestCatalog::new()
+        .facility("assembler", 15.0)
+        .facility("constructor", 4.0)
+        // 25 copper sheet + 100 quickwire → 5 AI limiters per minute.
+        .recipe(
+            "ai_limiter",
+            "assembler",
+            12.0,
+            &[("copper_sheet", 5.0), ("quickwire", 20.0)],
+            &[("ai_limiter", 1.0)],
+        )
+        // 20 copper ingot → 10 copper sheet per minute.
+        .recipe(
+            "copper_sheet",
+            "constructor",
+            6.0,
+            &[("copper_ingot", 2.0)],
+            &[("copper_sheet", 1.0)],
+        )
+        .build()
+}
+
+// SFTools F2: a producer added for an unmet input is sized to that input.
+#[test]
+fn sftools_f2_added_producer_meets_the_demand() {
+    let catalog = ai_limiter_catalog();
+    let mut g = graph();
+    let limiter = add_recipe(&mut g, &catalog, "ai_limiter", Some(1.0));
+    let sheets = add_recipe(&mut g, &catalog, "copper_sheet", None);
+    let wire = link(&mut g, &catalog, sheets, limiter, "copper_sheet");
+
+    let s = solve(&catalog, &g);
+    assert_near(count(&s, limiter), 1.0);
+    assert_near(count(&s, sheets), 2.5);
+    assert_near(s.link_flow[&wire], 25.0);
+    assert_near(depot(&s, sheets, "copper_ingot", Side::Input), 50.0);
+    assert_near(depot(&s, limiter, "quickwire", Side::Input), 100.0);
+}
+
+// SFTools F3: the demand is partly met by a feeder that can only give 10. The new producer covers
+// the remaining 15.
+#[test]
+fn sftools_f3_added_producer_covers_the_rest() {
+    let catalog = ai_limiter_catalog();
+    let mut g = graph();
+    let limiter = add_recipe(&mut g, &catalog, "ai_limiter", Some(1.0));
+    let existing = add_recipe(&mut g, &catalog, "copper_sheet", Some(1.0));
+    let added = add_recipe(&mut g, &catalog, "copper_sheet", None);
+    let old_wire = link(&mut g, &catalog, existing, limiter, "copper_sheet");
+    let new_wire = link(&mut g, &catalog, added, limiter, "copper_sheet");
+
+    let s = solve(&catalog, &g);
+    assert_near(s.link_flow[&old_wire], 10.0);
+    assert_near(s.link_flow[&new_wire], 15.0);
+    assert_near(count(&s, added), 1.5);
+}
+
+// Where we differ from SFTools on purpose: if the existing feeder has spare capacity, the fan-in
+// draws evenly from both feeders (GLOSSARY: Fan-in) instead of filling the existing one first.
+#[test]
+fn added_producer_shares_evenly_with_a_feeder_that_has_room() {
+    let catalog = ai_limiter_catalog();
+    let mut g = graph();
+    let limiter = add_recipe(&mut g, &catalog, "ai_limiter", Some(1.0));
+    let existing = add_recipe(&mut g, &catalog, "copper_sheet", Some(3.0));
+    let added = add_recipe(&mut g, &catalog, "copper_sheet", None);
+    let old_wire = link(&mut g, &catalog, existing, limiter, "copper_sheet");
+    let new_wire = link(&mut g, &catalog, added, limiter, "copper_sheet");
+
+    let s = solve(&catalog, &g);
+    assert_near(s.link_flow[&old_wire], 12.5);
+    assert_near(s.link_flow[&new_wire], 12.5);
+    assert_near(count(&s, existing), 1.25);
+    assert_near(count(&s, added), 1.25);
+}
