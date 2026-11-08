@@ -421,6 +421,17 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
     keeps its numbers.
 
 ### M4: egui shell + node canvas
+- **Start with a performance spike, before any real UI.** It's throwaway code: an egui-snarl canvas with
+  300 nodes, 600 links and 5 ports per node, each port and link showing a live rate label. Measure frame
+  time while panning, zooming, dragging a node and creating a link, **on the Windows PC** (the slower
+  machine, and where most players are). Use a release build.
+  - **Pass:** frames stay under about 8 ms, which leaves room for 120 Hz.
+  - **Fail:** profile and fix it inside egui (skip off-screen nodes, cache text layout, fork egui-snarl if
+    needed). Only a failure measured after that reopens the framework question, and then the comparison
+    is the same spike in iced + iced_nodegraph.
+  - When it passes, record ADR 0004: egui + egui-snarl is the shipping UI. iced + iced_nodegraph was
+    considered and rejected because the node editor crate is young with a single maintainer, and the
+    graph sizes don't need it.
 - Three areas: left **recipe browser** (search by English name, filter by category; only the graph's
   region; hidden recipes left out), center **`egui-snarl` canvas**, right **inspector** (selected node or
   link, its throttle reason, plus totals).
@@ -478,8 +489,8 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
 - **Outpost order:** a sink kind for settlement trades. Items go in, coupons count in totals. Unhides the
   `hideProducer` recipes as outpost orders.
 - Export the canvas as a PNG.
-- Performance check with about 200 nodes. If egui feels slow, profile and optimize in egui. There is no
-  framework switch.
+- Re-run the M4 performance spike against the real app at about 200 nodes, with icons, inspector and
+  totals. Fix any regression inside egui.
 
 ### M8: `aic-extract` CLI
 - `aic-extract <source-kind> <input> --out data/<version>/` writes `data.json` (factoriolab format,
@@ -503,7 +514,8 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
    with small fixtures first."
 2. "Do M2."
 3. "Do M3. Write the golden tests first, settle the pass-1 objective against them, and make them pass."
-4. "Do M4 using egui-snarl 0.12 with eframe 0.36." Then M5 and M6, one at a time.
+4. "Do the M4 performance spike and report the numbers." Then "Do the rest of M4 using egui-snarl 0.12
+   with eframe 0.36." Then M5 and M6, one at a time.
 5. M7 features one per session: groups (folder, then copies) and ratio locks are the big ones.
 
 Keep each milestone as its own commit or branch, so a bad UI experiment is easy to throw away.
