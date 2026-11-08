@@ -1,6 +1,5 @@
-mod i18n;
-
-use i18n::Strings;
+use aic_app::i18n::Strings;
+use aic_app::{App, WINDOW_SIZE};
 
 fn main() -> eframe::Result {
     let strings = Strings::english();
@@ -8,23 +7,12 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title(title.clone())
-            .with_inner_size([1280.0, 800.0]),
+            .with_inner_size(WINDOW_SIZE),
         ..Default::default()
     };
     eframe::run_native(
         &title,
         options,
-        Box::new(|_cc| Ok(Box::new(App { strings }))),
+        Box::new(|_cc| Ok(Box::new(App::new(strings)))),
     )
-}
-
-struct App {
-    #[expect(dead_code, reason = "used once the UI has widgets (M4)")]
-    strings: Strings,
-}
-
-impl eframe::App for App {
-    fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
-        eframe::egui::CentralPanel::default().show(ui, |_ui| {});
-    }
 }

@@ -12,3 +12,5 @@ eframe = "0.36"
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"
 
+[dev-dependencies]
+egui_kittest = { version = "0.36", features = ["wgpu", "snapshot", "eframe"] }
