@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use aic_data::{DataDirSearch, LoadError, LoadWarning, list_versions, load};
+use aic_data::{DataDirSearch, ImageKind, LoadError, LoadWarning, list_versions, load};
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -63,6 +63,28 @@ fn icons_are_read_when_present() {
             .unwrap()
             .starts_with(b"not a real webp")
     );
+}
+
+#[test]
+fn images_are_read_from_their_folders_by_id() {
+    let catalog = load(&fixtures().join("v1.9.0"), "en").unwrap();
+    let png = |kind, id| {
+        catalog
+            .image(kind, id)
+            .map(|bytes| bytes.starts_with(b"\x89PNG"))
+    };
+    assert_eq!(png(ImageKind::Item, "copper_ore"), Some(true));
+    assert_eq!(png(ImageKind::Facility, "furnance_1"), Some(true));
+    assert_eq!(png(ImageKind::Node, "source"), Some(true));
+    // Kinds don't mix, and files that aren't PNG are skipped.
+    assert_eq!(png(ImageKind::Facility, "copper_ore"), None);
+    assert_eq!(png(ImageKind::Item, "README"), None);
+}
+
+#[test]
+fn missing_images_are_not_an_error() {
+    let catalog = load(&fixtures().join("v1.10.0"), "en").unwrap();
+    assert!(catalog.image(ImageKind::Item, "copper_ore").is_none());
 }
 
 #[test]

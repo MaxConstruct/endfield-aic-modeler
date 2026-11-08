@@ -1,7 +1,10 @@
 //! Small drawing helpers shared by the canvas, the picker and the panels.
 
-use aic_data::Catalog;
-use eframe::egui::{self, Color32, FontId, Id, Painter, Rect, Ui, Vec2};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use aic_data::{Catalog, ImageKind};
+use eframe::egui::{self, Color32, FontId, Id, Painter, Pos2, Rect, TextureHandle, Ui, Vec2};
 
 use crate::format;
 use crate::names;
@@ -63,8 +66,123 @@ impl LimitField<'_> {
     }
 }
 
-/// Stands in for an item icon until icons load (M5): a colored square with the item's initials.
-pub fn paint_item_badge(painter: &Painter, catalog: &Catalog, item: &str, rect: Rect) {
+/// The image of a source node, under `images/nodes/` (the game's Depot Unloader).
+pub const SOURCE_IMAGE: &str = "source";
+/// The image of a sink node, under `images/nodes/` (the game's Depot Loader).
+pub const SINK_IMAGE: &str = "sink";
+
+/// An image as an egui widget part, for buttons that show a picture next to their text.
+pub fn image_atom(
+    ctx: &egui::Context,
+    catalog: &Catalog,
+    kind: ImageKind,
+    id: &str,
+    size: f32,
+) -> Option<egui::Image<'static>> {
+    let texture = icon_texture(ctx, catalog, kind, id)?;
+    Some(egui::Image::new((texture.id(), texture.size_vec2())).fit_to_exact_size(Vec2::splat(size)))
+}
+
+/// Decoded icons, kept in egui's memory so any painter can reach them. Each image is decoded the
+/// first time it is drawn; `None` remembers that it has no usable image.
+#[derive(Clone, Default)]
+struct IconCache(Arc<Mutex<Textures>>);
+
+type Textures = HashMap<(ImageKind, String), Option<TextureHandle>>;
+
+/// The texture for an image of the data version, decoded on first use.
+pub fn icon_texture(
+    ctx: &egui::Context,
+    catalog: &Catalog,
+    kind: ImageKind,
+    id: &str,
+) -> Option<TextureHandle> {
+    let cache = ctx.data_mut(|d| {
+        d.get_temp_mut_or_default::<IconCache>(Id::new("icon-cache"))
+            .clone()
+    });
+    let key = (kind, id.to_owned());
+    if let Some(found) = cache.0.lock().expect("icon cache lock").get(&key) {
+        return found.clone();
+    }
+    let texture = catalog.image(kind, id).and_then(decode).map(|image| {
+        ctx.load_texture(
+            format!("icon/{}/{id}", kind.folder()),
+            image,
+            egui::TextureOptions::LINEAR,
+        )
+    });
+    cache
+        .0
+        .lock()
+        .expect("icon cache lock")
+        .insert(key, texture.clone());
+    texture
+}
+
+fn decode(bytes: &[u8]) -> Option<egui::ColorImage> {
+    let image = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+        .ok()?
+        .to_rgba8();
+    let size = [image.width() as usize, image.height() as usize];
+    Some(egui::ColorImage::from_rgba_unmultiplied(
+        size,
+        image.as_raw(),
+    ))
+}
+
+/// Paints an image of the data version into `rect`, keeping its shape. Returns false, painting
+/// nothing, when there is no such image.
+pub fn paint_image(
+    painter: &Painter,
+    catalog: &Catalog,
+    kind: ImageKind,
+    id: &str,
+    rect: Rect,
+) -> bool {
+    if !rect.is_finite() {
+        return false;
+    }
+    let Some(texture) = icon_texture(painter.ctx(), catalog, kind, id) else {
+        return false;
+    };
+    let size = texture.size_vec2();
+    let scale = (rect.width() / size.x).min(rect.height() / size.y);
+    let fitted = Rect::from_center_size(rect.center(), size * scale);
+    let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+    painter.image(texture.id(), fitted, uv, Color32::WHITE);
+    true
+}
+
+/// An image laid out as a widget, or `None` when the data has no such image.
+pub fn image(
+    ui: &mut Ui,
+    catalog: &Catalog,
+    kind: ImageKind,
+    id: &str,
+    size: f32,
+) -> Option<egui::Response> {
+    catalog.image(kind, id)?;
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
+    paint_image(ui.painter(), catalog, kind, id, rect).then_some(response)
+}
+
+/// An item's icon, or a colored square with its initials when the data has no image for it.
+pub fn paint_item(painter: &Painter, catalog: &Catalog, item: &str, rect: Rect) {
+    if !paint_image(painter, catalog, ImageKind::Item, item, rect) {
+        paint_item_badge(painter, catalog, item, rect);
+    }
+}
+
+/// An item's icon laid out as a widget, with the item's name on hover.
+pub fn item_icon(ui: &mut Ui, catalog: &Catalog, item: &str, size: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
+    paint_item(ui.painter(), catalog, item, rect);
+    response.on_hover_text(names::item(catalog, item))
+}
+
+/// Stands in for an item icon the data has no image for: a colored square with the item's initials.
+fn paint_item_badge(painter: &Painter, catalog: &Catalog, item: &str, rect: Rect) {
     // egui-snarl lays a new node out once with unknown sizes, which can leave rects undefined.
     if !rect.is_finite() {
         return;
@@ -83,13 +201,6 @@ pub fn paint_item_badge(painter: &Painter, catalog: &Catalog, item: &str, rect: 
         FontId::proportional(rect.height() * 0.5),
         text_color,
     );
-}
-
-/// An item badge laid out as a widget, with the item's name on hover.
-pub fn item_badge(ui: &mut Ui, catalog: &Catalog, item: &str, size: f32) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
-    paint_item_badge(ui.painter(), catalog, item, rect);
-    response.on_hover_text(names::item(catalog, item))
 }
 
 /// The item's icon color from the data, or a stable color derived from its ID.

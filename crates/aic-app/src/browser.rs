@@ -6,6 +6,10 @@ use eframe::egui::{self, Ui};
 
 use crate::i18n::Strings;
 use crate::picker::{self, Matching, Origin};
+use crate::widgets;
+
+/// Size of the icon beside each recipe.
+const ICON: f32 = 20.0;
 
 #[derive(Default)]
 pub struct Browser {
@@ -51,6 +55,8 @@ impl Browser {
         };
         let mut clicked = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
+            // One line per recipe; a long name is cut short and shown whole on hover.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             let recipes = picker::recipes(catalog, region, &Origin::Canvas, &self.query, by_name);
             for recipe in recipes {
                 if self
@@ -60,8 +66,14 @@ impl Browser {
                 {
                     continue;
                 }
-                let button =
-                    egui::Button::new(&recipe.name).min_size(egui::vec2(ui.available_width(), 0.0));
+                let image = catalog
+                    .recipe_image(recipe.id.as_str())
+                    .and_then(|(kind, id)| widgets::image_atom(ui.ctx(), catalog, kind, id, ICON));
+                let button = match image {
+                    Some(image) => egui::Button::new((image, recipe.name.as_str())),
+                    None => egui::Button::new(recipe.name.as_str()),
+                }
+                .min_size(egui::vec2(ui.available_width(), 0.0));
                 if ui
                     .add(button)
                     .on_hover_text(strings.get("browser-add-hint"))

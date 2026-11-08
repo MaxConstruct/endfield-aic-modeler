@@ -135,7 +135,7 @@ impl SettingsWindow {
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
                 for item in raw {
-                    widgets::item_badge(ui, catalog, item.as_str(), 18.0);
+                    widgets::item_icon(ui, catalog, item.as_str(), 18.0);
                     let name = ui.label(names::item(catalog, item.as_str()));
                     let key = (region.clone(), item.clone());
                     let text = self.edits.entry(key).or_insert_with(|| {

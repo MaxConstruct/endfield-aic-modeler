@@ -14,7 +14,8 @@ mod parse;
 mod raw;
 
 pub use catalog::{
-    Catalog, Category, Facility, Icon, IconRect, Item, LoadWarning, NameKind, Recipe, Region,
+    Catalog, Category, Facility, Icon, IconRect, ImageKind, Item, LoadWarning, NameKind, Recipe,
+    Region,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use discover::{DATA_DIR_ENV, DataDirSearch, DataVersion, find_data_dir, list_versions, load};

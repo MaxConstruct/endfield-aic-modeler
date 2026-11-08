@@ -103,6 +103,7 @@ impl Builder {
             pipe_per_min,
             icons: self.icons(&raw.icons)?,
             icons_webp: None,
+            images: Default::default(),
             version: raw.version.values().next().cloned().unwrap_or_default(),
             warnings: Vec::new(),
         })

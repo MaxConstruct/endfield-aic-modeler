@@ -11,7 +11,11 @@ data/
    ├─ data.json               # required: items, facilities, recipes, icon positions, regions
    ├─ i18n/
    │  └─ en.json              # required: English names keyed by the same IDs
-   ├─ icons.webp              # optional: sprite sheet that data.json → icons[] points into
+   ├─ images/                 # optional: PNG icons named by our IDs
+   │  ├─ items/<item id>.png
+   │  ├─ facilities/<facility id>.png
+   │  └─ nodes/source.png, sink.png   # built-in node kinds
+   ├─ icons.webp              # optional, unused: factoriolab's sprite sheet
    ├─ overlay.json            # optional (later): our own patches on top of data.json
    └─ SOURCE.md               # optional: where it came from, commit/date, any hand edits
 ```
@@ -24,7 +28,8 @@ Data is copied in by hand. The app never downloads it, and the build never fetch
 
 ## Sources
 
-- `v1.5.3/`: `data.json` and `i18n/en.json` copied from endfield-calc/factoriolab, `src/data/aef/`.
+- `v1.5.3/`: `data.json` and `i18n/en.json` copied from endfield-calc/factoriolab, `src/data/aef/`;
+  `images/` from jambochen/endfield-calc. See `v1.5.3/SOURCE.md`.
 
 ## License
 

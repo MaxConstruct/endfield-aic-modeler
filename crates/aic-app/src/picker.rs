@@ -3,12 +3,12 @@
 //! adds the node.
 
 use aic_core::{NodeId, NodeKind, Side};
-use aic_data::{Catalog, ItemId, Recipe, RecipeId, RegionId};
+use aic_data::{Catalog, ImageKind, ItemId, Recipe, RecipeId, RegionId};
 use eframe::egui::{self, Align2, Key, Pos2, Rect, Sense, Ui, Vec2, WidgetInfo, WidgetType};
 
 use crate::i18n::Strings;
 use crate::names;
-use crate::widgets::paint_item_badge;
+use crate::widgets::{self, paint_item};
 
 /// Where the picker was opened.
 #[derive(Debug, Clone, PartialEq)]
@@ -174,8 +174,8 @@ pub enum Outcome {
 const WIDTH: f32 = 560.0;
 const HEIGHT: f32 = 420.0;
 const LEFT_WIDTH: f32 = 160.0;
-const ROW_HEIGHT: f32 = 28.0;
-const BADGE: f32 = 18.0;
+const ROW_HEIGHT: f32 = 30.0;
+const BADGE: f32 = 22.0;
 
 impl Picker {
     pub fn new(origin: Origin, screen_pos: Pos2, graph_pos: Pos2) -> Self {
@@ -262,8 +262,19 @@ impl Picker {
                 ui.set_width(LEFT_WIDTH);
                 for builtin in builtins(&self.origin) {
                     let label = self.builtin_label(catalog, strings, builtin);
-                    let button =
-                        egui::Button::new(label).min_size(Vec2::new(LEFT_WIDTH, ROW_HEIGHT));
+                    let image = match builtin {
+                        Builtin::Source => Some(widgets::SOURCE_IMAGE),
+                        Builtin::Sink => Some(widgets::SINK_IMAGE),
+                        _ => None,
+                    }
+                    .and_then(|id| {
+                        widgets::image_atom(ui.ctx(), catalog, ImageKind::Node, id, BADGE)
+                    });
+                    let button = match image {
+                        Some(image) => egui::Button::new((image, label)),
+                        None => egui::Button::new(label),
+                    }
+                    .min_size(Vec2::new(LEFT_WIDTH, ROW_HEIGHT));
                     if ui.add(button).clicked() {
                         chosen = Some(Choice::Builtin(builtin));
                     }
@@ -333,10 +344,10 @@ fn recipe_row(ui: &mut Ui, catalog: &Catalog, recipe: &Recipe) -> egui::Response
             )
         };
         for (index, (item, _)) in recipe.inputs.iter().enumerate() {
-            paint_item_badge(painter, catalog, item.as_str(), badge(index, false));
+            paint_item(painter, catalog, item.as_str(), badge(index, false));
         }
         for (index, (item, _)) in recipe.outputs.iter().rev().enumerate() {
-            paint_item_badge(painter, catalog, item.as_str(), badge(index, true));
+            paint_item(painter, catalog, item.as_str(), badge(index, true));
         }
         painter.text(
             rect.center(),

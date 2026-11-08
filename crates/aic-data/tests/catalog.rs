@@ -1,6 +1,6 @@
 //! `Catalog::from_bytes` against the hand-written fixture in `tests/fixtures/v1.10.0/`.
 
-use aic_data::{Catalog, FacilityId, ItemId, LoadWarning, NameKind, RegionId};
+use aic_data::{Catalog, FacilityId, ImageKind, ItemId, LoadWarning, NameKind, RegionId};
 
 const DATA: &[u8] = include_bytes!("fixtures/v1.10.0/data.json");
 const EN: &[u8] = include_bytes!("fixtures/v1.10.0/i18n/en.json");
@@ -240,4 +240,34 @@ fn raw_resources_are_what_mining_recipes_can_extract_in_the_region() {
     assert_eq!(raw("jinlong"), ["liquid_water"]);
     // The water recipe is listed everywhere, but its only facility, the pump, is Wuling-only.
     assert!(raw("tundra").is_empty());
+}
+
+#[test]
+fn a_recipe_shows_the_first_image_it_has_icon_then_outputs_then_inputs_then_facility() {
+    let mut catalog = fixture();
+    let icon = |catalog: &Catalog, recipe: &str| {
+        catalog
+            .recipe_image(recipe)
+            .map(|(kind, id)| (kind, id.to_owned()))
+    };
+    // No images at all.
+    assert_eq!(icon(&catalog, "copper_nugget"), None);
+    // Burning a battery has no outputs: its input stands for it, then its facility.
+    catalog.add_image(ImageKind::Facility, "power_sta_1", vec![1]);
+    assert_eq!(
+        icon(&catalog, "power_proc_battery_1"),
+        Some((ImageKind::Facility, "power_sta_1".into()))
+    );
+    catalog.add_image(ImageKind::Item, "proc_battery_1", vec![1]);
+    assert_eq!(
+        icon(&catalog, "power_proc_battery_1"),
+        Some((ImageKind::Item, "proc_battery_1".into()))
+    );
+    // A byproduct recipe shows its first output.
+    catalog.add_image(ImageKind::Item, "liquid_sewage", vec![1]);
+    catalog.add_image(ImageKind::Item, "copper_nugget", vec![1]);
+    assert_eq!(
+        icon(&catalog, "copper_nugget"),
+        Some((ImageKind::Item, "copper_nugget".into()))
+    );
 }

@@ -662,3 +662,32 @@ fn side_panels_collapse() {
     );
     harness.snapshot("panels_hidden");
 }
+
+// Icons from data/v1.5.3/images: item icons on the picker's rows, the depot pictures on Source and
+// the facility picture on the card.
+#[test]
+fn icons_from_the_data_folder() {
+    let mut harness = harness(&fixture("../../data/v1.5.3"));
+    workspace(&mut harness).new_graph("jinlong".into());
+    harness.run();
+    let planting = add_from_browser(&mut harness, "Yazhen");
+    let at = {
+        let pos = workspace(&mut harness)
+            .document()
+            .graph()
+            .node(planting)
+            .unwrap()
+            .pos;
+        eframe::egui::pos2(pos.x - 80.0, pos.y)
+    };
+    workspace(&mut harness).open_picker(
+        Origin::Port {
+            node: planting,
+            side: Side::Input,
+            item: "liquid_water".into(),
+        },
+        at,
+    );
+    harness.run();
+    harness.snapshot("icons_picker");
+}

@@ -5,7 +5,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::catalog::{Catalog, LoadWarning};
+use crate::catalog::{Catalog, ImageKind, LoadWarning};
 use crate::error::LoadError;
 use crate::parse::{Sources, parse};
 
@@ -14,6 +14,7 @@ pub const DATA_DIR_ENV: &str = "AIC_DATA_DIR";
 
 const DATA_FILE: &str = "data.json";
 const ICONS_FILE: &str = "icons.webp";
+const IMAGES_DIR: &str = "images";
 
 /// Where to look for the `data/` folder, in order: the `--data` flag, `AIC_DATA_DIR`, `data/` next to
 /// the executable, then `data/` in the working directory.
@@ -119,7 +120,8 @@ fn version_key(name: &str) -> (Option<Vec<u64>>, &str) {
     (numbers, name)
 }
 
-/// Reads `data.json`, `i18n/<lang>.json` and, if present, `icons.webp` from one version folder.
+/// Reads `data.json`, `i18n/<lang>.json` and, if present, `icons.webp` and the PNG files under
+/// `images/` from one version folder.
 ///
 /// The catalog's version is the folder name. If `data.json` declares a different one, that is a
 /// [`LoadWarning::VersionMismatch`].
@@ -134,6 +136,7 @@ pub fn load(version_dir: &Path, lang: &str) -> Result<Catalog, LoadError> {
         i18n: &i18n_path,
     };
     let mut catalog = parse(&data, &i18n, icons.as_deref(), &sources)?;
+    read_images(&version_dir.join(IMAGES_DIR), &mut catalog)?;
     if let Some(folder) = version_dir.file_name().and_then(|name| name.to_str()) {
         let declared = std::mem::replace(&mut catalog.version, folder.to_owned());
         if declared != folder {
@@ -144,6 +147,43 @@ pub fn load(version_dir: &Path, lang: &str) -> Result<Catalog, LoadError> {
         }
     }
     Ok(catalog)
+}
+
+/// Reads `images/<kind folder>/<id>.png` for every kind. A missing folder is fine; other files are
+/// skipped.
+fn read_images(dir: &Path, catalog: &mut Catalog) -> Result<(), LoadError> {
+    for kind in ImageKind::ALL {
+        let folder = dir.join(kind.folder());
+        let entries = match fs::read_dir(&folder) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(source) => {
+                return Err(LoadError::Read {
+                    file: folder,
+                    source,
+                });
+            }
+        };
+        for entry in entries {
+            let path = entry
+                .map_err(|source| LoadError::Read {
+                    file: folder.clone(),
+                    source,
+                })?
+                .path();
+            let is_png = path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("png"));
+            let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                continue;
+            };
+            if is_png {
+                let id = id.to_owned();
+                catalog.add_image(kind, id, read(&path)?);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn read(path: &Path) -> Result<Vec<u8>, LoadError> {

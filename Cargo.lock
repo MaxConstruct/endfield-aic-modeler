@@ -163,6 +163,7 @@ dependencies = [
  "egui-snarl",
  "egui_kittest",
  "fluent-bundle",
+ "image",
  "indexmap",
  "serde",
  "unic-langid",

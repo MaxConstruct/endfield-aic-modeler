@@ -92,12 +92,18 @@ data/
    ├─ data.json               # required: items, facilities, recipes, icon positions, regions
    ├─ i18n/
    │  └─ en.json              # required: English names keyed by the same IDs
-   ├─ icons.webp              # optional until M5: sprite sheet that data.json → icons[] points into
+   ├─ images/                 # optional: PNG icons named by our IDs (M5)
+   │  ├─ items/<item id>.png
+   │  ├─ facilities/<facility id>.png
+   │  └─ nodes/source.png, sink.png   # built-in node kinds (the depot unloader and loader)
+   ├─ icons.webp              # optional, unused: factoriolab's sprite sheet
    ├─ overlay.json            # optional (M7): our own patches on top of data.json
    └─ SOURCE.md               # optional: where it came from, commit/date, any hand edits
 ```
 
-- The repo has the data at `data/v1.5.3/` (no `icons.webp` yet). M0 moved it there from `src/data/1.5.3/`.
+- The repo has the data at `data/v1.5.3/`. M0 moved it there from `src/data/1.5.3/`. Its `images/` came
+  from [jambochen/endfield-calc](https://github.com/jambochen/endfield-calc), renamed to our IDs; see
+  `data/v1.5.3/SOURCE.md`.
 - Max copies these files in by hand. Initial source: `endfield-calc/factoriolab`, `src/data/aef/`
   (`data.json`, `i18n/en.json`, `icons.webp`). In that repo, ignore `data-dsp.json`, `data-sfy.json`,
   `data-spa.json` and `defaults-spa.json`. Those are Dyson Sphere Program / Satisfactory / Factorio test
@@ -525,11 +531,19 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   click each.
 
 ### M5: Icons
-- If there are no icons, draw a colored square with the item's initials instead, so the app works without them.
-- Load `icons.webp` once with `image`, upload it as one `egui::TextureHandle`, and draw each icon as an
-  `egui::Image` with a UV rect from `IconRect`. Parse `"-64px 0px"` into `(64, 0)`, with cell size 64.
-- Fall back to the `missing-icon` cell, and use the icon `color` as a tint for port dots.
-- Icons for built-in logistics nodes are drawn by the app.
+Done with per-file PNGs in `data/<version>/images/` instead of factoriolab's `icons.webp` sprite sheet,
+since the PNGs (from jambochen/endfield-calc) cover more of the game and are named by ID.
+- `aic-data` reads `images/{items,facilities,nodes}/*.png` as bytes (`Catalog::image`), never decoding
+  them; `Catalog::add_image` lets the web build add them one by one. `Catalog::recipe_image` picks a
+  recipe's picture: its own icon, else its first output, else its first input, else its facility. The
+  data's recipe icons are mostly generated IDs with no image, so this usually lands on the main output.
+- The app decodes each PNG with `image` the first time it is drawn and keeps the texture.
+- Where icons show: port rows, the facility picture on recipe cards, the depot unloader and loader on
+  source and sink cards, picker rows and its Source/Sink buttons, the recipe browser, the inspector and
+  the raw resources window.
+- An item with no image is drawn as a colored square with its initials (the icon `color` from
+  `data.json` when there is one), so the app works without images.
+- Splitter, merger, storage and control port have no picture yet.
 
 ### M6: Usability
 - File menu: New (asks for the region), Open, Save, Save As (`rfd`), plus a recent-files list kept in

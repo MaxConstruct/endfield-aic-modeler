@@ -221,7 +221,7 @@ impl Workspace {
         let item = &graph.link(link).expect("checked by caller").item;
         let fluid = catalog.item(item.as_str()).is_some_and(|i| i.is_fluid);
         ui.horizontal(|ui| {
-            widgets::item_badge(ui, catalog, item.as_str(), 18.0);
+            widgets::item_icon(ui, catalog, item.as_str(), 18.0);
             ui.label(
                 RichText::new(strings.get("inspector-link"))
                     .strong()
@@ -324,7 +324,7 @@ impl Workspace {
                 }
                 egui::Grid::new("totals-raw").num_columns(3).show(ui, |ui| {
                     for (item, used) in &totals.raw_resource_use {
-                        widgets::item_badge(ui, catalog, item.as_str(), 16.0);
+                        widgets::item_icon(ui, catalog, item.as_str(), 16.0);
                         ui.label(names::item(catalog, item.as_str()));
                         let used_text = format::fixed(Some(*used));
                         let text = match self.availability.get(region, item) {
@@ -393,7 +393,7 @@ fn item_list(
             }
             egui::Grid::new(title_key).num_columns(3).show(ui, |ui| {
                 for (item, rate) in items {
-                    widgets::item_badge(ui, catalog, item.as_str(), 16.0);
+                    widgets::item_icon(ui, catalog, item.as_str(), 16.0);
                     ui.label(names::item(catalog, item.as_str()));
                     ui.monospace(per_min(strings, Some(*rate)));
                     ui.end_row();

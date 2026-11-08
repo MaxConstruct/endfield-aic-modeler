@@ -1,5 +1,6 @@
 //! The normalized game data the rest of the app uses.
 
+use std::collections::HashMap;
 use std::fmt;
 
 use indexmap::IndexMap;
@@ -23,6 +24,9 @@ pub struct Catalog {
     pub(crate) icons: IndexMap<String, Icon>,
     #[serde(skip)]
     pub(crate) icons_webp: Option<Vec<u8>>,
+    /// Image files (PNG) by kind and ID, not decoded.
+    #[serde(skip)]
+    pub(crate) images: HashMap<(ImageKind, String), Vec<u8>>,
     pub(crate) version: String,
     #[serde(skip)]
     pub(crate) warnings: Vec<LoadWarning>,
@@ -81,6 +85,35 @@ impl Catalog {
             }
         }
         raw
+    }
+
+    /// The image file for an item, facility or built-in node kind, as stored (PNG bytes).
+    pub fn image(&self, kind: ImageKind, id: &str) -> Option<&[u8]> {
+        self.images.get(&(kind, id.to_owned())).map(Vec::as_slice)
+    }
+
+    /// Adds an image. [`crate::load`] reads them from `images/`; a platform without a file system
+    /// (the web build) adds them one by one.
+    pub fn add_image(&mut self, kind: ImageKind, id: impl Into<String>, bytes: Vec<u8>) {
+        self.images.insert((kind, id.into()), bytes);
+    }
+
+    /// The image that stands for a recipe: its own icon, else its first output, else its first
+    /// input, else its first facility; the first of those that has an image. The data's recipe
+    /// icons are mostly generated IDs with no image, so this usually lands on the main output.
+    pub fn recipe_image(&self, id: &str) -> Option<(ImageKind, &str)> {
+        let recipe = self.recipe(id)?;
+        let items = std::iter::once(recipe.icon.as_str())
+            .chain(recipe.outputs.iter().map(|(item, _)| item.as_str()))
+            .chain(recipe.inputs.iter().map(|(item, _)| item.as_str()))
+            .map(|id| (ImageKind::Item, id));
+        let facility = recipe
+            .facilities
+            .first()
+            .map(|id| (ImageKind::Facility, id.as_str()));
+        items
+            .chain(facility)
+            .find(|&(kind, id)| self.image(kind, id).is_some())
     }
 
     pub fn categories(&self) -> &IndexMap<CategoryId, Category> {
@@ -187,6 +220,30 @@ impl Recipe {
 
     pub fn available_in(&self, region: &RegionId) -> bool {
         self.regions.is_empty() || self.regions.contains(region)
+    }
+}
+
+/// Which folder of a data version's `images/` an image comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ImageKind {
+    /// `images/items/<item id>.png`
+    Item,
+    /// `images/facilities/<facility id>.png`
+    Facility,
+    /// `images/nodes/<name>.png`, for node kinds that aren't in the data, such as `source` and `sink`.
+    Node,
+}
+
+impl ImageKind {
+    pub const ALL: [Self; 3] = [Self::Item, Self::Facility, Self::Node];
+
+    /// The folder under `images/`.
+    pub fn folder(self) -> &'static str {
+        match self {
+            Self::Item => "items",
+            Self::Facility => "facilities",
+            Self::Node => "nodes",
+        }
     }
 }
 

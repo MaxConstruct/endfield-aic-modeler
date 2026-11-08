@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use aic_core::{Graph, LinkId, NodeId, NodeKind, Port, PortRef, Side, Solution};
-use aic_data::{Catalog, FacilityId, ItemId};
+use aic_data::{Catalog, FacilityId, ImageKind, ItemId};
 use eframe::egui::{
     self, Color32, CornerRadius, FontId, Id, LayerId, Pos2, Rect, RichText, Sense, Stroke, Ui,
     emath::TSTransform, vec2,
@@ -25,12 +25,14 @@ use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::picker::Origin;
-use crate::widgets::{self, LimitField, colors};
+use crate::widgets::{self, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
 
 const CANVAS_ID: &str = "aic-canvas";
 /// How far from a port a node added from it is placed, in graph units.
 const PORT_GAP: f32 = 80.0;
-const BADGE: f32 = 16.0;
+const BADGE: f32 = 20.0;
+/// Size of the facility picture on a recipe card (and the depot picture on a source or sink).
+const FACILITY_IMAGE: f32 = 48.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
@@ -315,7 +317,7 @@ impl Viewer<'_> {
                 .then(|| throttle_marker(ui).on_hover_text(strings.get("throttle-marker-hint")))
         };
         let badge = |ui: &mut Ui, catalog: &Catalog| match item {
-            Some(item) => widgets::item_badge(ui, catalog, item.as_str(), BADGE),
+            Some(item) => widgets::item_icon(ui, catalog, item.as_str(), BADGE),
             None => ui.label(self.strings.get("item-unset")),
         };
         let rate = RichText::new(format::fixed(flow)).color(color).monospace();
@@ -612,6 +614,15 @@ impl SnarlViewer<NodeId> for Viewer<'_> {
                     .map(|r| r.facilities.clone())
                     .unwrap_or_default();
                 let name = names::facility(self.catalog, facility.as_str());
+                if let Some(image) = widgets::image(
+                    ui,
+                    self.catalog,
+                    ImageKind::Facility,
+                    facility.as_str(),
+                    FACILITY_IMAGE,
+                ) {
+                    image.on_hover_text(name);
+                }
                 if facilities.len() > 1 {
                     // One click moves to the next facility; the inspector has the full list.
                     if ui.small_button(name).clicked() {
@@ -629,11 +640,29 @@ impl SnarlViewer<NodeId> for Viewer<'_> {
                 Self::big_number(ui, count);
                 self.limit_field(ui, id, *limit, false);
             }
-            NodeKind::Source { limit, .. } | NodeKind::ControlPort { limit, .. } => {
+            NodeKind::Source { limit, .. } => {
+                widgets::image(
+                    ui,
+                    self.catalog,
+                    ImageKind::Node,
+                    SOURCE_IMAGE,
+                    FACILITY_IMAGE,
+                );
+                Self::big_number(ui, rate);
+                self.limit_field(ui, id, Some(*limit), true);
+            }
+            NodeKind::ControlPort { limit, .. } => {
                 Self::big_number(ui, rate);
                 self.limit_field(ui, id, Some(*limit), true);
             }
             NodeKind::Sink { limit, .. } => {
+                widgets::image(
+                    ui,
+                    self.catalog,
+                    ImageKind::Node,
+                    SINK_IMAGE,
+                    FACILITY_IMAGE,
+                );
                 Self::big_number(ui, rate);
                 self.limit_field(ui, id, *limit, false);
             }
