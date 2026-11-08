@@ -1,2 +1,6 @@
 /target
 .idea
+# egui_kittest output from failed or updated snapshot runs
+**/tests/snapshots/*.new.png
+**/tests/snapshots/*.diff.png
+**/tests/snapshots/*.old.png
