@@ -13,11 +13,14 @@ use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::picker::{self, Choice, Origin, Picker};
+use crate::port_menu::{self, PortMenu};
 use crate::settings::{Availability, SettingsWindow};
 use crate::widgets::colors;
 
 /// A solve slower than this is reported in the status bar.
 const SLOW_SOLVE: Duration = Duration::from_millis(16);
+/// Space between a port's pin and the menu it opens.
+const PORT_MENU_GAP: f32 = 12.0;
 
 pub struct Workspace {
     pub(crate) catalog: Catalog,
@@ -28,8 +31,11 @@ pub struct Workspace {
     pub(crate) availability: Availability,
     pub(crate) settings: SettingsWindow,
     pub(crate) browser: crate::browser::Browser,
-    /// The limit field of the selected node, kept while it doesn't parse.
-    pub(crate) limit_edit: Option<(NodeId, String)>,
+    /// What the player is typing in the inspector's limit field.
+    pub(crate) limit_edit: String,
+    pub(crate) port_menu: Option<PortMenu>,
+    show_browser: bool,
+    show_inspector: bool,
     /// The last refused action, shown until the next edit.
     status: Option<String>,
     last_solve: Option<Duration>,
@@ -52,7 +58,10 @@ impl Workspace {
             availability,
             settings: SettingsWindow::default(),
             browser: crate::browser::Browser::default(),
-            limit_edit: None,
+            limit_edit: String::new(),
+            port_menu: None,
+            show_browser: true,
+            show_inspector: true,
             status: None,
             last_solve: None,
         }
@@ -96,6 +105,10 @@ impl Workspace {
         self.picker.as_ref().map(|picker| &picker.origin)
     }
 
+    pub fn port_menu_is_open(&self) -> bool {
+        self.port_menu.is_some()
+    }
+
     pub fn picker_is_open(&self) -> bool {
         self.picker.is_some()
     }
@@ -114,10 +127,11 @@ impl Workspace {
     pub fn ui(&mut self, ui: &mut Ui, strings: &Strings) {
         egui::Panel::top("top-bar").show(ui, |ui| self.top_bar(ui, strings));
         egui::Panel::bottom("status-bar").show(ui, |ui| self.status_bar(ui, strings));
+        let mut show_browser = self.show_browser;
         egui::Panel::left("recipe-browser")
             .resizable(true)
             .default_size(240.0)
-            .show(ui, |ui| {
+            .show_collapsible(ui, &mut show_browser, |ui| {
                 let region = self.doc.graph().region();
                 if let Some(kind) = self
                     .browser
@@ -128,10 +142,13 @@ impl Workspace {
                     self.select(Some(Selection::Node(node)));
                 }
             });
+        self.show_browser = show_browser;
+        let mut show_inspector = self.show_inspector;
         egui::Panel::right("inspector")
             .resizable(true)
             .default_size(300.0)
-            .show(ui, |ui| self.inspector(ui, strings));
+            .show_collapsible(ui, &mut show_inspector, |ui| self.inspector(ui, strings));
+        self.show_inspector = show_inspector;
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {
@@ -144,6 +161,7 @@ impl Workspace {
             });
         self.doc.sync_from_view(&self.catalog);
         self.picker_ui(ui.ctx(), strings);
+        self.port_menu_ui(ui.ctx(), strings);
         self.settings
             .show(ui.ctx(), &self.catalog, strings, &mut self.availability);
         self.keyboard(ui.ctx());
@@ -168,13 +186,18 @@ impl Workspace {
             CanvasEvent::SetFacility(node, facility) => {
                 let _ = self.doc.set_facility(node, facility);
             }
+            CanvasEvent::SetLimit(node, limit) => {
+                let _ = self.doc.set_limit(node, limit);
+            }
+            CanvasEvent::OpenPortMenu { port, graph_pos } => {
+                let screen = port_menu_pos(self.canvas.to_screen(graph_pos), port.side);
+                self.picker = None;
+                self.port_menu = Some(PortMenu::new(port, screen));
+            }
         }
     }
 
     pub(crate) fn select(&mut self, selection: Option<Selection>) {
-        if self.selection != selection {
-            self.limit_edit = None;
-        }
         self.selection = selection;
     }
 
@@ -268,9 +291,34 @@ impl Workspace {
         }
     }
 
+    fn port_menu_ui(&mut self, ctx: &egui::Context, strings: &Strings) {
+        let Some(menu) = &mut self.port_menu else {
+            return;
+        };
+        let port = menu.port.clone();
+        // Follow the pin: the card can grow, and the canvas can pan or zoom, while the menu is open.
+        if let Some(pin) =
+            self.canvas
+                .port_on_screen(&self.doc, &self.catalog, port.node, port.side, &port.item)
+        {
+            menu.screen_pos = port_menu_pos(pin, port.side);
+        }
+        match menu.show(ctx, &self.catalog, strings, self.doc.graph()) {
+            port_menu::Outcome::Open => {}
+            port_menu::Outcome::Close => self.port_menu = None,
+            port_menu::Outcome::SetLimit(limit) => {
+                let _ = self.doc.set_port_limit(&self.catalog, &port, limit);
+            }
+            port_menu::Outcome::ClearLinks => {
+                self.doc.clear_port(&self.catalog, &port);
+                self.port_menu = None;
+            }
+        }
+    }
+
     fn keyboard(&mut self, ctx: &egui::Context) {
         let typing = ctx.memory(|m| m.focused().is_some());
-        if typing || self.picker.is_some() {
+        if typing || self.picker.is_some() || self.port_menu.is_some() {
             return;
         }
         let delete = ctx.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace));
@@ -291,6 +339,8 @@ impl Workspace {
 
     fn top_bar(&mut self, ui: &mut Ui, strings: &Strings) {
         ui.horizontal(|ui| {
+            ui.toggle_value(&mut self.show_browser, strings.get("toggle-recipes"));
+            ui.separator();
             ui.strong(strings.get("app-title"));
             ui.separator();
             ui.label(strings.get("region-label"));
@@ -322,6 +372,9 @@ impl Workspace {
             if ui.button(strings.get("settings-button")).clicked() {
                 self.settings.open_on(&self.doc.graph().region().clone());
             }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.toggle_value(&mut self.show_inspector, strings.get("toggle-inspector"));
+            });
         });
     }
 
@@ -344,6 +397,15 @@ impl Workspace {
             }
         });
     }
+}
+
+/// Where the port menu's top-left goes for a pin on screen: beside the pin, away from its node.
+fn port_menu_pos(pin: Pos2, side: Side) -> Pos2 {
+    let x = match side {
+        Side::Input => pin.x - port_menu::WIDTH - PORT_MENU_GAP,
+        Side::Output => pin.x + PORT_MENU_GAP,
+    };
+    Pos2::new(x, pin.y - PORT_MENU_GAP)
 }
 
 /// A new recipe node: on the recipe's first facility, with no limit, so the solver sizes it from the

@@ -9,6 +9,7 @@ pub mod i18n;
 mod inspector;
 pub mod names;
 pub mod picker;
+mod port_menu;
 pub mod settings;
 mod widgets;
 pub mod workspace;

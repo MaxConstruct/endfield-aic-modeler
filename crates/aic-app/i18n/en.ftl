@@ -14,6 +14,8 @@ region-label = Region
 region-locked = Clear the graph to switch regions.
 data-version = Data { $version }
 settings-button = Raw resources…
+toggle-recipes = Recipes
+toggle-inspector = Inspector
 status-slow-solve = Solving took { $ms } ms. The canvas may stutter.
 
 ## Node kinds
@@ -31,13 +33,19 @@ node-title = { $kind } · { $subject }
 
 ## Node cards
 
-node-limit = limit { $limit }
 node-no-limit = no limit
+node-limit-label = Node limit
 node-per-min = { $rate } /min
 storage-balance = { $balance } /min
 storage-pass-through = through { $rate } /min
 node-remove = Remove node
 throttle-marker-hint = This port holds the node below its limit.
+
+## Port menu (double-click a port)
+
+port-menu-limit = Limit
+port-menu-limit-label = Port limit
+port-menu-clear = Clear connections
 
 ## Links
 

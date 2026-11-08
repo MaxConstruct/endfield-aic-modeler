@@ -459,12 +459,17 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
     pin. **The Windows run is still to do**, and ADR 0005 waits for it.
 - Three areas: left **recipe browser** (search by English name, filter by category; only the graph's
   region; hidden recipes left out), center **`egui-snarl` canvas**, right **inspector** (selected node or
-  link, its throttle reason, plus totals).
+  link, its throttle reason, plus totals). Both side panels collapse from toggles in the top bar.
 - Fluent setup: `crates/aic-app/i18n/en.ftl` embedded with `include_str!`. Every UI string goes through it.
 - `SnarlViewer`:
   - Recipe node: icon, recipe name, facility picker (when there is more than one facility), actual count
     on top, limit below. On the card the facility picker is one button that steps to the next facility;
-    the inspector has the full list.
+    the inspector has the full list. The limit below the count is a field typed straight into the card
+    (blank: no limit), like Satisfactory Modeler; sources, sinks and control ports get the same field.
+  - **Port menu:** a double-click on a port opens a small menu beside it: the node's limit typed as a
+    rate through that port (`Limit [225] /min`), and "Clear connections". On a recipe node the rate is
+    converted to a facility count limit in `aic-core` (`Graph::set_port_limit`), so the graph keeps one
+    limit per node; it keeps that count if the facility changes later.
   - Ports: one per item, with icon and rate. Unconnected ports are colored by depot direction:
     **pink = pulled from the depot, green = sent to the depot**, with the rate beside them. A small marker
     on the port that throttles the node.

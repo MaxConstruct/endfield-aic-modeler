@@ -101,7 +101,7 @@ How many times a copies-mode group runs, as solved within its limits.
 _Avoid_: Instances, multiplier
 
 **Limit**:
-An upper bound the player sets on a facility count, sink, source or control port. The solver runs everything as high as limits and supply allow.
+An upper bound the player sets on a facility count, sink, source or control port. The solver runs everything as high as limits and supply allow. A recipe node's limit can also be typed as a rate through one of its ports (e.g. 225/min of plates); it is the same limit, kept as a facility count.
 _Avoid_: Target, fixed value, constraint
 
 **Throttled**:

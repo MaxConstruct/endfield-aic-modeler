@@ -14,7 +14,7 @@ use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::settings::parse_amount;
-use crate::widgets::{self, colors};
+use crate::widgets::{self, LimitField, colors};
 use crate::workspace::{Workspace, link_error};
 
 impl Workspace {
@@ -107,37 +107,31 @@ impl Workspace {
     }
 
     fn limit_field(&mut self, ui: &mut Ui, strings: &Strings, node: NodeId, kind: &NodeKind) {
-        let (limit, required) = match kind {
-            NodeKind::Recipe { limit, .. }
-            | NodeKind::Sink { limit, .. }
-            | NodeKind::MissingRecipe { limit, .. } => (*limit, false),
-            NodeKind::Source { limit, .. } | NodeKind::ControlPort { limit, .. } => {
-                (Some(*limit), true)
+        let required = match kind {
+            NodeKind::Recipe { .. } | NodeKind::Sink { .. } | NodeKind::MissingRecipe { .. } => {
+                false
             }
+            NodeKind::Source { .. } | NodeKind::ControlPort { .. } => true,
             _ => return,
         };
-        if self.limit_edit.as_ref().is_none_or(|(id, _)| *id != node) {
-            let text = limit.map(|v| v.to_string()).unwrap_or_default();
-            self.limit_edit = Some((node, text));
-        }
-        let (_, text) = self.limit_edit.as_mut().expect("just set");
-        let parsed = parse_amount(text);
-        let problem = match parsed {
+        let mut typed = None;
+        ui.horizontal(|ui| {
+            ui.label(strings.get("inspector-limit"));
+            let field = LimitField {
+                id: egui::Id::new("inspector-limit"),
+                buffer: &mut self.limit_edit,
+                current: kind.limit(),
+                width: 90.0,
+                hint: strings.get("inspector-limit-hint"),
+                label: strings.get("inspector-limit"),
+            };
+            typed = field.show(ui).1;
+        });
+        let problem = match parse_amount(&self.limit_edit) {
             Err(_) => Some("inspector-limit-invalid"),
             Ok(None) if required => Some("inspector-limit-required"),
             Ok(_) => None,
         };
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            let label = ui.label(strings.get("inspector-limit"));
-            let mut edit = egui::TextEdit::singleline(text)
-                .desired_width(90.0)
-                .hint_text(strings.get("inspector-limit-hint"));
-            if problem.is_some() {
-                edit = edit.text_color(colors::NEGATIVE);
-            }
-            changed = ui.add(edit).labelled_by(label.id).changed();
-        });
         if let Some(key) = problem {
             ui.label(
                 RichText::new(strings.get(key))
@@ -145,11 +139,10 @@ impl Workspace {
                     .small(),
             );
         }
-        if changed
-            && let Ok(value) = parse_amount(text)
-            && (value.is_some() || !required)
+        if let Some(limit) = typed
+            && (limit.is_some() || !required)
         {
-            let _ = self.doc.set_limit(node, value);
+            let _ = self.doc.set_limit(node, limit);
         }
     }
 

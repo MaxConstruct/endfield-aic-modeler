@@ -78,6 +78,17 @@ impl NodeKind {
         }
     }
 
+    /// The limit of a recipe, source, sink or control port node, if it has one.
+    pub fn limit(&self) -> Option<f64> {
+        match self {
+            Self::Recipe { limit, .. }
+            | Self::Sink { limit, .. }
+            | Self::MissingRecipe { limit, .. } => *limit,
+            Self::Source { limit, .. } | Self::ControlPort { limit, .. } => Some(*limit),
+            Self::Splitter { .. } | Self::Merger { .. } | Self::Storage { .. } => None,
+        }
+    }
+
     /// Splitters, mergers, storage and control ports: one item, any number of links per side.
     pub fn is_logistics(&self) -> bool {
         matches!(
@@ -180,6 +191,8 @@ pub enum EditError {
     InvalidLimit(f64),
     #[error("only recipe nodes have a facility")]
     NotARecipe,
+    #[error("the node has no such port")]
+    NoSuchPort,
 }
 
 impl Graph {
@@ -312,6 +325,82 @@ impl Graph {
             }
         }
         Ok(())
+    }
+
+    /// The node's limit as a flow through `port`, per minute. On a recipe node that is the facility
+    /// count limit times the port's rate per facility. `None` when the node has no limit.
+    pub fn port_limit(&self, catalog: &Catalog, port: &Port) -> Option<f64> {
+        let scale = self.port_scale(catalog, port).ok()?;
+        Some(self.nodes.get(port.node)?.kind.limit()? * scale)
+    }
+
+    /// Sets the node's limit as a flow through `port`, per minute: the same limit as
+    /// [`Graph::set_limit`], typed another way. A recipe node stores it as a facility count, so it
+    /// keeps that count if its facility changes later.
+    pub fn set_port_limit(
+        &mut self,
+        catalog: &Catalog,
+        port: &Port,
+        rate: Option<f64>,
+    ) -> Result<(), EditError> {
+        if let Some(value) = rate
+            && !(value.is_finite() && value >= 0.0)
+        {
+            return Err(EditError::InvalidLimit(value));
+        }
+        let scale = self.port_scale(catalog, port)?;
+        self.set_limit(port.node, rate.map(|rate| rate / scale))
+    }
+
+    /// How much flow through `port` one unit of the node's limit is worth: the port's rate per
+    /// facility on a recipe node, 1 on a node whose limit is already a rate.
+    fn port_scale(&self, catalog: &Catalog, port: &Port) -> Result<f64, EditError> {
+        let node = self
+            .nodes
+            .get(port.node)
+            .ok_or(EditError::UnknownNode(port.node))?;
+        match &node.kind {
+            NodeKind::Recipe {
+                recipe, facility, ..
+            } => {
+                let recipe = catalog
+                    .recipe(recipe.as_str())
+                    .ok_or(EditError::NoSuchPort)?;
+                let speed = catalog
+                    .facility(facility.as_str())
+                    .ok_or(EditError::NoSuchPort)?
+                    .speed;
+                let items = match port.side {
+                    Side::Input => &recipe.inputs,
+                    Side::Output => &recipe.outputs,
+                };
+                let (_, qty) = items
+                    .iter()
+                    .find(|(item, _)| *item == port.item)
+                    .ok_or(EditError::NoSuchPort)?;
+                let rate = recipe.rate_per_min(*qty, speed);
+                if rate > 0.0 {
+                    Ok(rate)
+                } else {
+                    Err(EditError::NoSuchPort)
+                }
+            }
+            NodeKind::Source { item, .. } if port.side == Side::Output && *item == port.item => {
+                Ok(1.0)
+            }
+            NodeKind::Sink { item, .. } if port.side == Side::Input && *item == port.item => {
+                Ok(1.0)
+            }
+            NodeKind::ControlPort { item, .. }
+                if item.as_ref().is_none_or(|item| *item == port.item) =>
+            {
+                Ok(1.0)
+            }
+            NodeKind::Splitter { .. } | NodeKind::Merger { .. } | NodeKind::Storage { .. } => {
+                Err(EditError::NoLimit)
+            }
+            _ => Err(EditError::NoSuchPort),
+        }
     }
 
     /// Picks which facility a recipe node runs on. [`Graph::validate`] reports one that can't run

@@ -1,9 +1,11 @@
 //! Small drawing helpers shared by the canvas, the picker and the panels.
 
 use aic_data::Catalog;
-use eframe::egui::{self, Color32, FontId, Painter, Rect, Ui, Vec2};
+use eframe::egui::{self, Color32, FontId, Id, Painter, Rect, Ui, Vec2};
 
+use crate::format;
 use crate::names;
+use crate::settings::parse_amount;
 
 /// Colors with a meaning across the app.
 pub mod colors {
@@ -19,6 +21,46 @@ pub mod colors {
     pub const WARN: Color32 = Color32::from_rgb(240, 170, 60);
     pub const POSITIVE: Color32 = Color32::from_rgb(110, 200, 120);
     pub const NEGATIVE: Color32 = Color32::from_rgb(230, 90, 90);
+}
+
+/// A field for typing a limit. It shows `current` unless the player is typing in it, and returns
+/// the typed limit (`None` for blank) on the frame the text changes to something that parses. Text
+/// that doesn't parse shows red and changes nothing.
+pub struct LimitField<'a> {
+    pub id: Id,
+    pub buffer: &'a mut String,
+    pub current: Option<f64>,
+    pub width: f32,
+    pub hint: String,
+    /// The name a screen reader (and a test) finds the field by.
+    pub label: String,
+}
+
+impl LimitField<'_> {
+    pub fn show(self, ui: &mut Ui) -> (egui::Response, Option<Option<f64>>) {
+        let typing = ui.memory(|m| m.has_focus(self.id));
+        if !typing {
+            *self.buffer = self.current.map(format::editable).unwrap_or_default();
+        }
+        let valid = parse_amount(self.buffer).is_ok();
+        let mut edit = egui::TextEdit::singleline(self.buffer)
+            .id(self.id)
+            .desired_width(self.width)
+            .horizontal_align(egui::Align::Center)
+            .hint_text(self.hint);
+        if !valid {
+            edit = edit.text_color(colors::NEGATIVE);
+        }
+        let response = ui.add(edit);
+        let label = self.label;
+        ui.ctx()
+            .accesskit_node_builder(response.id, |node| node.set_label(label));
+        let typed = response
+            .changed()
+            .then(|| parse_amount(self.buffer).ok())
+            .flatten();
+        (response, typed)
+    }
 }
 
 /// Stands in for an item icon until icons load (M5): a colored square with the item's initials.

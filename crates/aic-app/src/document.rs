@@ -8,7 +8,8 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use aic_core::{
-    EditError, Graph, LinkError, LinkId, NodeId, NodeKind, PortRef, Pos, Side, Solution, solve,
+    EditError, Graph, LinkError, LinkId, NodeId, NodeKind, Port, PortRef, Pos, Side, Solution,
+    solve,
 };
 use aic_data::{Catalog, FacilityId, ItemId, RegionId};
 use eframe::egui::Pos2;
@@ -127,6 +128,31 @@ impl Document {
         self.graph.set_limit(id, limit)?;
         self.stale = true;
         Ok(())
+    }
+
+    /// Sets the node's limit as a flow through `port` (see [`Graph::set_port_limit`]).
+    pub fn set_port_limit(
+        &mut self,
+        catalog: &Catalog,
+        port: &Port,
+        rate: Option<f64>,
+    ) -> Result<(), EditError> {
+        self.graph.set_port_limit(catalog, port, rate)?;
+        self.stale = true;
+        Ok(())
+    }
+
+    /// Removes every link at `port`.
+    pub fn clear_port(&mut self, catalog: &Catalog, port: &Port) {
+        let links: Vec<LinkId> = self
+            .graph
+            .links_at(port.node, port.side)
+            .filter(|(_, link)| link.item == port.item)
+            .map(|(id, _)| id)
+            .collect();
+        for link in links {
+            self.remove_link(catalog, link);
+        }
     }
 
     pub fn set_facility(&mut self, id: NodeId, facility: FacilityId) -> Result<(), EditError> {

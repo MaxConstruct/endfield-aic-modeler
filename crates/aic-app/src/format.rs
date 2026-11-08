@@ -17,6 +17,12 @@ pub fn short(value: Option<f64>) -> String {
     text.trim_end_matches('0').trim_end_matches('.').to_owned()
 }
 
+/// A value as it shows in a field the player edits: up to four decimals, trailing zeros dropped.
+pub fn editable(value: f64) -> String {
+    let text = format!("{:.4}", (value * 1e4).round() / 1e4);
+    text.trim_end_matches('0').trim_end_matches('.').to_owned()
+}
+
 /// Rounds to two decimals, half away from zero. `{:.2}` alone rounds 1.125 down to 1.12.
 fn round2(v: f64) -> f64 {
     // The solver's 1.125 can come back as 1.12499999…; settle such noise before rounding.
@@ -45,6 +51,13 @@ mod tests {
         assert_eq!(short(Some(1.25)), "1.25");
         assert_eq!(short(Some(2.0)), "2");
         assert_eq!(short(Some(0.375)), "0.38");
+    }
+
+    #[test]
+    fn editable_keeps_four_decimals() {
+        assert_eq!(editable(5.0), "5");
+        assert_eq!(editable(225.0), "225");
+        assert_eq!(editable(1.0 / 3.0), "0.3333");
     }
 
     #[test]

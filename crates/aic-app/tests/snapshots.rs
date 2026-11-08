@@ -87,11 +87,14 @@ fn link(harness: &mut Harness<'_, App>, from: NodeId, to: NodeId, item: &str) {
 
 /// Types a new limit into the inspector's limit field of the selected node, replacing what is there.
 fn type_limit(harness: &mut Harness<'_, App>, limit: &str) {
-    harness.get_by_label("Limit").focus();
+    let role = eframe::egui::accesskit::Role::TextInput;
+    harness.get_by_role_and_label(role, "Limit").focus();
     harness.run();
     harness.key_press_modifiers(eframe::egui::Modifiers::COMMAND, eframe::egui::Key::A);
     harness.run();
-    harness.get_by_label("Limit").type_text(limit);
+    harness
+        .get_by_role_and_label(role, "Limit")
+        .type_text(limit);
     harness.run();
 }
 
@@ -273,7 +276,7 @@ fn rebuild_golden_05_through_the_picker() {
         planting,
         Side::Input,
         "plant_grass_seed_2",
-        (-80.0, -40.0),
+        (-160.0, -200.0),
         "Yazhen Seeds",
     );
     let pump = pick(
@@ -534,4 +537,128 @@ fn going_over_a_raw_resource_shows_a_warning() {
     );
     harness.get_by_label("Iron Ore: using 60.00 /min, but the region supplies 45.00 /min.");
     harness.snapshot("raw_resource_over_use");
+}
+
+fn limit_of(harness: &mut Harness<'_, App>, node: NodeId) -> Option<f64> {
+    let ws = workspace(harness);
+    ws.document()
+        .graph()
+        .node(node)
+        .and_then(|n| n.kind.limit())
+}
+
+/// Focuses the text field a screen reader knows as `label` and types `text` into it.
+fn type_into(harness: &mut Harness<'_, App>, label: &str, text: &str) {
+    let role = eframe::egui::accesskit::Role::TextInput;
+    harness.get_by_role_and_label(role, label).focus();
+    harness.run();
+    harness.get_by_role_and_label(role, label).type_text(text);
+    harness.run();
+}
+
+/// Both clicks go into one frame: the harness gives each queued event its own frame of 0.25 s,
+/// longer than egui's double-click window.
+fn double_click_at(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) {
+    harness.hover_at(pos);
+    harness.step();
+    for pressed in [true, false, true, false] {
+        harness
+            .input_mut()
+            .events
+            .push(eframe::egui::Event::PointerButton {
+                pos,
+                button: eframe::egui::PointerButton::Primary,
+                pressed,
+                modifiers: eframe::egui::Modifiers::NONE,
+            });
+    }
+    harness.run();
+}
+
+#[test]
+fn the_facility_count_limit_is_typed_on_the_card() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let frame = add_from_browser(&mut harness, "Modular Frame");
+    type_into(&mut harness, "Node limit", "1.25");
+    assert_eq!(limit_of(&mut harness, frame), Some(1.25));
+    let s = workspace(&mut harness).document().solution().clone();
+    assert_near(count(&s, frame), 1.25);
+    snapshot_graph(&mut harness, "limit_on_card");
+}
+
+#[test]
+fn double_clicking_a_port_sets_the_limit_as_a_rate() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    // Iron Plate: 20 plate per minute per facility.
+    let plate = add_from_browser(&mut harness, "Iron Plate");
+    let pin = workspace(&mut harness)
+        .port_on_screen(plate, Side::Output, "iron_plate")
+        .expect("pin is drawn");
+    double_click_at(&mut harness, pin - eframe::egui::vec2(24.0, 0.0));
+    assert!(
+        workspace(&mut harness).port_menu_is_open(),
+        "double-click opens the port menu"
+    );
+    type_into(&mut harness, "Port limit", "60");
+    assert_eq!(limit_of(&mut harness, plate), Some(3.0));
+    snapshot_graph(&mut harness, "port_menu");
+    harness.key_press(eframe::egui::Key::Escape);
+    harness.run();
+    // The card shows the same limit as a facility count.
+    harness.get_by_role_and_label(eframe::egui::accesskit::Role::TextInput, "Node limit");
+    assert_eq!(
+        harness
+            .get_by_role_and_label(eframe::egui::accesskit::Role::TextInput, "Node limit")
+            .value()
+            .as_deref(),
+        Some("3")
+    );
+}
+
+#[test]
+fn the_port_menu_clears_the_ports_links() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let plate = add_from_browser(&mut harness, "Iron Plate");
+    let smelter = pick(
+        &mut harness,
+        plate,
+        Side::Input,
+        "iron_ingot",
+        (-80.0, 0.0),
+        "Iron Ingot",
+    );
+    assert_eq!(workspace(&mut harness).document().graph().links().len(), 1);
+    let pin = workspace(&mut harness)
+        .port_on_screen(smelter, Side::Output, "iron_ingot")
+        .expect("pin is drawn");
+    double_click_at(&mut harness, pin - eframe::egui::vec2(24.0, 0.0));
+    assert!(
+        workspace(&mut harness).port_menu_is_open(),
+        "double-click opens the port menu"
+    );
+    harness.get_by_label("Clear connections").click();
+    harness.run();
+    assert_eq!(workspace(&mut harness).document().graph().links().len(), 0);
+}
+
+#[test]
+fn side_panels_collapse() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    harness.get_by_label("Modular Frame");
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Recipes")
+        .click();
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Inspector")
+        .click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Modular Frame").is_none(),
+        "browser hidden"
+    );
+    assert!(
+        harness.query_by_label("Totals").is_none(),
+        "inspector hidden"
+    );
+    harness.snapshot("panels_hidden");
 }

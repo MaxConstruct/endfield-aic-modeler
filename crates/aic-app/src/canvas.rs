@@ -25,7 +25,7 @@ use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::picker::Origin;
-use crate::widgets::{self, colors};
+use crate::widgets::{self, LimitField, colors};
 
 const CANVAS_ID: &str = "aic-canvas";
 /// How far from a port a node added from it is placed, in graph units.
@@ -54,6 +54,13 @@ pub enum CanvasEvent {
     Select(Option<Selection>),
     RemoveNode(NodeId),
     SetFacility(NodeId, FacilityId),
+    SetLimit(NodeId, Option<f64>),
+    /// Open the port menu (a double-click on a port). `graph_pos` is the port's pin: the menu opens
+    /// beside it, away from the node.
+    OpenPortMenu {
+        port: Port,
+        graph_pos: Pos2,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -69,6 +76,8 @@ type PinCenters = Rc<RefCell<HashMap<PinKey, Pos2>>>;
 pub struct Canvas {
     style: SnarlStyle,
     pins: PinCenters,
+    /// What the player is typing in each card's limit field.
+    limit_edits: HashMap<NodeId, String>,
     /// Graph space to screen space, as of the last frame.
     pub to_global: TSTransform,
     /// The canvas area on screen, as of the last frame.
@@ -88,6 +97,7 @@ impl Default for Canvas {
                 ..SnarlStyle::new()
             },
             pins: PinCenters::default(),
+            limit_edits: HashMap::new(),
             to_global: TSTransform::IDENTITY,
             rect: Rect::ZERO,
         }
@@ -150,6 +160,7 @@ impl Canvas {
             solution,
             selection,
             anchors,
+            limit_edits: &mut self.limit_edits,
             pins: &self.pins,
             to_global: &mut self.to_global,
             events: Vec::new(),
@@ -216,6 +227,7 @@ struct Viewer<'a> {
     solution: &'a Solution,
     selection: Option<Selection>,
     anchors: &'a mut HashMap<NodeId, Anchor>,
+    limit_edits: &'a mut HashMap<NodeId, String>,
     pins: &'a PinCenters,
     to_global: &'a mut TSTransform,
     events: Vec<CanvasEvent>,
@@ -274,6 +286,7 @@ impl Viewer<'_> {
     fn port_row(
         &mut self,
         ui: &mut Ui,
+        pin: PinKey,
         id: NodeId,
         side: Side,
         item: Option<&ItemId>,
@@ -298,30 +311,55 @@ impl Viewer<'_> {
             .get(&id)
             .is_some_and(|reason| reason.side == side && Some(&reason.item) == item);
         let marker = |ui: &mut Ui, strings: &Strings| {
-            if throttled {
-                throttle_marker(ui).on_hover_text(strings.get("throttle-marker-hint"));
-            }
+            throttled
+                .then(|| throttle_marker(ui).on_hover_text(strings.get("throttle-marker-hint")))
         };
         let badge = |ui: &mut Ui, catalog: &Catalog| match item {
-            Some(item) => {
-                widgets::item_badge(ui, catalog, item.as_str(), BADGE);
-            }
-            None => {
-                ui.label(self.strings.get("item-unset"));
-            }
+            Some(item) => widgets::item_badge(ui, catalog, item.as_str(), BADGE),
+            None => ui.label(self.strings.get("item-unset")),
         };
         let rate = RichText::new(format::fixed(flow)).color(color).monospace();
+        // Rows lay out left to right for inputs and right to left for outputs; either way the
+        // port's area is what was drawn.
+        let mut rect = Rect::NOTHING;
+        let mut add = |response: Option<egui::Response>| {
+            if let Some(response) = response {
+                rect = rect.union(response.rect);
+            }
+        };
         match side {
             Side::Input => {
-                marker(ui, self.strings);
-                badge(ui, self.catalog);
-                ui.label(rate);
+                add(marker(ui, self.strings));
+                add(Some(badge(ui, self.catalog)));
+                add(Some(ui.label(rate)));
             }
             Side::Output => {
-                ui.label(rate);
-                badge(ui, self.catalog);
-                marker(ui, self.strings);
+                add(Some(ui.label(rate)));
+                add(Some(badge(ui, self.catalog)));
+                add(marker(ui, self.strings));
             }
+        }
+        // A double-click on the port opens its menu: the limit as a rate, and clearing its links.
+        let Some(item) = item else {
+            return;
+        };
+        let response = ui.interact(rect, Id::new(("port-row", id, side, item)), Sense::click());
+        // egui counts a quick third click as a triple click, not a double one; either opens it.
+        if response.double_clicked() || response.triple_clicked() {
+            // Beside the pin, on the node's edge; last frame's spot is close enough.
+            let pin_center = self.pins.borrow().get(&pin).copied();
+            let graph_pos = pin_center.unwrap_or(match side {
+                Side::Input => rect.left_center(),
+                Side::Output => rect.right_center(),
+            });
+            self.events.push(CanvasEvent::OpenPortMenu {
+                port: Port {
+                    node: id,
+                    item: item.clone(),
+                    side,
+                },
+                graph_pos,
+            });
         }
     }
 
@@ -336,14 +374,23 @@ impl Viewer<'_> {
             .with_wire_color(colors::LINKED)
     }
 
-    fn limit_line(&self, ui: &mut Ui, limit: Option<f64>) {
-        let text = match limit {
-            Some(limit) => self
-                .strings
-                .format("node-limit", &[("limit", &format::short(Some(limit)))]),
-            None => self.strings.get("node-no-limit"),
+    /// The node's limit under its numbers, typed straight into the card. A source or control port
+    /// needs one, so blanking theirs changes nothing.
+    fn limit_field(&mut self, ui: &mut Ui, id: NodeId, limit: Option<f64>, required: bool) {
+        let buffer = self.limit_edits.entry(id).or_default();
+        let field = LimitField {
+            id: Id::new(("node-limit", id)),
+            buffer,
+            current: limit,
+            width: 76.0,
+            hint: self.strings.get("node-no-limit"),
+            label: self.strings.get("node-limit-label"),
         };
-        ui.label(RichText::new(text).weak().small());
+        if let (_, Some(typed)) = field.show(ui)
+            && (typed.is_some() || !required)
+        {
+            self.events.push(CanvasEvent::SetLimit(id, typed));
+        }
     }
 
     fn big_number(ui: &mut Ui, value: Option<f64>) {
@@ -496,7 +543,14 @@ impl SnarlViewer<NodeId> for Viewer<'_> {
         let id = snarl[pin.id.node];
         let item = self.pin_item(id, Side::Input, pin.id.input);
         let linked = !pin.remotes.is_empty();
-        self.port_row(ui, id, Side::Input, item.as_ref(), linked);
+        self.port_row(
+            ui,
+            PinKey::In(pin.id),
+            id,
+            Side::Input,
+            item.as_ref(),
+            linked,
+        );
         RecordingPin {
             info: Self::pin_info(linked, Side::Input),
             key: PinKey::In(pin.id),
@@ -514,7 +568,14 @@ impl SnarlViewer<NodeId> for Viewer<'_> {
         let id = snarl[pin.id.node];
         let item = self.pin_item(id, Side::Output, pin.id.output);
         let linked = !pin.remotes.is_empty();
-        self.port_row(ui, id, Side::Output, item.as_ref(), linked);
+        self.port_row(
+            ui,
+            PinKey::Out(pin.id),
+            id,
+            Side::Output,
+            item.as_ref(),
+            linked,
+        );
         RecordingPin {
             info: Self::pin_info(linked, Side::Output),
             key: PinKey::Out(pin.id),
@@ -566,15 +627,15 @@ impl SnarlViewer<NodeId> for Viewer<'_> {
                 }
                 let count = self.solution.facility_count.get(&id).copied().flatten();
                 Self::big_number(ui, count);
-                self.limit_line(ui, *limit);
+                self.limit_field(ui, id, *limit, false);
             }
             NodeKind::Source { limit, .. } | NodeKind::ControlPort { limit, .. } => {
                 Self::big_number(ui, rate);
-                self.limit_line(ui, Some(*limit));
+                self.limit_field(ui, id, Some(*limit), true);
             }
             NodeKind::Sink { limit, .. } => {
                 Self::big_number(ui, rate);
-                self.limit_line(ui, *limit);
+                self.limit_field(ui, id, *limit, false);
             }
             NodeKind::Splitter { .. } | NodeKind::Merger { .. } => {
                 Self::big_number(ui, rate);
