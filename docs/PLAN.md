@@ -11,6 +11,7 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 - [0001](adr/0001-implicit-depot-ports.md): unconnected ports are implicit depot I/O.
 - [0002](adr/0002-logical-planning-only.md): logical flow planning only, no spatial layout.
 - [0003](adr/0003-limits-and-maximize.md): player values are limits, and the solver maximizes.
+- [0004](adr/0004-throughput-measured-at-origins-and-sinks.md): pass-1 throughput is measured at origins and sinks.
 
 Tech:
 
@@ -51,7 +52,7 @@ Tech:
 - Until the repo goes public there are no CI binaries; everything is built from source. After that,
   releases are unsigned binaries on GitHub Releases, with README steps for Gatekeeper and SmartScreen.
 - Code license: MIT OR Apache-2.0. Game data and icons belong to Hypergryph/Gryphline and are committed to
-  the repo (as factoriolab does), with a disclaimer in `data/README.md` saying they are not under the
+  the repo (as factoriolab does), with a disclaimer in `../data/README.md` saying they are not under the
   code's license.
 
 ---
@@ -219,10 +220,11 @@ Links have no settings. They carry whatever flow the solver gives them.
 - **Linked output port:** the links must carry away everything. `Σ link flow = count · rate_out`. There is
   no surplus variable. A backed-up output **throttles** its facility, as the in-game stall does.
 - **Unconnected port:** depot I/O, unlimited (ADR 0001). `depot flow = count · rate`.
-- **Splitter, merger:** `Σ in = Σ out`. One item, any number of links.
-- **Control port:** `in = out ≤ limit`. One item. Any number can be chained.
+- **Splitter, merger:** `Σ in = Σ out`. One item, any number of links. An unconnected side is depot.
+- **Control port:** `in = out ≤ limit`. One item. Any number can be chained. An unconnected side is depot.
 - **Storage:** `balance = Σ in − Σ out`, free (positive or negative), no modes. One item. Pass-through is
-  `min(in, out)`. Demand downstream does not pass upstream.
+  `min(in, out)`. Demand downstream does not pass upstream. Its sides are never depot: an unconnected
+  side carries 0.
 - **Ratio lock (M7):** a fixed share for each link of a fan-out or fan-in.
 - Logistics nodes (splitter, merger, storage, control port) take their item from the first link and show
   "?" until then. A link with a different item is refused. Solid ↔ fluid links are refused.
@@ -236,15 +238,19 @@ warning, while every other section still shows numbers. This also keeps each LP 
 ### Two passes per section
 
 1. **Maximize throughput.** Run everything as high as limits and supply allow, with no throttling that
-   could be avoided.
-2. **Split evenly among equally good answers.** Fix the pass-1 optimum (with a small tolerance), then
-   minimize how far each fan-out's link flows (and each fan-in's) are from an equal share. Use
-   absolute-value helper variables. Ratio locks are hard constraints and override this.
+   could be avoided. Throughput is the output of every **origin** plus the consumption of every sink
+   (ADR 0004). An origin is a node nothing in the graph feeds: a source, a recipe node with no linked
+   input (measured by its inputs if it has no outputs), a storage's output side, or a splitter, merger
+   or control port pulling from the depot. A section with neither is a closed loop and maximizes the
+   sum of node activity instead.
+2. **Split evenly among equally good answers.** Hold the pass-1 optimum (relative tolerance 1e-9), then
+   minimize, over every fan group (the links sharing one port), its largest link minus its mean link.
+   This fills links like water: a branch that can't take an equal share takes what it can, and the
+   rest split evenly. Ratio locks (M7) are hard constraints and override this.
 
-The exact pass-1 objective is decided in M3 against the golden tests. "Maximize the sum of facility
-counts" is already ruled out: it fails test 4, starving the branch that needs more input per facility.
-Candidates to try: lexicographic max-min over node utilization, or maximizing flow drawn from limited
-supplies and drawn into sinks plus each unlimited node's count. Whatever wins must pass tests 4, 5, 7 and 10.
+Decided in M3 against the golden tests. Rejected: the sum of facility counts (fails test 4) and
+lexicographic max-min over node utilization (equalizes the consumers' counts in test 4 instead of
+their links). See ADR 0004.
 
 ### Undetermined
 
@@ -258,9 +264,12 @@ happen. Keep `Infeasible` as a status for numerical failure only, and report it 
 ### Throttle reasons
 
 When a node runs below its limit, the solution says why: the binding limit or port that holds it back
-(for example "input `iron_ingot` from Refining Unit A, which is at its limit 1"). Find it from the
-constraints that are tight at the optimum (duals if `good_lp` exposes them for the backend, otherwise a
-slack check). On the canvas, mark the binding port. The inspector shows the full reason.
+(for example "input `iron_ingot` from Refining Unit A, which is at its limit 1"). `microlp` exposes no duals, so the
+solver asks the LP: for each linked port of the throttled node, would the node run higher with that port
+on the depot? The port that frees it most is the reason (or, if none does, a port it shares with a fan
+group). The limit behind it is the nearest node at its limit, following links upstream from an input or
+downstream from an output, stopping at storage. This costs one LP per linked port of each throttled
+node; measure it in M4. On the canvas, mark the binding port. The inspector shows the full reason.
 
 ### Solution
 
@@ -268,9 +277,10 @@ slack check). On the canvas, mark the binding port. The inspector shows the full
 pub struct Solution {
     pub sections: Vec<SectionResult>,           // status per section: Solved | Undetermined | Failed
     pub facility_count: HashMap<NodeId, Option<f64>>,   // None = undetermined
+    pub rate: HashMap<NodeId, Option<f64>>,     // source supply, sink consumption, logistics flow
     pub link_flow: HashMap<LinkId, Option<f64>>,
-    pub depot: HashMap<(NodeId, ItemId), Option<f64>>,  // + pulled, − sent (or two maps)
-    pub storage_balance: HashMap<NodeId, Option<f64>>,
+    pub depot: HashMap<Port, Option<f64>>,      // Port { node, item, side }: Input = pulled, Output = sent
+    pub storage: HashMap<NodeId, StorageFlow>,  // inflow, outflow, balance, pass-through
     pub throttle: HashMap<NodeId, ThrottleReason>,
     pub totals: Totals,      // depot inputs, depot outputs, storage balances, power draw/generation/net,
                              // facility counts per facility type
@@ -304,7 +314,7 @@ generation separately.
 
 ### M0: Skeleton
 - Convert the single crate into the workspace from section 4. Move `src/data/1.5.3/` to `data/v1.5.3/`.
-- Add `data/README.md` (layout and the game data disclaimer) and `LICENSE-MIT` / `LICENSE-APACHE`.
+- Add `../data/README.md` (layout and the game data disclaimer) and `LICENSE-MIT` / `LICENSE-APACHE`.
   `CLAUDE.md` already exists; update its paths if anything moves.
 - Max copies `icons.webp` in by hand when needed. Claude Code should not try to download any data.
 - `aic-app` opens an empty eframe window.
@@ -429,7 +439,7 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   - **Fail:** profile and fix it inside egui (skip off-screen nodes, cache text layout, fork egui-snarl if
     needed). Only a failure measured after that reopens the framework question, and then the comparison
     is the same spike in iced + iced_nodegraph.
-  - When it passes, record ADR 0004: egui + egui-snarl is the shipping UI. iced + iced_nodegraph was
+  - When it passes, record ADR 0005: egui + egui-snarl is the shipping UI. iced + iced_nodegraph was
     considered and rejected because the node editor crate is young with a single maintainer, and the
     graph sizes don't need it.
 - Three areas: left **recipe browser** (search by English name, filter by category; only the graph's
@@ -524,5 +534,3 @@ Keep each milestone as its own commit or branch, so a bad UI experiment is easy 
 
 - Exact belt and pipe throughput in-game (30 and 120 per minute assumed from the data).
 - Whether higher-tier miners are faster (the data says both have speed 1).
-- The exact pass-1 objective (M3, decided by the golden tests).
-- Whether `good_lp` with `microlp` exposes duals for throttle reasons, or a slack check is needed.

@@ -72,6 +72,10 @@ _Avoid_: Net, delta
 The part of a storage's flow that goes straight through: the smaller of inflow and outflow.
 _Avoid_: Throughput
 
+**Origin**:
+A node that nothing in the graph feeds: a source, a recipe node with no linked input, the output side of a storage, or a logistics node drawing from the depot. Throughput is counted where flow leaves origins and where it reaches sinks.
+_Avoid_: Root, start, producer
+
 **Section**:
 A part of a graph connected without crossing a storage. Each section needs its own driver.
 _Avoid_: Subgraph, island, component

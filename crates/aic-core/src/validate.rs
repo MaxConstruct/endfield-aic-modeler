@@ -43,6 +43,19 @@ pub enum Issue {
     },
 }
 
+impl Issue {
+    /// Whether the solver can still use the node or link this issue is about. Region issues are
+    /// warnings: the numbers still make sense.
+    pub(crate) fn excludes(&self) -> bool {
+        !matches!(
+            self,
+            Self::RecipeOutsideRegion { .. }
+                | Self::FacilityOutsideRegion { .. }
+                | Self::FacilityCannotRun { .. }
+        )
+    }
+}
+
 impl Graph {
     /// Every problem with this graph, nodes first, in graph order.
     pub fn validate(&self, catalog: &Catalog) -> Vec<Issue> {
