@@ -284,6 +284,7 @@ pub struct Solution {
     pub rate: HashMap<NodeId, Option<f64>>,     // source supply, sink consumption, logistics flow
     pub link_flow: HashMap<LinkId, Option<f64>>,
     pub link_belts: HashMap<LinkId, Option<f64>>, // M4: flow / belt or pipe capacity, e.g. 0.4
+    pub port_flow: HashMap<Port, Option<f64>>,  // M4: flow through every port, linked or not
     pub depot: HashMap<Port, Option<f64>>,      // Port { node, item, side }: Input = pulled, Output = sent
     pub storage: HashMap<NodeId, StorageFlow>,  // inflow, outflow, balance, pass-through
     pub throttle: HashMap<NodeId, ThrottleReason>,
@@ -449,13 +450,21 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   - When it passes, record ADR 0005: egui + egui-snarl is the shipping UI. iced + iced_nodegraph was
     considered and rejected because the node editor crate is young with a single maintainer, and the
     graph sizes don't need it.
+  - The spike is `crates/aic-app/examples/perf_spike.rs`
+    (`cargo run --release -p aic-app --example perf_spike`). It drives itself through idle, pan, zoom,
+    node drag, new-link drag and live-value phases with vsync off, prints frame times, and exits.
+    Measured 2026-11-09 on an M1 Pro (Metal), all 300 nodes on screen (the worst case): mean frame
+    5.2–8.1 ms, p95 5.7–8.8 ms; about 4.5 ms of each frame is building the UI. Skipping the widgets of
+    off-screen nodes saved only about 0.5 ms, because egui-snarl still lays out every node frame and
+    pin. **The Windows run is still to do**, and ADR 0005 waits for it.
 - Three areas: left **recipe browser** (search by English name, filter by category; only the graph's
   region; hidden recipes left out), center **`egui-snarl` canvas**, right **inspector** (selected node or
   link, its throttle reason, plus totals).
 - Fluent setup: `crates/aic-app/i18n/en.ftl` embedded with `include_str!`. Every UI string goes through it.
 - `SnarlViewer`:
   - Recipe node: icon, recipe name, facility picker (when there is more than one facility), actual count
-    on top, limit below.
+    on top, limit below. On the card the facility picker is one button that steps to the next facility;
+    the inspector has the full list.
   - Ports: one per item, with icon and rate. Unconnected ports are colored by depot direction:
     **pink = pulled from the depot, green = sent to the depot**, with the rate beside them. A small marker
     on the port that throttles the node.
@@ -469,7 +478,8 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   - Opens on right-click on the canvas, and when a link is dragged from a port and dropped on empty
     canvas (egui-snarl's dropped-wire menu). Right-click on an unconnected port opens it too.
   - Layout: a search box at the top, focused on open, so typing filters at once. Left column: the
-    built-in nodes (source, sink, splitter, merger, storage, control port). Right: the recipe list, one
+    built-in nodes (source, sink, splitter, merger, storage, control port; a source or sink needs an
+    item, so those two appear only when opened from a port). Right: the recipe list, one
     row per recipe, with input icons on the left, the name in the middle and output icons on the right.
     Toggles choose whether the search matches recipe names, inputs, outputs, or any mix.
   - Only recipes of the graph's region; hidden recipes left out.
@@ -482,6 +492,7 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   - One click adds the node and, when opened from a port, links it to that port. The new node gets no
     limit, so the solver sizes it from the rest of the graph. Its facility is the recipe's first one;
     the node card's facility picker changes it later. Logistics nodes added from a port take its item.
+    A source or control port needs a limit, so a new one starts at one belt (or pipe) of its item.
   - Placement: at the drop point (or the right-click point). When opened from a port, the new node's
     side that faces the original node lands on that point, so the link doesn't cross the new node.
   - A plain add from the canvas also gets no limit; the lone node shows blank with the "no limit"
@@ -501,7 +512,7 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
     keeps its `(catalog, graph)` signature. The inspector's totals show use against availability, and
     the warning appears like the others.
 - Re-solve on every graph change. Synchronous is fine at first. Measure, and move to a worker thread
-  only if a solve takes more than about 16 ms.
+  only if a solve takes more than about 16 ms. The status bar says so when a solve takes longer.
 - Snarl is only the view and `aic-core::Graph` is the source of truth. Store the `NodeId` in the snarl
   node payload.
 - **Done when:** you can rebuild test 7's graph (with fixture data loaded) and test 5's graph by hand and

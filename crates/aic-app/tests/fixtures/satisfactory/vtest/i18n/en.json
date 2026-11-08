@@ -1,0 +1,35 @@
+{
+  "name": "Satisfactory fixture",
+  "version": { "arknights-endfield": "vtest" },
+  "categories": { "material": "Material", "component": "Component" },
+  "locations": { "tundra": "Valley IV", "jinlong": "Wuling" },
+  "items": {
+    "belt": "Conveyor Belt",
+    "pipe": "Pipeline",
+    "iron_ore": "Iron Ore",
+    "iron_ingot": "Iron Ingot",
+    "iron_plate": "Iron Plate",
+    "iron_rod": "Iron Rod",
+    "screw": "Screw",
+    "reinforced_plate": "Reinforced Iron Plate",
+    "modular_frame": "Modular Frame",
+    "wire": "Wire",
+    "coupon": "Coupon",
+    "miner": "Miner",
+    "smelter": "Smelter",
+    "constructor": "Constructor",
+    "assembler": "Assembler",
+    "outpost": "Outpost"
+  },
+  "recipes": {
+    "iron_ore": "Iron Ore",
+    "iron_ingot": "Iron Ingot",
+    "iron_plate": "Iron Plate",
+    "iron_rod": "Iron Rod",
+    "screw": "Screw",
+    "reinforced_plate": "Reinforced Iron Plate",
+    "modular_frame": "Modular Frame",
+    "iron_wire": "Iron Wire",
+    "coupon-iron_plate": "Coupon (Iron Plate)"
+  }
+}

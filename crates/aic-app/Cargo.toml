@@ -8,9 +8,12 @@ publish.workspace = true
 
 [dependencies]
 aic-core.workspace = true
-eframe = "0.36"
+aic-data.workspace = true
+eframe = { version = "0.36", features = ["persistence"] }
 egui-snarl = "0.12"
 fluent-bundle = "0.16.0"
+indexmap = "2"
+serde = { version = "1.0.229", features = ["derive"] }
 unic-langid = "0.9.6"
 
 [dev-dependencies]

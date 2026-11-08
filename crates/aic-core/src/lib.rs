@@ -14,6 +14,6 @@ pub use graph::{
 };
 pub use solve::{
     SectionResult, SectionStatus, Solution, StorageFlow, ThrottleReason, Totals,
-    UndeterminedReason, Warning, solve,
+    UndeterminedReason, Warning, check_resources, solve,
 };
 pub use validate::Issue;

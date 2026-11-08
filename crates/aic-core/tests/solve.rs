@@ -578,6 +578,72 @@ fn belt_over_capacity_is_a_hint() {
 }
 
 #[test]
+fn link_belts_is_flow_over_belt_or_pipe_capacity() {
+    let catalog = TestCatalog::new()
+        .facility("furnace", 5.0)
+        .recipe("ingot", "furnace", 5.0, &[("ore", 1.0)], &[("ingot", 1.0)])
+        .recipe(
+            "liquid_brine",
+            "furnace",
+            1.0,
+            &[],
+            &[("liquid_brine", 1.0)],
+        )
+        .build();
+    let mut g = graph();
+    let ingot = add_recipe(&mut g, &catalog, "ingot", Some(1.0)); // 12 per minute
+    let brine = add_recipe(&mut g, &catalog, "liquid_brine", Some(1.0)); // 60 per minute
+    let ingot_goal = sink(&mut g, "ingot", None);
+    let brine_goal = sink(&mut g, "liquid_brine", None);
+    let solid = link(&mut g, &catalog, ingot, ingot_goal, "ingot");
+    let fluid = link(&mut g, &catalog, brine, brine_goal, "liquid_brine");
+
+    let s = solve(&catalog, &g);
+    assert_near(s.link_belts[&solid], 0.4); // 12 / 30
+    assert_near(s.link_belts[&fluid], 0.5); // 60 / 120
+}
+
+#[test]
+fn link_belts_is_blank_where_the_flow_is() {
+    let catalog = furnace_catalog();
+    let mut g = graph();
+    let ingot = add_recipe(&mut g, &catalog, "ingot", None);
+    let goal = sink(&mut g, "ingot", None);
+    let wire = link(&mut g, &catalog, ingot, goal, "ingot");
+
+    let s = solve(&catalog, &g);
+    assert_eq!(s.link_belts[&wire], None);
+}
+
+#[test]
+fn port_flow_covers_linked_and_depot_ports() {
+    let catalog = furnace_catalog();
+    let mut g = graph();
+    let ingot = add_recipe(&mut g, &catalog, "ingot", None);
+    let plate = add_recipe(&mut g, &catalog, "plate", None);
+    let goal = sink(&mut g, "plate", Some(20.0));
+    link(&mut g, &catalog, ingot, plate, "ingot");
+    link(&mut g, &catalog, plate, goal, "plate");
+    let flow = |s: &Solution, node, item_id: &str, side| -> Option<f64> {
+        *s.port_flow
+            .get(&Port {
+                node,
+                item: item(item_id),
+                side,
+            })
+            .expect("port has a flow")
+    };
+
+    let s = solve(&catalog, &g);
+    // 20 plate need 30 ingot (3 ingot → 2 plate), which need 30 ore from the depot.
+    assert_near(flow(&s, ingot, "ore", Side::Input), 30.0);
+    assert_near(flow(&s, ingot, "ingot", Side::Output), 30.0);
+    assert_near(flow(&s, plate, "ingot", Side::Input), 30.0);
+    assert_near(flow(&s, plate, "plate", Side::Output), 20.0);
+    assert_near(flow(&s, goal, "plate", Side::Input), 20.0);
+}
+
+#[test]
 fn totals_sum_depot_power_and_facilities() {
     let catalog = TestCatalog::new()
         .facility("furnace", 5.0)

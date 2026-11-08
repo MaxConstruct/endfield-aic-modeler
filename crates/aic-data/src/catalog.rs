@@ -62,6 +62,27 @@ impl Catalog {
         self.regions.get(id)
     }
 
+    /// Raw resources of `region`: what its mining recipes extract, on a facility the region has, in
+    /// data order.
+    pub fn raw_resources(&self, region: &RegionId) -> Vec<&ItemId> {
+        let mut raw: Vec<&ItemId> = Vec::new();
+        let minable = self.recipes.values().filter(|recipe| {
+            recipe.is_mining
+                && recipe.available_in(region)
+                && recipe.facilities.iter().any(|id| {
+                    self.facilities
+                        .get(id)
+                        .is_some_and(|facility| facility.available_in(region))
+                })
+        });
+        for (item, _) in minable.flat_map(|recipe| &recipe.outputs) {
+            if !raw.contains(&item) {
+                raw.push(item);
+            }
+        }
+        raw
+    }
+
     pub fn categories(&self) -> &IndexMap<CategoryId, Category> {
         &self.categories
     }

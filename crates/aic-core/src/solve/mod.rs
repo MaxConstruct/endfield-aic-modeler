@@ -27,6 +27,10 @@ pub struct Solution {
     /// port, per minute.
     pub rate: HashMap<NodeId, Option<f64>>,
     pub link_flow: HashMap<LinkId, Option<f64>>,
+    /// How many belts (or pipes, for a fluid) each link's flow fills: 0.4 is 40% of one belt.
+    pub link_belts: HashMap<LinkId, Option<f64>>,
+    /// Flow through every port of every solved node, linked or not, per minute.
+    pub port_flow: HashMap<Port, Option<f64>>,
     /// Flow through each unconnected port: pulled from the depot on an input, sent to it on an output.
     pub depot: HashMap<Port, Option<f64>>,
     pub storage: HashMap<NodeId, StorageFlow>,
@@ -93,6 +97,10 @@ pub struct Totals {
     pub power_net_kw: f64,
     /// Facility count per facility type.
     pub facilities: IndexMap<FacilityId, f64>,
+    /// Use of each raw resource of the graph's region: the output of mining recipe nodes, the
+    /// supply of source nodes and pulls from the depot. Compare it with what the region can supply
+    /// using [`check_resources`].
+    pub raw_resource_use: IndexMap<ItemId, f64>,
     /// False when some section is undetermined or failed, so these sums leave part of the graph out.
     pub complete: bool,
 }
@@ -111,6 +119,13 @@ pub enum Warning {
     BeltOverCapacity {
         link: LinkId,
         lanes: u32,
+    },
+    /// More of a raw resource is used than the region supplies: a hint, not an error. Comes from
+    /// [`check_resources`], not from [`solve`].
+    ResourceOverUse {
+        item: ItemId,
+        used: f64,
+        available: f64,
     },
     /// A problem with the graph itself. The nodes and links involved are left out of the solve.
     Issue(Issue),
@@ -197,7 +212,7 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
         });
     }
     record_storage(graph, &nodes, &mut solution);
-    warn_over_capacity(catalog, graph, &mut solution);
+    count_belts(catalog, graph, &mut solution);
     solution.totals = totals(catalog, graph, &solution);
     solution
 }
@@ -228,19 +243,25 @@ fn record(
             .link_flow
             .insert(link, values.map(|v| v.links[&link]));
     }
-    let ports = match values {
-        Some(values) => values
-            .depot
-            .iter()
-            .map(|(port, amount)| (port.clone(), Some(*amount)))
-            .collect(),
-        None => model::build(ctx, section, None)
-            .depot
-            .into_iter()
-            .map(|(port, _)| (port, None))
-            .collect::<Vec<_>>(),
+    let (depot, ports) = match values {
+        Some(values) => {
+            let known = |list: &[(Port, f64)]| -> Vec<(Port, Option<f64>)> {
+                list.iter()
+                    .map(|(port, amount)| (port.clone(), Some(*amount)))
+                    .collect()
+            };
+            (known(&values.depot), known(&values.ports))
+        }
+        None => {
+            let model = model::build(ctx, section, None);
+            let blank = |list: Vec<(Port, good_lp::Expression)>| -> Vec<(Port, Option<f64>)> {
+                list.into_iter().map(|(port, _)| (port, None)).collect()
+            };
+            (blank(model.depot), blank(model.ports))
+        }
     };
-    solution.depot.extend(ports);
+    solution.depot.extend(depot);
+    solution.port_flow.extend(ports);
 }
 
 fn record_storage(graph: &Graph, nodes: &[NodeId], solution: &mut Solution) {
@@ -268,9 +289,10 @@ fn record_storage(graph: &Graph, nodes: &[NodeId], solution: &mut Solution) {
     }
 }
 
-fn warn_over_capacity(catalog: &Catalog, graph: &Graph, solution: &mut Solution) {
+/// Fills in `link_belts`, and warns about links that need more than one belt or pipe.
+fn count_belts(catalog: &Catalog, graph: &Graph, solution: &mut Solution) {
     for (id, link) in graph.links() {
-        let Some(Some(flow)) = solution.link_flow.get(&id) else {
+        let Some(&flow) = solution.link_flow.get(&id) else {
             continue;
         };
         let fluid = catalog
@@ -281,7 +303,12 @@ fn warn_over_capacity(catalog: &Catalog, graph: &Graph, solution: &mut Solution)
         } else {
             catalog.belt_per_min()
         };
-        let lanes = (flow / capacity - 1e-9).ceil();
+        let belts = flow.map(|flow| flow / capacity);
+        solution.link_belts.insert(id, belts);
+        let Some(belts) = belts else {
+            continue;
+        };
+        let lanes = (belts - 1e-9).ceil();
         if lanes > 1.0 {
             solution.warnings.push(Warning::BeltOverCapacity {
                 link: id,
@@ -344,5 +371,63 @@ fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
         }
     }
     totals.power_net_kw = totals.power_generation_kw - totals.power_draw_kw;
+    totals.raw_resource_use = raw_resource_use(catalog, graph, solution);
     totals
+}
+
+/// Use of each raw resource of the graph's region, in data order. A resource nothing touches is
+/// left out.
+fn raw_resource_use(
+    catalog: &Catalog,
+    graph: &Graph,
+    solution: &Solution,
+) -> IndexMap<ItemId, f64> {
+    let raw = catalog.raw_resources(graph.region());
+    let mut used: HashMap<&ItemId, f64> = HashMap::new();
+    let mut add = |item: &ItemId, amount: Option<f64>| {
+        if let (Some(&raw_item), Some(amount)) = (raw.iter().find(|r| **r == item), amount) {
+            *used.entry(raw_item).or_default() += amount;
+        }
+    };
+    for (port, flow) in &solution.port_flow {
+        let mined = port.side == Side::Output
+            && matches!(
+                &graph.nodes()[port.node].kind,
+                NodeKind::Recipe { recipe, .. }
+                    if catalog.recipe(recipe.as_str()).is_some_and(|r| r.is_mining)
+            );
+        if mined {
+            add(&port.item, *flow);
+        }
+    }
+    for (port, amount) in &solution.depot {
+        if port.side == Side::Input {
+            add(&port.item, *amount);
+        }
+    }
+    for (id, node) in graph.nodes() {
+        if let NodeKind::Source { item, .. } = &node.kind {
+            add(item, solution.rate.get(&id).copied().flatten());
+        }
+    }
+    raw.into_iter()
+        .filter_map(|item| Some((item.clone(), used.get(item).copied()?)))
+        .collect()
+}
+
+/// Compares raw resource use with what the region can supply per minute. A resource missing from
+/// `available` is unlimited.
+pub fn check_resources(totals: &Totals, available: &HashMap<ItemId, f64>) -> Vec<Warning> {
+    totals
+        .raw_resource_use
+        .iter()
+        .filter_map(|(item, &used)| {
+            let &available = available.get(item)?;
+            (used > available + passes::tolerance(available)).then(|| Warning::ResourceOverUse {
+                item: item.clone(),
+                used,
+                available,
+            })
+        })
+        .collect()
 }

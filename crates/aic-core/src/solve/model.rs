@@ -27,6 +27,8 @@ pub(crate) struct Model {
     pub links: HashMap<LinkId, Variable>,
     /// Unconnected ports, with what flows through them (ADR 0001).
     pub depot: Vec<(Port, Expression)>,
+    /// Every port, linked or not, with what flows through it.
+    pub ports: Vec<(Port, Expression)>,
     /// The pass-1 objective (ADR 0004): what origins put out plus what sinks take in.
     pub throughput: Expression,
     /// Links that share one port: each fan-out and each fan-in.
@@ -77,6 +79,7 @@ pub(crate) fn build(ctx: &Ctx<'_>, section: &Section, relaxed: Option<&Port>) ->
             limits: HashMap::new(),
             links,
             depot: Vec::new(),
+            ports: Vec::new(),
             throughput: Expression::from(0.0),
             fan_groups,
             linked_ports,
@@ -229,6 +232,7 @@ impl Builder<'_, '_> {
             item: item.clone(),
             side,
         };
+        self.model.ports.push((port.clone(), amount.clone()));
         let Some(ids) = self.model.linked_ports.get(&port) else {
             self.model.depot.push((port, amount));
             return false;

@@ -17,6 +17,7 @@ pub(crate) struct Values {
     pub activity: HashMap<NodeId, f64>,
     pub links: HashMap<LinkId, f64>,
     pub depot: Vec<(Port, f64)>,
+    pub ports: Vec<(Port, f64)>,
 }
 
 pub(crate) enum Outcome {
@@ -95,6 +96,7 @@ fn run(
         activity,
         links,
         depot,
+        ports,
         ..
     } = model;
     let unsolved = match direction {
@@ -117,6 +119,10 @@ fn run(
             .map(|(link, var)| (link, clean(solution.value(var))))
             .collect(),
         depot: depot
+            .into_iter()
+            .map(|(port, amount)| (port, clean(solution.eval(&amount))))
+            .collect(),
+        ports: ports
             .into_iter()
             .map(|(port, amount)| (port, clean(solution.eval(&amount))))
             .collect(),

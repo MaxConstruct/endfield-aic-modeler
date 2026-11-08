@@ -83,6 +83,14 @@ impl TestCatalog {
         self
     }
 
+    /// A mining recipe: no inputs, flagged `mining`, available in every region.
+    pub fn mining(mut self, id: &str, facility: &str, time_s: f64, output: (&str, f64)) -> Self {
+        self = self.recipe(id, facility, time_s, &[], &[output]);
+        let recipe = self.recipes.last_mut().expect("just added");
+        recipe["flags"] = json!(["mining"]);
+        self
+    }
+
     pub fn build(self) -> Catalog {
         let mut items: Vec<Value> = vec![
             json!({ "id": "belt", "name": "belt", "category": "belt-and-pipe", "belt": { "speed": 0.5 } }),

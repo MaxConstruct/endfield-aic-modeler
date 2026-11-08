@@ -226,3 +226,18 @@ fn writes_normalized_json() {
     );
     assert_eq!(value["belt_per_min"], 30.0);
 }
+
+#[test]
+fn raw_resources_are_what_mining_recipes_can_extract_in_the_region() {
+    let catalog = fixture();
+    let raw = |region: &str| -> Vec<String> {
+        catalog
+            .raw_resources(&RegionId::from(region))
+            .into_iter()
+            .map(ItemId::to_string)
+            .collect()
+    };
+    assert_eq!(raw("jinlong"), ["liquid_water"]);
+    // The water recipe is listed everywhere, but its only facility, the pump, is Wuling-only.
+    assert!(raw("tundra").is_empty());
+}
