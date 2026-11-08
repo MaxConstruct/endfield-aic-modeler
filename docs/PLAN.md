@@ -30,11 +30,15 @@ Tech:
 **In scope**
 
 - Graph-first planning. You build the graph; the app never builds a whole production tree for you.
-  "Add producer of X" on an input port is the only auto-build help.
+  "Add producer of X" on an input port and "Add consumer of X" on an output port are the only auto-build
+  help, and each adds one node.
 - One graph is one region (Valley IV or Wuling). Cross-region flow shows up as depot I/O.
 - Node kinds: recipe, source, sink, splitter, merger, storage, control port, and groups (M7).
 - Power is reported (draw, generation, net). It is never a limit the solver uses.
-- Belt and pipe capacity is a hint on a link (`⌈flow / capacity⌉`), never a limit.
+- Belt and pipe capacity is a hint on a link, never a limit: every link shows how many belts (or pipes)
+  its flow needs, as `flow / capacity` (e.g. `0.4 belts`), and warns when it needs more than one.
+- Raw resources have a per-region availability setting (e.g. Wuling: 420 Cuprium Ore/min). Going over it
+  is a warning, never a limit the solver uses.
 - Game names are translatable through `data/<version>/i18n/<lang>.json`. UI strings go through Fluent,
   but only English (`en.ftl`) is written. Translations are left for contributors.
 
@@ -279,10 +283,12 @@ pub struct Solution {
     pub facility_count: HashMap<NodeId, Option<f64>>,   // None = undetermined
     pub rate: HashMap<NodeId, Option<f64>>,     // source supply, sink consumption, logistics flow
     pub link_flow: HashMap<LinkId, Option<f64>>,
+    pub link_belts: HashMap<LinkId, Option<f64>>, // M4: flow / belt or pipe capacity, e.g. 0.4
     pub depot: HashMap<Port, Option<f64>>,      // Port { node, item, side }: Input = pulled, Output = sent
     pub storage: HashMap<NodeId, StorageFlow>,  // inflow, outflow, balance, pass-through
     pub throttle: HashMap<NodeId, ThrottleReason>,
     pub totals: Totals,      // depot inputs, depot outputs, storage balances, power draw/generation/net,
+                             // raw resource use (M4),
                              // facility counts per facility type
     pub warnings: Vec<Warning>,
 }
@@ -293,6 +299,7 @@ Warnings:
 - `Undetermined { section, reason }`: no driver, or unbounded. Say what to add (a source limit, a
   facility count limit, a sink limit or a control port).
 - `CopiesUndetermined { group }` (M7): nothing inside the group defines one copy.
+- `ResourceOverUse { item, used, available }` (M4): from the resource check, not from `solve` itself.
 - `BeltOverCapacity { link, lanes }`: flow above 30/min (solid) or 120/min (fluid). Shown as a hint, not
   an error.
 - Load-time: data version mismatch, and missing recipe or item IDs.
@@ -456,17 +463,50 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   - Splitter, merger, control port: compact nodes. Control port shows its limit.
   - Undetermined values are blank.
   - `connect()` refuses mismatched items and solid ↔ fluid, and sets the item of an unset logistics node.
-  - Right-click on the canvas opens a searchable "Add recipe / source / sink / splitter / merger / storage
-    / control port" menu.
-  - Right-click on an unconnected input port opens "Add producer of X", which creates the upstream node
-    and links it. This is the most-used action in Modeler-style tools, so build it early.
-- Link labels: flow at the midpoint, with the belt/pipe lanes hint when over capacity.
+- **Node picker.** One popup for every way of adding a node, modeled on Satisfactory Modeler's recipe
+  selector (`docs/ref/satisfactory-modeler-recipe-selector.png`). It must be fast: one click adds the
+  node. No dropdowns and no second step.
+  - Opens on right-click on the canvas, and when a link is dragged from a port and dropped on empty
+    canvas (egui-snarl's dropped-wire menu). Right-click on an unconnected port opens it too.
+  - Layout: a search box at the top, focused on open, so typing filters at once. Left column: the
+    built-in nodes (source, sink, splitter, merger, storage, control port). Right: the recipe list, one
+    row per recipe, with input icons on the left, the name in the middle and output icons on the right.
+    Toggles choose whether the search matches recipe names, inputs, outputs, or any mix.
+  - Only recipes of the graph's region; hidden recipes left out.
+  - **From an input port of item X ("Add producer of X"):** the list shows only recipes that output X,
+    including mining recipes, and the left column offers a Source of X. Every recipe is listed the same
+    way, in data order, all visible at once; no expanding. (Satisfactory Modeler highlights alternative
+    recipes. The data has no main/alternative flag, so that waits until we know how to tell them apart.)
+  - **From an output port of item X ("Add consumer of X"):** the mirror case. Only recipes that take X
+    as input, and the left column offers a Sink of X.
+  - One click adds the node and, when opened from a port, links it to that port. The new node gets no
+    limit, so the solver sizes it from the rest of the graph. Its facility is the recipe's first one;
+    the node card's facility picker changes it later. Logistics nodes added from a port take its item.
+  - Placement: at the drop point (or the right-click point). When opened from a port, the new node's
+    side that faces the original node lands on that point, so the link doesn't cross the new node.
+  - A plain add from the canvas also gets no limit; the lone node shows blank with the "no limit"
+    warning until the player sets one.
+- **Link labels:** flow and belt count at the midpoint, like `12.00 /min · 0.4 belts`
+  (`docs/ref/jambochen-mining-node.png`), using "pipes" for fluids. Over one belt, the label shows the
+  warning colour. `aic-core` computes the belt count; the UI only formats it.
+- **Raw resource availability.** A per-region table of raw resources (the items any mining recipe in that
+  region outputs) with how much the region can supply per minute, like jambochen's settings
+  (`docs/ref/jambochen-setting-resource.png`). A blank entry is unlimited. It's an app-wide setting kept
+  in eframe storage, not part of a graph, and is edited from a settings window with a tab per region.
+  The data set has no mining caps, so every entry starts blank until the player fills it in (or an
+  `overlay.json` provides defaults, M7).
+  - `aic-core` adds up each raw resource's use in a solved graph: the output of mining recipe nodes,
+    the supply of source nodes, and depot pulls of that item. A separate function compares that with the
+    availability table and returns `ResourceOverUse { item, used, available }` warnings, so `solve`
+    keeps its `(catalog, graph)` signature. The inspector's totals show use against availability, and
+    the warning appears like the others.
 - Re-solve on every graph change. Synchronous is fine at first. Measure, and move to a worker thread
   only if a solve takes more than about 16 ms.
 - Snarl is only the view and `aic-core::Graph` is the source of truth. Store the `NodeId` in the snarl
   node payload.
 - **Done when:** you can rebuild test 7's graph (with fixture data loaded) and test 5's graph by hand and
-  see the same numbers.
+  see the same numbers, adding every upstream node through the node picker from an input port, one
+  click each.
 
 ### M5: Icons
 - If there are no icons, draw a colored square with the item's initials instead, so the app works without them.

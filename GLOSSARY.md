@@ -26,6 +26,10 @@ _Avoid_: Location, zone, map
 A named snapshot of game data, matching a game version (e.g. `v1.5.3`).
 _Avoid_: Dataset, patch
 
+**Raw resource**:
+An item that a mining recipe extracts in a region (e.g. Cuprium Ore). Each region can supply only so much of each per minute.
+_Avoid_: Ore, raw material, natural resource
+
 ### Planning
 
 **Graph**:
