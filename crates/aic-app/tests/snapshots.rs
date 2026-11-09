@@ -9,7 +9,7 @@ use aic_app::canvas::Selection;
 use aic_app::i18n::Strings;
 use aic_app::picker::Origin;
 use aic_app::{App, WINDOW_SIZE};
-use aic_core::{NodeId, NodeKind, Port, PortRef, Side, Solution};
+use aic_core::{Graph, NodeId, NodeKind, Port, PortRef, Side, Solution};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
@@ -921,25 +921,6 @@ fn save_then_open_the_file_again() {
 }
 
 #[test]
-fn new_asks_before_dropping_unsaved_changes_then_asks_the_region() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
-    smelter(&mut harness, 0.0, 0.0);
-    harness.run();
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::N);
-    harness.run();
-    assert!(workspace(&mut harness).is_confirming_discard());
-    harness.snapshot("discard_changes");
-
-    harness.get_by_label("Discard").click();
-    harness.run();
-    assert!(workspace(&mut harness).new_dialog_is_open());
-    harness.get_by_label("Create").click();
-    harness.run();
-    assert!(!workspace(&mut harness).new_dialog_is_open());
-    assert_eq!(node_count(&mut harness), 0);
-}
-
-#[test]
 fn round_up_shows_whole_facilities_and_how_busy_they_are() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     let frame = add_from_browser(&mut harness, "Modular Frame");
@@ -1255,4 +1236,147 @@ fn export_saves_the_canvas_as_a_png() {
     let (width, height) = image.dimensions();
     assert!((600..WINDOW_SIZE[0] as u32).contains(&width), "{width}");
     assert!((600..WINDOW_SIZE[1] as u32).contains(&height), "{height}");
+}
+
+// Save files: drafts, autosave and reopening.
+
+/// An empty folder in the temp directory for one test.
+fn temp_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("aic-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn files_in(dir: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|entries| entries.map(|e| e.unwrap().path()).collect())
+        .unwrap_or_default();
+    files.sort();
+    files
+}
+
+#[test]
+fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let strings = Strings::english();
+    let dir = temp_dir("drafts");
+    let drafts = dir.join("drafts");
+    workspace(&mut harness).set_drafts_dir(Some(drafts.clone()));
+    harness.run();
+    assert!(
+        files_in(&drafts).is_empty(),
+        "an untouched graph has no draft"
+    );
+
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    let draft = files_in(&drafts);
+    assert_eq!(draft.len(), 1, "the first change saves at once");
+    assert!(workspace(&mut harness).document().is_draft());
+    assert!(workspace(&mut harness).title().starts_with("Untitled —"));
+
+    let mine = dir.join("plan.aicm");
+    workspace(&mut harness).save_to(&mine, &strings);
+    harness.run();
+    assert!(files_in(&drafts).is_empty(), "the draft is gone");
+    assert!(!workspace(&mut harness).document().is_draft());
+    assert_eq!(
+        workspace(&mut harness).document().path(),
+        Some(mine.as_path())
+    );
+
+    // New saves the open file first, then starts a fresh draft.
+    smelter(&mut harness, 300.0, 0.0);
+    workspace(&mut harness).request(aic_app::files::Pending::New, &strings);
+    harness.run();
+    let saved = Graph::from_json(
+        workspace(&mut harness).catalog(),
+        &std::fs::read_to_string(&mine).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved.graph.nodes().len(), 2);
+    assert_eq!(node_count(&mut harness), 0);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn reopening_restores_the_graph_and_where_the_canvas_looked() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let strings = Strings::english();
+    let dir = temp_dir("reopen");
+    let path = dir.join("plan.aicm");
+    let node = smelter(&mut harness, 120.0, 80.0);
+    harness.run();
+    fit_view(&mut harness);
+    workspace(&mut harness).save_to(&path, &strings);
+    let view = workspace(&mut harness)
+        .canvas_view()
+        .expect("the canvas was drawn");
+
+    let mut again = self::harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    workspace(&mut again).reopen(&path, &strings);
+    again.run();
+    let ws = workspace(&mut again);
+    assert_eq!(ws.document().graph().nodes().len(), 1);
+    let pos = ws.document().graph().nodes().values().next().unwrap().pos;
+    assert_eq!((pos.x, pos.y), (120.0, 80.0), "positions are saved");
+    let shown = ws.canvas_view().unwrap();
+    assert!(
+        (shown.zoom - view.zoom).abs() < 1e-4,
+        "{shown:?} vs {view:?}"
+    );
+    assert!((shown.x - view.x).abs() < 0.5 && (shown.y - view.y).abs() < 0.5);
+    let _ = node;
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let strings = Strings::english();
+    let dir = temp_dir("broken");
+    workspace(&mut harness).set_drafts_dir(Some(dir.join("drafts")));
+
+    workspace(&mut harness).reopen(&dir.join("gone.aicm"), &strings);
+    harness.run();
+    harness.get_by_label_contains("is gone. Started a new one.");
+
+    let broken = dir.join("broken.aicm");
+    std::fs::write(&broken, "{ not json").unwrap();
+    workspace(&mut harness).reopen(&broken, &strings);
+    harness.run();
+    harness.get_by_label_contains("Could not open");
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    assert_eq!(
+        std::fs::read_to_string(&broken).unwrap(),
+        "{ not json",
+        "autosave never writes over a file it couldn't read"
+    );
+    assert!(workspace(&mut harness).document().is_draft());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_region_can_change_until_the_first_node() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::ComboBox, "Region")
+        .click();
+    harness.run();
+    harness.get_by_label("Wuling").click();
+    harness.run();
+    assert_eq!(
+        workspace(&mut harness).document().graph().region().as_str(),
+        "jinlong"
+    );
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    assert!(
+        workspace(&mut harness)
+            .document_mut()
+            .set_region("tundra".into())
+            .is_err()
+    );
 }

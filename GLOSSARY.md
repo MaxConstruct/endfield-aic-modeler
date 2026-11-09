@@ -92,6 +92,10 @@ _Avoid_: Constraint, anchor
 A value the solver cannot settle because nothing limits it. It is shown blank, never as 0 or ∞.
 _Avoid_: Unknown, unsolved, empty
 
+**Draft**:
+A graph that hasn't been saved to a file of the player's choosing yet. The app keeps it in its own folder and saves it as it changes.
+_Avoid_: Temp file, scratch, unsaved graph
+
 **Group**:
 A named set of nodes, possibly including other groups, that collapses into one node showing its external ports. It can optionally stand for N identical copies of a module.
 _Avoid_: Outpost, blueprint, factory, module

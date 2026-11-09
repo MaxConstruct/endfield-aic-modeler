@@ -1,32 +1,45 @@
-//! The File menu: new graphs, opening and saving `.aicm` files, recent files, and the dialogs that
-//! ask before unsaved changes are dropped.
+//! Save files and autosave.
+//!
+//! A document is always saved somewhere, a few seconds after each change at most:
+//!
+//! - A new graph is a *draft*. Its first change creates `untitled-<time>.aicm` in the app's own
+//!   drafts folder, and it autosaves there.
+//! - An opened file, or one the player picked with Save As, autosaves into that file. Save As from
+//!   a draft moves the work to the new file and deletes the draft.
+//! - The app reopens the last document, draft or file, when it starts. A file that is missing or
+//!   can't be read is left alone; the app starts a new draft and says why in the status bar.
+//!
+//! Writes go to a temporary file that then replaces the real one, so a crash mid-write can't
+//! leave half a file.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use aic_core::Graph;
-use aic_data::RegionId;
-use eframe::egui::{self, RichText};
+use eframe::egui;
 
 use crate::document::Document;
 use crate::i18n::Strings;
-use crate::names;
+use crate::throttle::Poll;
 use crate::workspace::Workspace;
 
 /// The storage key for the recent files list.
 pub const RECENT_KEY: &str = "recent-files";
+/// The storage key for the document open when the app last closed.
+pub const LAST_KEY: &str = "last-document";
+/// How long autosave waits between writes.
+pub const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(5);
 /// How many recent files are kept.
 const RECENT_LIMIT: usize = 8;
 /// The save file extension.
 const EXTENSION: &str = "aicm";
 
-/// An action that drops the open graph, so it waits until the player agrees to lose unsaved
-/// changes.
+/// Something from the File menu that replaces the open graph. The open one is saved first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pending {
     New,
     Open,
     OpenPath(PathBuf),
-    Quit,
 }
 
 impl Workspace {
@@ -39,27 +52,21 @@ impl Workspace {
         self.recent_files.truncate(RECENT_LIMIT);
     }
 
-    /// Whether a dialog asks the player to drop unsaved changes.
-    pub fn is_confirming_discard(&self) -> bool {
-        self.confirm_discard.is_some()
+    /// Where drafts are kept; `None` keeps drafts in memory only (tests do this).
+    pub fn set_drafts_dir(&mut self, dir: Option<PathBuf>) {
+        self.drafts_dir = dir;
     }
 
-    pub fn new_dialog_is_open(&self) -> bool {
-        self.new_dialog.is_some()
+    /// The document to reopen next time: the open file or draft, once it has been saved.
+    pub fn last_document(&self) -> Option<&Path> {
+        self.doc.path()
     }
 
-    /// Runs `action` now, or once the player agrees to drop unsaved changes.
+    /// Saves the open graph, then runs `action`.
     pub fn request(&mut self, action: Pending, strings: &Strings) {
-        if self.doc.is_modified() {
-            self.confirm_discard = Some(action);
-        } else {
-            self.perform(action, strings);
-        }
-    }
-
-    fn perform(&mut self, action: Pending, strings: &Strings) {
+        self.save_now(strings);
         match action {
-            Pending::New => self.new_dialog = Some(self.doc.graph().region().clone()),
+            Pending::New => self.start_new(),
             Pending::Open => {
                 let picked = rfd::FileDialog::new()
                     .add_filter("AIC Modeler", &[EXTENSION])
@@ -69,8 +76,14 @@ impl Workspace {
                 }
             }
             Pending::OpenPath(path) => self.open_file(&path, strings),
-            Pending::Quit => self.allow_close = true,
         }
+    }
+
+    /// Starts an empty draft in the current region. A draft left empty is deleted.
+    fn start_new(&mut self) {
+        self.drop_empty_draft();
+        let region = self.doc.graph().region().clone();
+        self.new_graph(region);
     }
 
     /// Opens a save file in place of the current graph. A failure leaves the current graph open and
@@ -80,6 +93,18 @@ impl Workspace {
             Ok(()) => self.status = None,
             Err(message) => self.status = Some(message),
         }
+    }
+
+    /// Reopens the document open when the app last closed. Whatever goes wrong, the app carries on
+    /// with a new draft and the file is left as it is.
+    pub fn reopen(&mut self, path: &Path, strings: &Strings) {
+        if !path.exists() {
+            let file = path.display().to_string();
+            self.status = Some(strings.format("file-last-missing", &[("file", &file)]));
+            self.forget_recent(path);
+            return;
+        }
+        self.open_file(path, strings);
     }
 
     fn read_file(&mut self, path: &Path, strings: &Strings) -> Result<(), String> {
@@ -92,19 +117,29 @@ impl Workspace {
             self.forget_recent(path);
             strings.format("file-open-failed", &[("file", &file), ("error", &error)])
         })?;
+        self.drop_empty_draft();
         self.other_data_version =
             (loaded.data_version != self.catalog.version()).then_some(loaded.data_version);
-        let doc = Document::from_graph(&self.catalog, loaded.graph, Some(path.to_owned()));
+        let mut doc = Document::from_graph(&self.catalog, loaded.graph, Some(path.to_owned()));
+        let draft = self.is_in_drafts(path);
+        doc.set_draft(draft);
         self.set_document(doc);
-        self.remember_recent(path);
+        self.saved_view = loaded.view;
+        if let Some(view) = loaded.view {
+            self.canvas.show_view(view);
+        }
+        if !draft {
+            self.remember_recent(path);
+        }
         Ok(())
     }
 
-    /// Saves to the open file, or asks where when the graph has never been saved.
+    /// Cmd+S: saves now. A draft asks where to keep it instead, as Save As does.
     pub fn save(&mut self, strings: &Strings) {
-        match self.doc.path().map(Path::to_owned) {
-            Some(path) => self.save_to(&path, strings),
-            None => self.save_as(strings),
+        if self.doc.is_draft() || self.doc.path().is_none() {
+            self.save_as(strings);
+        } else {
+            self.save_now(strings);
         }
     }
 
@@ -112,6 +147,7 @@ impl Workspace {
         let name = self
             .doc
             .path()
+            .filter(|_| !self.doc.is_draft())
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| format!("{}.{EXTENSION}", strings.get("file-untitled")));
@@ -127,15 +163,78 @@ impl Workspace {
         }
     }
 
-    /// Writes the graph to `path`, recording the data version it was made with.
+    /// Writes the graph to `path`, which becomes the document's file from now on. Moving a draft
+    /// to a file of the player's deletes the draft.
     pub fn save_to(&mut self, path: &Path, strings: &Strings) {
-        let json = self.doc.graph().to_json(self.catalog.version());
-        match std::fs::write(path, json) {
-            Ok(()) => {
-                self.doc.mark_saved(path.to_owned());
-                self.other_data_version = None;
+        let old_draft = self
+            .doc
+            .path()
+            .filter(|_| self.doc.is_draft())
+            .map(Path::to_owned);
+        let draft = self.is_in_drafts(path);
+        if self.write(path, draft, strings) {
+            if let Some(old) = old_draft.filter(|old| old != path) {
+                let _ = std::fs::remove_file(old);
+            }
+            self.other_data_version = None;
+            if !draft {
                 self.remember_recent(path);
-                self.status = None;
+            }
+        }
+    }
+
+    /// Saves now if anything changed: to the document's file, or to a new draft.
+    pub fn save_now(&mut self, strings: &Strings) {
+        if !self.needs_saving() {
+            return;
+        }
+        let target = match self.doc.path() {
+            Some(path) => Some((path.to_owned(), self.doc.is_draft())),
+            None => self.new_draft_path().map(|path| (path, true)),
+        };
+        if let Some((path, draft)) = target {
+            self.write(&path, draft, strings);
+        }
+        self.autosave.ran(Instant::now());
+    }
+
+    /// The autosave schedule: called every frame. Waits while the pointer is down or a field has
+    /// focus, so a save never lands in the middle of a drag or of typing a number.
+    pub(crate) fn autosave(&mut self, ctx: &egui::Context, strings: &Strings) {
+        let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
+        let waiting = self.needs_saving() && !busy;
+        match self.autosave.poll(Instant::now(), waiting) {
+            Poll::Idle => {}
+            Poll::Run => self.save_now(strings),
+            Poll::Wait(when) => {
+                ctx.request_repaint_after(when.saturating_duration_since(Instant::now()));
+            }
+        }
+    }
+
+    /// Whether the graph or the view changed since the last save. An empty new graph doesn't need
+    /// a draft.
+    fn needs_saving(&self) -> bool {
+        let view_moved = self.doc.path().is_some()
+            && self
+                .canvas
+                .view()
+                .is_some_and(|view| Some(view) != self.saved_view);
+        self.doc.is_modified() || view_moved
+    }
+
+    /// Writes the file. Returns whether it worked; if not, the status bar says why.
+    fn write(&mut self, path: &Path, draft: bool, strings: &Strings) -> bool {
+        let view = self.canvas.view();
+        let json = self
+            .doc
+            .graph()
+            .to_json_with_view(self.catalog.version(), view);
+        match write_atomically(path, json.as_bytes()) {
+            Ok(()) => {
+                self.doc.mark_saved(path.to_owned(), draft);
+                self.saved_view = view;
+                true
             }
             Err(error) => {
                 let file = path.display().to_string();
@@ -143,7 +242,35 @@ impl Workspace {
                     "file-save-failed",
                     &[("file", &file), ("error", &error.to_string())],
                 ));
+                false
             }
+        }
+    }
+
+    fn new_draft_path(&self) -> Option<PathBuf> {
+        let dir = self.drafts_dir.as_ref()?;
+        if std::fs::create_dir_all(dir).is_err() {
+            return None;
+        }
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis());
+        Some(dir.join(format!("untitled-{stamp}.{EXTENSION}")))
+    }
+
+    fn is_in_drafts(&self, path: &Path) -> bool {
+        self.drafts_dir
+            .as_ref()
+            .is_some_and(|dir| path.parent() == Some(dir.as_path()))
+    }
+
+    /// Deletes the open draft's file when its graph is empty: nothing worth keeping.
+    fn drop_empty_draft(&mut self) {
+        if self.doc.is_draft()
+            && self.doc.graph().nodes().is_empty()
+            && let Some(path) = self.doc.path()
+        {
+            let _ = std::fs::remove_file(path);
         }
     }
 
@@ -157,23 +284,19 @@ impl Workspace {
         self.recent_files.retain(|p| p != path);
     }
 
-    /// Asks before the window closes on unsaved changes.
-    pub(crate) fn handle_close_request(&mut self, ctx: &egui::Context) {
-        if self.allow_close {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            return;
-        }
-        if ctx.input(|i| i.viewport().close_requested()) && self.doc.is_modified() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.confirm_discard = Some(Pending::Quit);
+    /// Saves before the window closes.
+    pub(crate) fn handle_close_request(&mut self, ctx: &egui::Context, strings: &Strings) {
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.save_now(strings);
         }
     }
 
-    /// The window title: the file's name, marked when it has unsaved changes.
+    /// The window title: the file's name, or Untitled for a draft, marked until it is saved.
     pub(crate) fn update_title(&mut self, ctx: &egui::Context, strings: &Strings) {
         let file = self
             .doc
             .path()
+            .filter(|_| !self.doc.is_draft())
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| strings.get("file-untitled"));
@@ -193,74 +316,30 @@ impl Workspace {
     pub fn title(&self) -> &str {
         &self.last_title
     }
+}
 
-    /// The discard-changes question and the New dialog.
-    pub(crate) fn file_dialogs(&mut self, ctx: &egui::Context, strings: &Strings) {
-        if let Some(action) = self.confirm_discard.clone() {
-            let mut answer = None;
-            let modal = egui::Modal::new(egui::Id::new("confirm-discard")).show(ctx, |ui| {
-                ui.set_width(320.0);
-                ui.heading(strings.get("discard-title"));
-                ui.label(strings.get("discard-body"));
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button(strings.get("discard-confirm")).clicked() {
-                        answer = Some(true);
-                    }
-                    if ui.button(strings.get("dialog-cancel")).clicked() {
-                        answer = Some(false);
-                    }
-                });
-            });
-            if modal.should_close() && answer.is_none() {
-                answer = Some(false);
-            }
-            match answer {
-                Some(true) => {
-                    self.confirm_discard = None;
-                    self.perform(action, strings);
-                }
-                Some(false) => self.confirm_discard = None,
-                None => {}
-            }
-        }
+/// Writes `bytes` to a temporary file next to `path`, then puts it in `path`'s place.
+fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(".tmp");
+    let temporary = PathBuf::from(temporary);
+    std::fs::write(&temporary, bytes)?;
+    std::fs::rename(&temporary, path)
+}
 
-        if let Some(mut region) = self.new_dialog.clone() {
-            let mut answer = None;
-            let modal = egui::Modal::new(egui::Id::new("new-graph")).show(ctx, |ui| {
-                ui.set_width(320.0);
-                ui.heading(strings.get("new-title"));
-                ui.label(strings.get("new-region"));
-                for id in self.catalog.regions().keys() {
-                    let name = names::region(&self.catalog, id.as_str());
-                    ui.radio_value(&mut region, id.clone(), RichText::new(name));
-                }
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button(strings.get("new-create")).clicked() {
-                        answer = Some(true);
-                    }
-                    if ui.button(strings.get("dialog-cancel")).clicked() {
-                        answer = Some(false);
-                    }
-                });
-            });
-            if modal.should_close() && answer.is_none() {
-                answer = Some(false);
-            }
-            match answer {
-                Some(true) => {
-                    self.new_dialog = None;
-                    self.new_graph(region);
-                }
-                Some(false) => self.new_dialog = None,
-                None => self.new_dialog = Some(region),
-            }
-        }
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    /// Starts the New dialog on `region`, as File > New does once any unsaved changes are dropped.
-    pub fn open_new_dialog(&mut self, region: RegionId) {
-        self.new_dialog = Some(region);
+    #[test]
+    fn an_atomic_write_replaces_the_file_and_leaves_no_temporary() {
+        let dir = std::env::temp_dir().join(format!("aic-atomic-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("plan.aicm");
+        std::fs::write(&path, "old").unwrap();
+        write_atomically(&path, b"new").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

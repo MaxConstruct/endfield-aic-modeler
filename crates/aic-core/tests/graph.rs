@@ -348,6 +348,7 @@ fn save_and_load_round_trip() {
     let LoadedGraph {
         graph,
         data_version,
+        ..
     } = Graph::from_json(&catalog, &json).unwrap();
     assert_eq!(data_version, "v1.5.3");
     assert_eq!(graph.region(), &region(TUNDRA));
@@ -498,4 +499,34 @@ fn rebinding_to_other_data_marks_missing_recipes_and_restores_known_ones() {
         g.node(ingot).unwrap().kind,
         NodeKind::Recipe { .. }
     ));
+}
+
+#[test]
+fn the_canvas_view_is_saved_with_the_graph() {
+    let catalog = catalog();
+    let g = Graph::new(region(TUNDRA));
+    let view = aic_core::CanvasView {
+        x: -120.0,
+        y: 40.0,
+        zoom: 0.5,
+    };
+    let loaded = Graph::from_json(&catalog, &g.to_json_with_view("test", Some(view))).unwrap();
+    assert_eq!(loaded.view, Some(view));
+    assert_eq!(
+        Graph::from_json(&catalog, &g.to_json("test")).unwrap().view,
+        None
+    );
+}
+
+#[test]
+fn only_an_empty_graph_changes_region() {
+    let catalog = catalog();
+    let mut g = Graph::new(region(TUNDRA));
+    g.set_region(region(JINLONG)).unwrap();
+    assert_eq!(g.region(), &region(JINLONG));
+    add_recipe(&mut g, &catalog, "ingot", None);
+    assert_eq!(
+        g.set_region(region(TUNDRA)),
+        Err(aic_core::EditError::NotEmpty)
+    );
 }

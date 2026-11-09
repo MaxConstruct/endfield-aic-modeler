@@ -48,10 +48,13 @@ pub struct Document {
     pending: bool,
     undo: Vec<(Graph, u64)>,
     redo: Vec<(Graph, u64)>,
-    /// The revision last saved to (or opened from) `path`; 0, the starting state, before that.
-    saved_revision: u64,
     next_revision: u64,
+    /// Counts every change, moves and undos included; saving records the count it saved.
+    edits: u64,
+    saved_edits: u64,
     path: Option<PathBuf>,
+    /// The file is a draft in the app's own folder, not one the player chose.
+    draft: bool,
 }
 
 impl Document {
@@ -80,27 +83,40 @@ impl Document {
             pending: false,
             undo: Vec::new(),
             redo: Vec::new(),
-            saved_revision: 0,
             next_revision: 1,
+            edits: 0,
+            saved_edits: 0,
             path,
+            draft: false,
         }
     }
 
-    /// The file this document was opened from or last saved to.
+    /// The file this document was opened from or last saved to, a draft included.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
 
-    /// Whether there are changes not saved to the file (or, with no file, any changes at all).
-    pub fn is_modified(&self) -> bool {
-        self.pending || self.revision != self.saved_revision
+    /// Whether the document lives in a draft file the app made, rather than one the player chose.
+    pub fn is_draft(&self) -> bool {
+        self.draft
     }
 
-    /// Records that the current state was saved to `path`.
-    pub fn mark_saved(&mut self, path: PathBuf) {
-        self.checkpoint();
-        self.saved_revision = self.revision;
+    /// Whether anything changed since the last save (or, never saved, since it was made).
+    pub fn is_modified(&self) -> bool {
+        self.edits != self.saved_edits
+    }
+
+    /// Records that the current state was saved to `path`, a draft or the player's file. Doesn't
+    /// end the undo step, so an autosave in the middle of a drag leaves the drag one step.
+    pub fn mark_saved(&mut self, path: PathBuf, draft: bool) {
+        self.saved_edits = self.edits;
         self.path = Some(path);
+        self.draft = draft;
+    }
+
+    /// Opened from a draft file: keep saving there.
+    pub fn set_draft(&mut self, draft: bool) {
+        self.draft = draft;
     }
 
     /// Ends the current undo step: everything changed since the last checkpoint undoes together.
@@ -169,6 +185,7 @@ impl Document {
 
     /// Shows the committed graph again.
     fn restore(&mut self, catalog: &Catalog) {
+        self.edits += 1;
         self.graph = self.committed.clone();
         self.rebuild_view(catalog);
         self.stale = true;
@@ -207,6 +224,7 @@ impl Document {
     fn changed(&mut self) {
         self.stale = true;
         self.pending = true;
+        self.edits += 1;
     }
 
     pub fn graph(&self) -> &Graph {
@@ -248,6 +266,13 @@ impl Document {
     /// What draws `node` on the canvas: the node itself, or the collapsed group it is in.
     pub fn shown(&self, node: NodeId) -> Member {
         shown(&self.graph, node)
+    }
+
+    /// Moves an empty graph to another region (see [`Graph::set_region`]).
+    pub fn set_region(&mut self, region: RegionId) -> Result<(), EditError> {
+        self.graph.set_region(region)?;
+        self.changed();
+        Ok(())
     }
 
     pub fn add_node(&mut self, kind: NodeKind, pos: Pos2) -> NodeId {
@@ -494,12 +519,14 @@ impl Document {
                     if self.graph.node(id).is_some_and(|node| node.pos != new) {
                         let _ = self.graph.set_pos(id, new);
                         self.pending = true;
+                        self.edits += 1;
                     }
                 }
                 Member::Group(id) => {
                     if self.graph.group_info(id).is_some_and(|g| g.pos != new) {
                         let _ = self.graph.set_group_pos(id, new);
                         self.pending = true;
+                        self.edits += 1;
                     }
                 }
             }
@@ -738,19 +765,31 @@ mod tests {
     }
 
     #[test]
-    fn undoing_back_to_the_saved_state_is_unmodified() {
+    fn every_change_after_a_save_needs_saving_undo_included() {
         let catalog = catalog();
         let mut doc = Document::new("tundra".into());
         assert!(!doc.is_modified());
         doc.add_node(recipe(), Pos2::ZERO);
         assert!(doc.is_modified());
-        doc.mark_saved("plan.aicm".into());
+        doc.mark_saved("plan.aicm".into(), false);
         assert!(!doc.is_modified());
-        doc.add_node(recipe(), Pos2::ZERO);
         doc.checkpoint();
-        assert!(doc.is_modified());
         doc.undo(&catalog);
-        assert!(!doc.is_modified());
+        assert!(doc.is_modified(), "the file still has the node");
+    }
+
+    #[test]
+    fn saving_mid_edit_keeps_the_edit_one_undo_step() {
+        let catalog = catalog();
+        let mut doc = Document::new("tundra".into());
+        let furnace = doc.add_node(recipe(), Pos2::ZERO);
+        doc.checkpoint();
+        doc.set_limit(furnace, Some(2.0)).unwrap();
+        doc.mark_saved("plan.aicm".into(), false);
+        doc.set_limit(furnace, Some(3.0)).unwrap();
+        doc.checkpoint();
+        doc.undo(&catalog);
+        assert_eq!(doc.graph().node(furnace).unwrap().kind.limit(), Some(1.0));
     }
 
     #[test]

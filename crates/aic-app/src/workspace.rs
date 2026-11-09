@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use aic_core::{Graph, GroupId, LinkError, Member, NodeId, NodeKind, PortRef, Side};
+use aic_core::{CanvasView, Graph, GroupId, LinkError, Member, NodeId, NodeKind, PortRef, Side};
 use aic_data::{Catalog, RecipeId, RegionId};
 use eframe::egui::{self, Pos2, RichText, Ui, vec2};
 
@@ -19,6 +19,7 @@ use crate::names;
 use crate::picker::{self, Choice, Origin, Picker};
 use crate::port_menu::{self, PortMenu};
 use crate::settings::{Availability, SettingsWindow};
+use crate::throttle::Throttle;
 use crate::widgets::colors;
 
 /// A solve slower than this is reported in the status bar.
@@ -46,12 +47,11 @@ pub struct Workspace {
     pub(crate) clipboard: Option<(Graph, u32)>,
     /// Files opened or saved lately, newest first. Kept in eframe storage.
     pub(crate) recent_files: Vec<PathBuf>,
-    /// An action waiting for the player to agree to drop unsaved changes.
-    pub(crate) confirm_discard: Option<Pending>,
-    /// The New dialog, open with the region picked so far.
-    pub(crate) new_dialog: Option<RegionId>,
-    /// The window may close even with unsaved changes: the player agreed.
-    pub(crate) allow_close: bool,
+    /// Where drafts are saved; `None` keeps new graphs in memory until Save As.
+    pub(crate) drafts_dir: Option<PathBuf>,
+    pub(crate) autosave: Throttle,
+    /// The canvas view as last saved, so moving the view also gets saved.
+    pub(crate) saved_view: Option<CanvasView>,
     /// The data version of the open file, when it isn't the active one.
     pub(crate) other_data_version: Option<String>,
     /// The data folder and what was loaded from it; `None` when the app was given a catalog.
@@ -90,9 +90,9 @@ impl Workspace {
             round_up: false,
             clipboard: None,
             recent_files: Vec::new(),
-            confirm_discard: None,
-            new_dialog: None,
-            allow_close: false,
+            drafts_dir: None,
+            autosave: Throttle::new(crate::files::AUTOSAVE_INTERVAL),
+            saved_view: None,
             other_data_version: None,
             data: None,
             icons_stale: false,
@@ -215,13 +215,18 @@ impl Workspace {
         self.canvas.item_on_screen(Member::Group(group))
     }
 
+    /// Where the canvas is looking (see [`crate::canvas::Canvas::view`]).
+    pub fn canvas_view(&self) -> Option<CanvasView> {
+        self.canvas.view()
+    }
+
     /// The middle of the canvas, on screen.
     pub fn canvas_center_on_screen(&self) -> Pos2 {
         self.canvas.rect.center()
     }
 
     pub fn ui(&mut self, ui: &mut Ui, strings: &Strings) {
-        self.handle_close_request(ui.ctx());
+        self.handle_close_request(ui.ctx(), strings);
         if std::mem::take(&mut self.icons_stale) {
             crate::widgets::forget_icons(ui.ctx());
         }
@@ -267,7 +272,6 @@ impl Workspace {
         self.doc.sync_from_view(&self.catalog);
         self.picker_ui(ui.ctx(), strings);
         self.port_menu_ui(ui.ctx(), strings);
-        self.file_dialogs(ui.ctx(), strings);
         let data = self
             .data
             .as_ref()
@@ -285,6 +289,7 @@ impl Workspace {
         self.keyboard(ui.ctx(), strings);
         self.finish_export(ui.ctx(), strings);
         self.end_undo_step(ui.ctx());
+        self.autosave(ui.ctx(), strings);
         self.update_title(ui.ctx(), strings);
         if let Some(took) = self.doc.solve_if_stale(&self.catalog) {
             self.last_solve = Some(took);
@@ -510,11 +515,7 @@ impl Workspace {
             ui.strong(strings.get("app-title"));
             ui.separator();
             ui.label(strings.get("region-label"));
-            ui.label(names::region(
-                &self.catalog,
-                self.doc.graph().region().as_str(),
-            ))
-            .on_hover_text(strings.get("region-locked"));
+            self.region_picker(ui, strings);
             ui.separator();
             ui.weak(strings.format("data-version", &[("version", self.catalog.version())]));
             ui.separator();
@@ -526,6 +527,33 @@ impl Workspace {
                 ui.toggle_value(&mut self.round_up, strings.get("toggle-round-up"));
             });
         });
+    }
+
+    /// The graph's region, which only an empty graph can change: File > New, then pick.
+    fn region_picker(&mut self, ui: &mut Ui, strings: &Strings) {
+        let current = self.doc.graph().region().clone();
+        let empty = self.doc.graph().nodes().is_empty();
+        let mut chosen = None;
+        ui.add_enabled_ui(empty, |ui| {
+            let picker = egui::ComboBox::from_id_salt("region")
+                .selected_text(names::region(&self.catalog, current.as_str()))
+                .show_ui(ui, |ui| {
+                    for region in self.catalog.regions().keys() {
+                        let name = names::region(&self.catalog, region.as_str());
+                        if ui.selectable_label(*region == current, name).clicked() {
+                            chosen = Some(region.clone());
+                        }
+                    }
+                });
+            let label = strings.get("region-label");
+            ui.ctx()
+                .accesskit_node_builder(picker.response.id, |node| node.set_label(label));
+        })
+        .response
+        .on_disabled_hover_text(strings.get("region-locked"));
+        if let Some(region) = chosen.filter(|r| *r != current) {
+            let _ = self.doc.set_region(region);
+        }
     }
 
     fn file_menu(&mut self, ui: &mut Ui, strings: &Strings) {

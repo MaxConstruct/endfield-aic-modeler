@@ -547,11 +547,26 @@ since the PNGs (from jambochen/endfield-calc) cover more of the game and are nam
 
 ### M6: Usability
 Done.
-- File menu: New (asks for the region), Open, Open Recent, Save, Save As (`rfd`). Recent files (8) live in
-  eframe storage. New, Open and closing the window ask before dropping unsaved changes. The window title
-  shows the file name and a dot when there are unsaved changes. Opening a file made with another data
-  version shows a note in the status bar. The region can only change through New, since a graph belongs
-  to one region.
+- File menu: New, Open, Open Recent, Save, Save As (`rfd`). The region belongs to the graph and is saved
+  in it; the top bar's region picker works while the graph is empty, so File > New, then pick.
+- Autosave (changed after M6/M7): every document is saved somewhere, at most 5 s after a change. The
+  throttle fires on both edges, like VueUse's `useThrottleFn`: the first change after a quiet spell saves
+  at once, then at most one save per 5 s, and the last change always lands. It waits while the pointer
+  is down or a field has focus, so saves don't split a drag or typing, and saving never ends an undo
+  step. States:
+  - *Draft*: a new graph's first change creates `untitled-<time>.aicm` in the app's data folder
+    (`eframe::storage_dir("AIC Modeler")/drafts`, like Excel's AutoRecover) and autosaves there. An
+    untouched new graph has no file, and an empty draft is deleted when left.
+  - *File*: an opened file, or one picked with Save As, autosaves into that file. Save As from a draft
+    moves the work there and deletes the draft. Cmd/Ctrl+S on a draft is Save As.
+  - New, Open and closing the window save first, so there is no "discard changes?" dialog.
+  - On start the app reopens the last document (eframe storage key `last-document`). A missing file, or
+    one that doesn't parse, is left alone: the app starts a new draft and says why in the status bar.
+  - Writes go to `<file>.tmp`, then replace the file, so a crash can't leave half a file.
+  - The file keeps node and group positions and the canvas view (`CanvasView`: the graph point at the
+    canvas's top-left and the zoom). Panning or zooming is saved too, but isn't an undo step.
+  - Pretty JSON stays: 200 nodes is about 60 KB and writes in well under a millisecond, and the files
+    stay readable and diffable.
 - Undo/redo keeps whole `Graph` snapshots (200 steps). Edits until the pointer is up and no field has
   focus make one step, so a drag or a typed number undoes at once. Undo and redo rebuild the canvas from
   the graph.

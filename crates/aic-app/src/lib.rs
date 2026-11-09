@@ -15,10 +15,11 @@ pub mod names;
 pub mod picker;
 mod port_menu;
 pub mod settings;
+mod throttle;
 mod widgets;
 pub mod workspace;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use aic_data::{Catalog, LoadError};
 use eframe::egui::{self, RichText};
@@ -86,9 +87,16 @@ impl App {
             .load(&choice)
             .or_else(|_| folder.load(&DataChoice::default()))
             .map_err(|error| error.to_string());
+        let last = storage.and_then(|s| eframe::get_value::<PathBuf>(s, files::LAST_KEY));
         let mut app = Self::new(strings, catalog, storage);
-        if let Some(workspace) = app.workspace_mut() {
+        let app_name = app.strings.get("app-title");
+        let Self { strings, state } = &mut app;
+        if let State::Ready(workspace) = state {
             workspace.set_data_folder(folder, choice);
+            workspace.set_drafts_dir(eframe::storage_dir(&app_name).map(|dir| dir.join("drafts")));
+            if let Some(last) = last {
+                workspace.reopen(&last, strings);
+            }
         }
         app
     }
@@ -128,8 +136,14 @@ impl eframe::App for App {
         }
     }
 
+    /// eframe calls this every so often and when the app closes: a last save of the graph, and the
+    /// settings.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        if let State::Ready(workspace) = &self.state {
+        if let State::Ready(workspace) = &mut self.state {
+            workspace.save_now(&self.strings);
+            if let Some(last) = workspace.last_document() {
+                eframe::set_value(storage, files::LAST_KEY, &last.to_path_buf());
+            }
             eframe::set_value(storage, settings::STORAGE_KEY, workspace.availability());
             eframe::set_value(storage, files::RECENT_KEY, &workspace.recent_files());
             if let Some(choice) = workspace.data_choice() {

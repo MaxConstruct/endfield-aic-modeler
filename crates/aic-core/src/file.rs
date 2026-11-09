@@ -19,6 +19,17 @@ pub const FORMAT_VERSION: u32 = 1;
 pub struct LoadedGraph {
     pub graph: Graph,
     pub data_version: String,
+    /// Where the canvas was looking when the file was saved, if it says.
+    pub view: Option<CanvasView>,
+}
+
+/// The canvas camera saved with a graph: the graph point at the top-left of the canvas, and the zoom.
+/// The solver ignores it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CanvasView {
+    pub x: f32,
+    pub y: f32,
+    pub zoom: f32,
 }
 
 #[derive(Debug, Error)]
@@ -50,6 +61,8 @@ struct FileGraph {
     links: Vec<FileLink>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     groups: Vec<FileGroup>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    view: Option<CanvasView>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -136,6 +149,11 @@ struct FileLink {
 impl Graph {
     /// The graph as a save file, recording the data version it was made with.
     pub fn to_json(&self, data_version: &str) -> String {
+        self.to_json_with_view(data_version, None)
+    }
+
+    /// The graph as a save file, with where the canvas was looking.
+    pub fn to_json_with_view(&self, data_version: &str, view: Option<CanvasView>) -> String {
         let ids: HashMap<NodeId, u32> = self.nodes.keys().zip(0..).collect();
         let group_ids: HashMap<GroupId, u32> = self.groups.keys().zip(0..).collect();
         let file = FileGraph {
@@ -178,6 +196,7 @@ impl Graph {
                     in_share: link.in_share,
                 })
                 .collect(),
+            view,
         };
         serde_json::to_string_pretty(&file).expect("a graph has only string keys and plain values")
     }
@@ -266,9 +285,14 @@ impl Graph {
                 in_share: link.in_share.filter(|s| s.is_finite() && *s > 0.0),
             });
         }
+        // A view that isn't finite or has no zoom is dropped rather than shown.
+        let view = file
+            .view
+            .filter(|v| v.x.is_finite() && v.y.is_finite() && v.zoom.is_finite() && v.zoom > 0.0);
         Ok(LoadedGraph {
             graph,
             data_version: file.data_version,
+            view,
         })
     }
 }

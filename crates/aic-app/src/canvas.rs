@@ -159,6 +159,8 @@ pub struct Canvas {
     snarl_selection: Vec<ViewId>,
     /// What the player is dragging, found when it first moves and kept until the button is up.
     grabbed: Option<Member>,
+    /// A view to show from the next frame, set when a file opens.
+    pending_view: Option<aic_core::CanvasView>,
 }
 
 impl Default for Canvas {
@@ -188,11 +190,31 @@ impl Default for Canvas {
             node_rects: HashMap::new(),
             snarl_selection: Vec::new(),
             grabbed: None,
+            pending_view: None,
         }
     }
 }
 
 impl Canvas {
+    /// Where the canvas is looking: the graph point at its top-left, and the zoom. `None` before
+    /// the canvas was first drawn.
+    pub fn view(&self) -> Option<aic_core::CanvasView> {
+        if !self.rect.is_positive() {
+            return None;
+        }
+        let corner = self.to_global.inverse() * self.rect.min;
+        Some(aic_core::CanvasView {
+            x: corner.x,
+            y: corner.y,
+            zoom: self.to_global.scaling,
+        })
+    }
+
+    /// Looks at `view` from the next frame on, as when a file is opened.
+    pub fn show_view(&mut self, view: aic_core::CanvasView) {
+        self.pending_view = Some(view);
+    }
+
     /// The middle of the visible canvas, in graph space.
     pub fn center(&self) -> Pos2 {
         self.to_global.inverse() * self.rect.center()
@@ -270,6 +292,11 @@ impl Canvas {
             limit_edits: &mut self.limit_edits,
             pins: &self.pins,
             to_global: &mut self.to_global,
+            pending_view: self.pending_view.take().map(|view| {
+                // Screen = zoom × graph + translation, with the view's corner at the canvas corner.
+                let corner = Pos2::new(view.x, view.y).to_vec2() * view.zoom;
+                TSTransform::new(self.rect.min.to_vec2() - corner, view.zoom)
+            }),
             node_rects: &mut self.node_rects,
             pin_cache: HashMap::new(),
             on_group: false,
@@ -460,6 +487,8 @@ struct Viewer<'a> {
     limit_edits: &'a mut HashMap<NodeId, String>,
     pins: &'a PinCenters,
     to_global: &'a mut TSTransform,
+    /// A view to switch to this frame.
+    pending_view: Option<TSTransform>,
     node_rects: &'a mut HashMap<Member, Rect>,
     /// Each drawn item's pins this frame; a group's take a walk over the graph to find.
     pin_cache: HashMap<(Member, Side), Vec<PinTarget>>,
@@ -1205,6 +1234,9 @@ impl SnarlViewer<Member> for Viewer<'_> {
             && to_global.translation.is_finite();
         if !usable {
             *to_global = TSTransform::IDENTITY;
+        }
+        if let Some(view) = self.pending_view.take() {
+            *to_global = view;
         }
         *self.to_global = *to_global;
     }

@@ -78,10 +78,7 @@ impl Shortcut {
 impl Workspace {
     pub(crate) fn keyboard(&mut self, ctx: &egui::Context, strings: &Strings) {
         let typing = ctx.memory(|m| m.focused().is_some());
-        let overlay = self.picker.is_some()
-            || self.port_menu.is_some()
-            || self.confirm_discard.is_some()
-            || self.new_dialog.is_some();
+        let overlay = self.picker.is_some() || self.port_menu.is_some();
         if overlay {
             return;
         }

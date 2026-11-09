@@ -9,7 +9,7 @@ mod group;
 mod solve;
 mod validate;
 
-pub use file::{FORMAT_VERSION, FileError, LoadedGraph};
+pub use file::{CanvasView, FORMAT_VERSION, FileError, LoadedGraph};
 pub use graph::{
     EditError, Graph, GroupId, Link, LinkError, LinkId, Node, NodeId, NodeKind, Port, PortRef, Pos,
     Side,

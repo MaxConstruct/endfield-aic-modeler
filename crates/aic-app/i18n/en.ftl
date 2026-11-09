@@ -13,7 +13,7 @@ load-failed-hint = Put a data folder next to the app, or start it with --data <p
 window-title = { $file } — AIC Modeler
 window-title-modified = { $file } • — AIC Modeler
 menu-file = File
-menu-new = New…
+menu-new = New
 menu-open = Open…
 menu-open-recent = Open Recent
 menu-save = Save
@@ -40,19 +40,13 @@ toggle-round-up = Round up
 file-untitled = Untitled
 file-open-failed = Could not open { $file }: { $error }
 file-save-failed = Could not save { $file }: { $error }
+file-last-missing = The last graph, { $file }, is gone. Started a new one.
 file-other-data-version = This file was made with data { $file }; the app uses { $active }. Recipes are matched by ID.
-discard-title = Discard unsaved changes?
-discard-body = The graph has changes that aren't saved. They will be lost.
-discard-confirm = Discard
-dialog-cancel = Cancel
-new-title = New graph
-new-region = Region
-new-create = Create
 
 ## Top bar
 
 region-label = Region
-region-locked = A graph belongs to one region. File > New starts a graph in another.
+region-locked = A graph belongs to one region. Start a new graph (File > New) to pick another.
 data-version = Data { $version }
 settings-button = Settings…
 toggle-recipes = Recipes

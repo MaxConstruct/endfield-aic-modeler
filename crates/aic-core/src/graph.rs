@@ -288,6 +288,8 @@ pub enum EditError {
     InvalidShare(f64),
     #[error("group {0:?} does not exist")]
     UnknownGroup(GroupId),
+    #[error("only an empty graph can change region")]
+    NotEmpty,
     #[error("a group needs at least one member")]
     EmptyGroup,
     #[error("only nodes and groups in the same group can be grouped together")]
@@ -306,6 +308,16 @@ impl Graph {
 
     pub fn region(&self) -> &RegionId {
         &self.region
+    }
+
+    /// Moves an empty graph to another region. A graph with nodes keeps its region: its recipes
+    /// belong to it.
+    pub fn set_region(&mut self, region: RegionId) -> Result<(), EditError> {
+        if !self.nodes.is_empty() {
+            return Err(EditError::NotEmpty);
+        }
+        self.region = region;
+        Ok(())
     }
 
     pub fn nodes(&self) -> &SlotMap<NodeId, Node> {
