@@ -14,7 +14,7 @@ use aic_core::{
 use aic_data::{Catalog, FacilityId, ImageKind, ItemId};
 use eframe::egui::{
     self, Color32, CornerRadius, FontId, Id, LayerId, Pos2, Rect, RichText, Sense, Stroke, Ui,
-    emath::TSTransform, vec2,
+    Vec2, emath::TSTransform, vec2,
 };
 use egui_snarl::ui::{
     AnyPins, BackgroundPattern, NodeLayout, PinInfo, PinPlacement, PinWireInfo, SnarlPin,
@@ -712,6 +712,8 @@ fn pin_ports_to_edges(
 struct RecordingPin {
     /// `None` for a logistics node's port before its first link: a plain circle.
     picture: Option<ItemPicture>,
+    /// The port's rate, painted beside the icon where it is drawn this frame.
+    rate: Option<Rate>,
     side: Side,
     linked: bool,
     throttled: bool,
@@ -762,12 +764,39 @@ impl SnarlPin for RecordingPin {
             if self.throttled {
                 paint_throttle_marker(painter, rect);
             }
+            if let Some(rate) = &self.rate {
+                // The icon's own rect, not one hovered larger.
+                let icon = Rect::from_center_size(rect.center(), Vec2::splat(PIN_ICON));
+                let (anchor, align) = match self.side {
+                    Side::Input => (
+                        icon.right_center() + vec2(RATE_GAP, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                    ),
+                    Side::Output => (
+                        icon.left_center() - vec2(RATE_GAP, 0.0),
+                        egui::Align2::RIGHT_CENTER,
+                    ),
+                };
+                painter.text(
+                    anchor,
+                    align,
+                    &rate.text,
+                    FontId::monospace(13.0),
+                    rate.color,
+                );
+            }
         }
         PinWireInfo {
             color: colors::LINKED,
             style: snarl_style.wire_style.unwrap_or(WireStyle::Bezier5),
         }
     }
+}
+
+/// A port's rate as its pin paints it.
+struct Rate {
+    text: String,
+    color: Color32,
 }
 
 /// A small warning triangle in the top corner of a port's tile.
@@ -866,8 +895,8 @@ impl Viewer<'_> {
         });
     }
 
-    /// A port's rate beside its pin, in a slot as wide on every card. Returns whether the solver
-    /// throttled the node at this port.
+    /// Room for a port's rate beside its pin, as wide on every card. Returns whether the solver
+    /// throttled the node at this port, and the rate, which the pin paints beside itself.
     fn port_row(
         &mut self,
         ui: &mut Ui,
@@ -876,7 +905,7 @@ impl Viewer<'_> {
         side: Side,
         item: Option<&ItemId>,
         linked: bool,
-    ) -> bool {
+    ) -> (bool, Rate) {
         let flow = item.and_then(|item| {
             let port = Port {
                 node: id,
@@ -919,27 +948,12 @@ impl Viewer<'_> {
             vec2((PORT_COLUMN - used).max(0.0), PIN_ICON),
             Sense::hover(),
         );
-        let align = match side {
-            Side::Input => egui::Align2::LEFT_CENTER,
-            Side::Output => egui::Align2::RIGHT_CENTER,
-        };
-        // Right beside the icon, where snarl drew it last frame.
-        let beside = PIN_ICON * 0.5 + RATE_GAP;
-        let anchor = match (side, self.pins.borrow().get(&pin)) {
-            (Side::Input, Some(center)) => Pos2::new(center.x + beside, rect.center().y),
-            (Side::Output, Some(center)) => Pos2::new(center.x - beside, rect.center().y),
-            (Side::Input, None) => rect.left_center(),
-            (Side::Output, None) => rect.right_center(),
-        };
-        ui.painter().text(
-            anchor,
-            align,
-            format::fixed(flow),
-            FontId::monospace(13.0),
+        let rate = Rate {
+            text: format::fixed(flow),
             color,
-        );
+        };
         let Some(item) = item else {
-            return throttled;
+            return (throttled, rate);
         };
         let mut hint = names::item(self.catalog, item.as_str()).to_owned();
         if throttled {
@@ -967,7 +981,7 @@ impl Viewer<'_> {
                 graph_pos,
             });
         }
-        throttled
+        (throttled, rate)
     }
 
     /// The port's pin, showing its item.
@@ -978,9 +992,11 @@ impl Viewer<'_> {
         side: Side,
         item: Option<&ItemId>,
         linked: bool,
-        throttled: bool,
+        row: Option<(bool, Rate)>,
     ) -> RecordingPin {
+        let (throttled, rate) = row.map_or((false, None), |(t, r)| (t, Some(r)));
         RecordingPin {
+            rate,
             picture: match item {
                 Some(item) => Some(ItemPicture::of(ui.ctx(), self.catalog, item.as_str())),
                 // A port without an item yet asks for one.
@@ -1229,7 +1245,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
         let key = PinKey::In(pin.id);
         let target = self.target(snarl[pin.id.node], Side::Input, pin.id.input);
         let item = target.as_ref().and_then(|t| t.item.clone());
-        let throttled = target.is_some_and(|target| {
+        let row = target.map(|target| {
             self.port_row(
                 ui,
                 key,
@@ -1239,7 +1255,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 linked,
             )
         });
-        self.pin(ui, key, Side::Input, item.as_ref(), linked, throttled)
+        self.pin(ui, key, Side::Input, item.as_ref(), linked, row)
     }
 
     #[allow(refining_impl_trait)]
@@ -1253,7 +1269,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
         let key = PinKey::Out(pin.id);
         let target = self.target(snarl[pin.id.node], Side::Output, pin.id.output);
         let item = target.as_ref().and_then(|t| t.item.clone());
-        let throttled = target.is_some_and(|target| {
+        let row = target.map(|target| {
             self.port_row(
                 ui,
                 key,
@@ -1263,7 +1279,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 linked,
             )
         });
-        self.pin(ui, key, Side::Output, item.as_ref(), linked, throttled)
+        self.pin(ui, key, Side::Output, item.as_ref(), linked, row)
     }
 
     fn has_body(&mut self, _node: &Member) -> bool {

@@ -1154,9 +1154,26 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
     fit_view(&mut harness);
     snapshot_graph(&mut harness, "workspace_inside");
 
-    // Panning moves the nodes, not the port tiles: they hold still in the same frame.
-    let port_in = editor(&mut harness).document().graph().ports_of(workspace, Side::Input)[0];
+    // Panning moves the nodes, not the port tiles: they hold still in the same frame, numbers
+    // and all.
+    let port_in = editor(&mut harness)
+        .document()
+        .graph()
+        .ports_of(workspace, Side::Input)[0];
     let before = node_rect(&mut harness, port_in);
+    let tile = |harness: &mut Harness<'_, App>| {
+        let image = harness.render().expect("renders");
+        let r = before.shrink(2.0);
+        image::imageops::crop_imm(
+            &image,
+            r.left() as u32,
+            r.top() as u32,
+            r.width() as u32,
+            r.height() as u32,
+        )
+        .to_image()
+    };
+    let still = tile(&mut harness);
     let center = editor(&mut harness).canvas_center_on_screen();
     harness.hover_at(center);
     harness.step();
@@ -1173,6 +1190,13 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
             (now.min - before.min).length() < 0.5,
             "the tile moved from {before:?} to {now:?}"
         );
+        // A link passing behind may differ; the number may not move.
+        let differ = tile(&mut harness)
+            .pixels()
+            .zip(still.pixels())
+            .filter(|(a, b)| a != b)
+            .count();
+        assert!(differ < 40, "{differ} pixels of the tile changed");
     }
 
     harness.get_by_label("‹ Back").click();
