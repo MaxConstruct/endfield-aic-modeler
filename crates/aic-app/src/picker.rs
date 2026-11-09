@@ -2,6 +2,8 @@
 //! recipe selector. A search box, the built-in nodes on the left, recipes on the right. One click
 //! adds the node.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use aic_core::{NodeId, NodeKind, Side};
 use aic_data::{Catalog, ImageKind, ItemId, Recipe, RecipeId, RegionId};
 use eframe::egui::{self, Align2, Key, Pos2, Rect, Sense, Ui, Vec2, WidgetInfo, WidgetType};
@@ -175,6 +177,9 @@ pub struct Picker {
     query: String,
     matching: Matching,
     just_opened: bool,
+    /// The popup's egui area. Each opening gets its own, so nothing egui remembers about an
+    /// earlier one, such as a size squeezed by a window that was resized, carries over.
+    area: egui::Id,
 }
 
 pub enum Outcome {
@@ -182,6 +187,9 @@ pub enum Outcome {
     Close,
     Chosen(Choice),
 }
+
+/// Counts openings, to give each its own area.
+static OPENINGS: AtomicU64 = AtomicU64::new(0);
 
 const WIDTH: f32 = 560.0;
 const HEIGHT: f32 = 420.0;
@@ -198,7 +206,13 @@ impl Picker {
             query: String::new(),
             matching: Matching::default(),
             just_opened: true,
+            area: egui::Id::new(("node-picker", OPENINGS.fetch_add(1, Ordering::Relaxed))),
         }
+    }
+
+    /// The popup's egui area.
+    pub fn area_id(&self) -> egui::Id {
+        self.area
     }
 
     pub fn show(
@@ -209,7 +223,7 @@ impl Picker {
         region: &RegionId,
     ) -> Outcome {
         let mut outcome = Outcome::Open;
-        let area = egui::Area::new(egui::Id::new("node-picker"))
+        let area = egui::Area::new(self.area)
             .order(egui::Order::Foreground)
             .fixed_pos(self.screen_pos)
             .constrain(true)

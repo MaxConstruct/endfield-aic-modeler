@@ -460,7 +460,7 @@ fn logistics_nodes_and_a_throttled_node() {
             facility: "smelter".into(),
             limit: Some(2.0),
         },
-        300.0,
+        420.0,
         0.0,
     );
     let valve = add(
@@ -469,17 +469,17 @@ fn logistics_nodes_and_a_throttled_node() {
             item: None,
             limit: 40.0,
         },
-        650.0,
+        840.0,
         0.0,
     );
-    let storage = add(&mut harness, NodeKind::Storage { item: None }, 950.0, 0.0);
+    let storage = add(&mut harness, NodeKind::Storage { item: None }, 1260.0, 0.0);
     let goal = add(
         &mut harness,
         NodeKind::Sink {
             item: "iron_ingot".into(),
             limit: Some(10.0),
         },
-        1250.0,
+        1680.0,
         0.0,
     );
     link_any(
@@ -1079,7 +1079,7 @@ fn grouping_collapses_nodes_into_one_card_with_their_outside_ports() {
         0.0,
         0.0,
     );
-    let ingot = smelter(&mut harness, 250.0, 0.0);
+    let ingot = smelter(&mut harness, 400.0, 0.0);
     let plate = add(
         &mut harness,
         NodeKind::Recipe {
@@ -1087,7 +1087,7 @@ fn grouping_collapses_nodes_into_one_card_with_their_outside_ports() {
             facility: "constructor".into(),
             limit: None,
         },
-        550.0,
+        800.0,
         0.0,
     );
     let goal = add(
@@ -1096,7 +1096,7 @@ fn grouping_collapses_nodes_into_one_card_with_their_outside_ports() {
             item: "iron_plate".into(),
             limit: None,
         },
-        900.0,
+        1250.0,
         0.0,
     );
     link_any(
@@ -1180,14 +1180,14 @@ fn a_copies_group_runs_as_many_copies_as_the_graph_allows() {
         0.0,
         0.0,
     );
-    let ingot = smelter(&mut harness, 300.0, 0.0);
+    let ingot = smelter(&mut harness, 420.0, 0.0);
     let goal = add(
         &mut harness,
         NodeKind::Sink {
             item: "iron_ingot".into(),
             limit: None,
         },
-        650.0,
+        840.0,
         0.0,
     );
     link_any(
@@ -1455,4 +1455,103 @@ fn a_limit_in_the_middle_settles_the_buckflower_graph() {
     assert_near(count(&s, free), 0.0);
     fit_view(&mut harness);
     snapshot_graph(&mut harness, "limit_in_the_middle");
+    // Cards are as wide whatever their numbers, limits and names.
+    let widths: Vec<f32> = [picker, limited, free, carbon]
+        .into_iter()
+        .map(|node| node_rect(&mut harness, node).width())
+        .collect();
+    assert!(
+        widths.iter().all(|w| (w - widths[0]).abs() < 0.5),
+        "card widths differ: {widths:?}"
+    );
+}
+
+#[test]
+fn link_labels_show_over_their_links() {
+    let mut harness = harness(&fixture("../../data/v1.5.3"));
+    let recipe = |recipe: &str, facility: &str, limit: Option<f64>| NodeKind::Recipe {
+        recipe: recipe.into(),
+        facility: facility.into(),
+        limit,
+    };
+    let gas = add(
+        &mut harness,
+        recipe("gas_xiranite", "gas_pump_1", Some(5.0)),
+        0.0,
+        0.0,
+    );
+    let powder = add(
+        &mut harness,
+        recipe("phase_trans_2-xiranite_powder", "phase_trans_2", None),
+        380.0,
+        140.0,
+    );
+    let water = add(
+        &mut harness,
+        recipe("liquid_water", "pump_1", None),
+        380.0,
+        380.0,
+    );
+    let liquid = add(
+        &mut harness,
+        recipe("liquid_xiranite", "mix_pool_1", None),
+        780.0,
+        140.0,
+    );
+    let refined = add(
+        &mut harness,
+        recipe("phase_trans_1-liquid_xiranite", "phase_trans_1", Some(3.0)),
+        1180.0,
+        0.0,
+    );
+    link(&mut harness, gas, powder, "gas_xiranite");
+    link(&mut harness, gas, refined, "gas_xiranite");
+    link(&mut harness, powder, liquid, "xiranite_powder");
+    link(&mut harness, water, liquid, "liquid_water");
+    link(&mut harness, liquid, refined, "liquid_xiranite");
+    fit_view(&mut harness);
+    snapshot_graph(&mut harness, "link_labels");
+}
+
+fn picker_rect(harness: &mut Harness<'_, App>) -> eframe::egui::Rect {
+    let area = workspace(harness)
+        .picker_area()
+        .expect("the picker is open");
+    harness
+        .ctx
+        .memory(|m| m.area_rect(area))
+        .expect("the picker is drawn")
+}
+
+#[test]
+fn the_picker_opens_at_the_click_after_the_window_was_resized() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    // Far from the origin, so the canvas is panned and zoomed: graph space is not screen space.
+    smelter(&mut harness, 2000.0, 1500.0);
+    smelter(&mut harness, 2600.0, 1900.0);
+    fit_view(&mut harness);
+    let at = workspace(&mut harness).canvas_center_on_screen();
+    secondary_click_at(&mut harness, at);
+    let rect = picker_rect(&mut harness);
+    assert!(
+        (rect.min - at).length() < 2.0,
+        "the picker opens at {at:?}, not {:?}",
+        rect.min
+    );
+    harness.set_size(eframe::egui::vec2(700.0, 450.0));
+    harness.run();
+    harness.key_press(eframe::egui::Key::Escape);
+    harness.run();
+    harness.set_size(WINDOW_SIZE.into());
+    harness.run();
+
+    let at = workspace(&mut harness).canvas_center_on_screen() - eframe::egui::vec2(300.0, 300.0);
+    secondary_click_at(&mut harness, at);
+    let rect = picker_rect(&mut harness);
+    assert!(
+        (rect.min - at).length() < 2.0,
+        "the picker opens at {at:?}, not {:?}",
+        rect.min
+    );
+    assert!(rect.height() > 300.0, "full height again: {rect:?}");
 }

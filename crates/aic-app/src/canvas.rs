@@ -18,7 +18,7 @@ use eframe::egui::{
 };
 use egui_snarl::ui::{
     AnyPins, BackgroundPattern, NodeLayout, PinInfo, PinPlacement, PinWireInfo, SnarlPin,
-    SnarlStyle, SnarlViewer, SnarlWidget,
+    SnarlStyle, SnarlViewer, SnarlWidget, WireStyle,
 };
 use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 
@@ -27,14 +27,26 @@ use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::picker::Origin;
-use crate::widgets::{self, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
+use crate::widgets::{self, ItemPicture, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
 
 const CANVAS_ID: &str = "aic-canvas";
 /// How far from a port a node added from it is placed, in graph units.
 const PORT_GAP: f32 = 80.0;
-const BADGE: f32 = 20.0;
 /// Size of the facility picture on a recipe card (and the depot picture on a source or sink).
-const FACILITY_IMAGE: f32 = 48.0;
+const FACILITY_IMAGE: f32 = 64.0;
+/// Size of a port's item icon. The icon is the port's pin: it sits inside the card against its
+/// edge, and a link is dragged from it.
+const PIN_ICON: f32 = 32.0;
+/// Room for a port's rate, like `100.00`.
+const RATE_WIDTH: f32 = 54.0;
+/// Space between a port's icon and its rate.
+const RATE_GAP: f32 = 4.0;
+/// The card's inner margin.
+const NODE_MARGIN: i8 = 6;
+/// Every card is this wide, whatever it shows, so cards line up.
+const CARD_WIDTH: f32 = 300.0;
+/// How far a port column reaches into the card, from inside its margin.
+const PORT_COLUMN: f32 = PIN_ICON - NODE_MARGIN as f32 + RATE_GAP + RATE_WIDTH;
 
 /// What the player has selected: nodes and collapsed groups as drawn on the canvas, or one link.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -169,7 +181,7 @@ impl Default for Canvas {
             style: SnarlStyle {
                 node_layout: Some(NodeLayout::coil()),
                 pin_placement: Some(PinPlacement::Edge),
-                pin_size: Some(10.0),
+                pin_size: Some(PIN_ICON),
                 wire_width: Some(2.0),
                 collapsible: Some(false),
                 bg_pattern: Some(BackgroundPattern::grid(vec2(40.0, 40.0), 0.0)),
@@ -325,7 +337,7 @@ impl Canvas {
             selection,
         };
         let layer = LayerId::new(ui.layer_id().order, Id::new(CANVAS_ID));
-        let clicked_label = labels.paint(ui, layer, self.to_global);
+        let clicked_label = labels.paint(ui, layer, self.to_global, self.rect);
         let selected = events.iter().any(|e| matches!(e, CanvasEvent::Select(_)));
         let modifiers = ui.input(|i| i.modifiers);
         if let Some(link) = clicked_label {
@@ -333,8 +345,11 @@ impl Canvas {
         } else if response.clicked() && !selected && !modifiers.shift && !modifiers.command {
             events.push(CanvasEvent::Select(None));
         }
-        if response.secondary_clicked()
-            && let Some(pos) = response.interact_pointer_pos()
+        // Only a real right click: egui-snarl opens its dropped-link menu by marking the canvas
+        // long-touched, which also counts as a secondary click. The response is on the canvas's
+        // zoomed and panned layer, so the click's position comes from the input, on screen.
+        if response.clicked_by(egui::PointerButton::Secondary)
+            && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
         {
             events.push(CanvasEvent::OpenPicker {
                 origin: Origin::Canvas,
@@ -455,14 +470,39 @@ impl Canvas {
     }
 }
 
-/// A pin that records where snarl drew it.
+/// A port's pin: its item's icon inside the card against the edge, on a tile colored like the
+/// port (linked, or pulling from or sending to the depot). It records where snarl drew it.
 struct RecordingPin {
-    info: PinInfo,
+    /// `None` for a logistics node's port before its first link: a plain circle.
+    picture: Option<ItemPicture>,
+    side: Side,
+    linked: bool,
+    throttled: bool,
     key: PinKey,
     centers: PinCenters,
 }
 
+impl RecordingPin {
+    fn fill(&self) -> Color32 {
+        match (self.linked, self.side) {
+            (true, _) => colors::LINKED,
+            (false, Side::Input) => colors::DEPOT_IN,
+            (false, Side::Output) => colors::DEPOT_OUT,
+        }
+    }
+}
+
 impl SnarlPin for RecordingPin {
+    /// Inside the card, flush with its edge; snarl gives `x` as the edge.
+    fn pin_rect(&self, x: f32, y0: f32, y1: f32, size: f32) -> Rect {
+        let y = (y0 + y1) * 0.5;
+        let left = match self.side {
+            Side::Input => x,
+            Side::Output => x - size,
+        };
+        Rect::from_min_size(Pos2::new(left, y - size * 0.5), vec2(size, size))
+    }
+
     fn draw(
         self,
         snarl_style: &SnarlStyle,
@@ -471,8 +511,41 @@ impl SnarlPin for RecordingPin {
         painter: &egui::Painter,
     ) -> PinWireInfo {
         self.centers.borrow_mut().insert(self.key, rect.center());
-        self.info.draw(snarl_style, style, rect, painter)
+        let fill = self.fill();
+        let Some(picture) = &self.picture else {
+            return PinInfo::circle()
+                .with_fill(fill)
+                .with_wire_color(colors::LINKED)
+                .draw(snarl_style, style, rect.shrink(rect.width() * 0.3), painter);
+        };
+        if rect.is_finite() {
+            // Links run behind cards, so a link seems to end at the card's edge, at this tile.
+            painter.rect_filled(rect, 4.0, fill.gamma_multiply(0.35));
+            picture.paint(painter, rect.shrink(3.0));
+            if self.throttled {
+                paint_throttle_marker(painter, rect);
+            }
+        }
+        PinWireInfo {
+            color: colors::LINKED,
+            style: snarl_style.wire_style.unwrap_or(WireStyle::Bezier5),
+        }
     }
+}
+
+/// A small warning triangle in the top corner of a port's tile.
+fn paint_throttle_marker(painter: &egui::Painter, tile: Rect) {
+    let rect = Rect::from_min_size(tile.right_top() - vec2(11.0, -1.0), vec2(10.0, 10.0));
+    let points = vec![
+        Pos2::new(rect.center().x, rect.top()),
+        rect.right_bottom(),
+        rect.left_bottom(),
+    ];
+    painter.add(egui::Shape::convex_polygon(
+        points,
+        colors::WARN,
+        Stroke::NONE,
+    ));
 }
 
 struct Viewer<'a> {
@@ -549,6 +622,8 @@ impl Viewer<'_> {
         });
     }
 
+    /// A port's rate beside its pin, in a slot as wide on every card. Returns whether the solver
+    /// throttled the node at this port.
     fn port_row(
         &mut self,
         ui: &mut Ui,
@@ -557,7 +632,7 @@ impl Viewer<'_> {
         side: Side,
         item: Option<&ItemId>,
         linked: bool,
-    ) {
+    ) -> bool {
         let flow = item.and_then(|item| {
             let port = Port {
                 node: id,
@@ -585,40 +660,61 @@ impl Viewer<'_> {
             .throttle
             .get(&id)
             .is_some_and(|reason| reason.side == side && Some(&reason.item) == item);
-        let marker = |ui: &mut Ui, strings: &Strings| {
-            throttled
-                .then(|| throttle_marker(ui).on_hover_text(strings.get("throttle-marker-hint")))
+        // The column starts inside the card's margin; snarl has already stepped past part of the
+        // pin. Fill the rest of the column so every card is as wide.
+        let column = ui.max_rect();
+        let used = match side {
+            Side::Input => ui.cursor().left() - column.left(),
+            Side::Output => column.right() - ui.cursor().right(),
         };
-        let badge = |ui: &mut Ui, catalog: &Catalog| match item {
-            Some(item) => widgets::item_icon(ui, catalog, item.as_str(), BADGE),
-            None => ui.label(self.strings.get("item-unset")),
+        let rect = match side {
+            Side::Input => Rect::from_min_max(
+                Pos2::new(column.left() + PORT_COLUMN - RATE_WIDTH, column.top()),
+                Pos2::new(column.left() + PORT_COLUMN, column.top() + PIN_ICON),
+            ),
+            Side::Output => Rect::from_min_max(
+                Pos2::new(column.right() - PORT_COLUMN, column.top()),
+                Pos2::new(
+                    column.right() - PORT_COLUMN + RATE_WIDTH,
+                    column.top() + PIN_ICON,
+                ),
+            ),
         };
-        let rate = RichText::new(format::fixed(flow)).color(color).monospace();
-        // Rows lay out left to right for inputs and right to left for outputs; either way the
-        // port's area is what was drawn.
-        let mut rect = Rect::NOTHING;
-        let mut add = |response: Option<egui::Response>| {
-            if let Some(response) = response {
-                rect = rect.union(response.rect);
-            }
+        ui.allocate_exact_size(
+            vec2((PORT_COLUMN - used).max(0.0), PIN_ICON),
+            Sense::hover(),
+        );
+        let align = match side {
+            Side::Input => egui::Align2::LEFT_CENTER,
+            Side::Output => egui::Align2::RIGHT_CENTER,
         };
-        match side {
-            Side::Input => {
-                add(marker(ui, self.strings));
-                add(Some(badge(ui, self.catalog)));
-                add(Some(ui.label(rate)));
-            }
-            Side::Output => {
-                add(Some(ui.label(rate)));
-                add(Some(badge(ui, self.catalog)));
-                add(marker(ui, self.strings));
-            }
+        // Right beside the icon, where snarl drew it last frame.
+        let beside = PIN_ICON * 0.5 + RATE_GAP;
+        let anchor = match (side, self.pins.borrow().get(&pin)) {
+            (Side::Input, Some(center)) => Pos2::new(center.x + beside, rect.center().y),
+            (Side::Output, Some(center)) => Pos2::new(center.x - beside, rect.center().y),
+            (Side::Input, None) => rect.left_center(),
+            (Side::Output, None) => rect.right_center(),
+        };
+        ui.painter().text(
+            anchor,
+            align,
+            format::fixed(flow),
+            FontId::monospace(13.0),
+            color,
+        );
+        let Some(item) = item else {
+            return throttled;
+        };
+        let mut hint = names::item(self.catalog, item.as_str()).to_owned();
+        if throttled {
+            hint.push('\n');
+            hint.push_str(&self.strings.get("throttle-marker-hint"));
         }
         // A double-click on the port opens its menu: the limit as a rate, and clearing its links.
-        let Some(item) = item else {
-            return;
-        };
-        let response = ui.interact(rect, Id::new(("port-row", id, side, item)), Sense::click());
+        let response = ui
+            .interact(rect, Id::new(("port-row", id, side, item)), Sense::click())
+            .on_hover_text(hint);
         // egui counts a quick third click as a triple click, not a double one; either opens it.
         if response.double_clicked() || response.triple_clicked() {
             // Beside the pin, on the node's edge; last frame's spot is close enough.
@@ -636,17 +732,27 @@ impl Viewer<'_> {
                 graph_pos,
             });
         }
+        throttled
     }
 
-    fn pin_info(linked: bool, side: Side) -> PinInfo {
-        let fill = match (linked, side) {
-            (true, _) => colors::LINKED,
-            (false, Side::Input) => colors::DEPOT_IN,
-            (false, Side::Output) => colors::DEPOT_OUT,
-        };
-        PinInfo::circle()
-            .with_fill(fill)
-            .with_wire_color(colors::LINKED)
+    /// The port's pin, showing its item.
+    fn pin(
+        &self,
+        ui: &Ui,
+        key: PinKey,
+        side: Side,
+        item: Option<&ItemId>,
+        linked: bool,
+        throttled: bool,
+    ) -> RecordingPin {
+        RecordingPin {
+            picture: item.map(|item| ItemPicture::of(ui.ctx(), self.catalog, item.as_str())),
+            side,
+            linked,
+            throttled,
+            key,
+            centers: self.pins.clone(),
+        }
     }
 
     /// The node's limit under its numbers, typed straight into the card. A source or control port
@@ -694,19 +800,22 @@ impl Viewer<'_> {
     }
 }
 
-fn throttle_marker(ui: &mut Ui) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
-    let points = vec![
-        Pos2::new(rect.center().x, rect.top()),
-        rect.right_bottom(),
-        rect.left_bottom(),
-    ];
-    ui.painter().add(egui::Shape::convex_polygon(
-        points,
-        colors::WARN,
-        Stroke::NONE,
-    ));
-    response
+/// A card's title, cut short with an ellipsis to fit the card; the whole title shows on hover.
+fn title_label(ui: &mut Ui, text: RichText) {
+    let width =
+        CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN) - 2.0 * ui.spacing().window_margin.leftf();
+    ui.set_max_width(width);
+    ui.add(egui::Label::new(text).truncate());
+}
+
+/// The width left for a card's body between its port columns, so every card is `CARD_WIDTH` wide.
+fn body_width(ui: &Ui, inputs: &[InPin], outputs: &[OutPin]) -> f32 {
+    let columns = [inputs.is_empty(), outputs.is_empty()]
+        .iter()
+        .filter(|empty| !**empty)
+        .count() as f32;
+    let spacing = ui.spacing().item_spacing.x;
+    CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN) - columns * PORT_COLUMN - 2.0 * spacing
 }
 
 impl SnarlViewer<Member> for Viewer<'_> {
@@ -740,7 +849,9 @@ impl SnarlViewer<Member> for Viewer<'_> {
         _outputs: &[OutPin],
         snarl: &Snarl<Member>,
     ) -> egui::Frame {
-        let frame = default.corner_radius(CornerRadius::same(6));
+        let frame = default
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(egui::Margin::same(NODE_MARGIN));
         if self.selection.is_some_and(|s| s.contains(snarl[node])) {
             frame.stroke(Stroke::new(2.0, colors::WARN))
         } else {
@@ -813,7 +924,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 let name = self.title(&Member::Group(group));
                 ui.vertical(|ui| {
                     ui.label(RichText::new(self.strings.get("kind-group")).small().weak());
-                    ui.label(RichText::new(name).strong());
+                    title_label(ui, RichText::new(name).strong());
                 });
                 return;
             }
@@ -829,7 +940,8 @@ impl SnarlViewer<Member> for Viewer<'_> {
                         .weak(),
                 );
             }
-            ui.label(RichText::new(names::node_subject(self.catalog, self.strings, kind)).strong());
+            let subject = names::node_subject(self.catalog, self.strings, kind);
+            title_label(ui, RichText::new(subject).strong());
             if let NodeKind::Storage { .. } = kind {
                 let balance = self.solution.storage.get(&id).and_then(|s| s.balance);
                 if let Some(balance) = balance {
@@ -858,22 +970,21 @@ impl SnarlViewer<Member> for Viewer<'_> {
     #[allow(refining_impl_trait)]
     fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<Member>) -> RecordingPin {
         let linked = !pin.remotes.is_empty();
+        let key = PinKey::In(pin.id);
         self.on_group = matches!(snarl[pin.id.node], Member::Group(_));
-        if let Some(target) = self.target(snarl[pin.id.node], Side::Input, pin.id.input) {
+        let target = self.target(snarl[pin.id.node], Side::Input, pin.id.input);
+        let item = target.as_ref().and_then(|t| t.item.clone());
+        let throttled = target.is_some_and(|target| {
             self.port_row(
                 ui,
-                PinKey::In(pin.id),
+                key,
                 target.node,
                 Side::Input,
                 target.item.as_ref(),
                 linked,
-            );
-        }
-        RecordingPin {
-            info: Self::pin_info(linked, Side::Input),
-            key: PinKey::In(pin.id),
-            centers: self.pins.clone(),
-        }
+            )
+        });
+        self.pin(ui, key, Side::Input, item.as_ref(), linked, throttled)
     }
 
     #[allow(refining_impl_trait)]
@@ -884,22 +995,21 @@ impl SnarlViewer<Member> for Viewer<'_> {
         snarl: &mut Snarl<Member>,
     ) -> RecordingPin {
         let linked = !pin.remotes.is_empty();
+        let key = PinKey::Out(pin.id);
         self.on_group = matches!(snarl[pin.id.node], Member::Group(_));
-        if let Some(target) = self.target(snarl[pin.id.node], Side::Output, pin.id.output) {
+        let target = self.target(snarl[pin.id.node], Side::Output, pin.id.output);
+        let item = target.as_ref().and_then(|t| t.item.clone());
+        let throttled = target.is_some_and(|target| {
             self.port_row(
                 ui,
-                PinKey::Out(pin.id),
+                key,
                 target.node,
                 Side::Output,
                 target.item.as_ref(),
                 linked,
-            );
-        }
-        RecordingPin {
-            info: Self::pin_info(linked, Side::Output),
-            key: PinKey::Out(pin.id),
-            centers: self.pins.clone(),
-        }
+            )
+        });
+        self.pin(ui, key, Side::Output, item.as_ref(), linked, throttled)
     }
 
     fn has_body(&mut self, _node: &Member) -> bool {
@@ -909,14 +1019,15 @@ impl SnarlViewer<Member> for Viewer<'_> {
     fn show_body(
         &mut self,
         node: ViewId,
-        _inputs: &[InPin],
-        _outputs: &[OutPin],
+        inputs: &[InPin],
+        outputs: &[OutPin],
         ui: &mut Ui,
         snarl: &mut Snarl<Member>,
     ) {
         let id = match snarl[node] {
             Member::Node(id) => id,
             Member::Group(group) => {
+                ui.set_width(body_width(ui, inputs, outputs));
                 self.group_body(ui, group);
                 return;
             }
@@ -925,6 +1036,8 @@ impl SnarlViewer<Member> for Viewer<'_> {
             return;
         };
         let rate = self.solution.rate.get(&id).copied().flatten();
+        let width = body_width(ui, inputs, outputs);
+        ui.set_width(width);
         ui.vertical_centered(|ui| match &kind {
             NodeKind::Recipe {
                 recipe,
@@ -948,7 +1061,8 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 }
                 if facilities.len() > 1 {
                     // One click moves to the next facility; the inspector has the full list.
-                    if ui.small_button(name).clicked() {
+                    let button = egui::Button::new(RichText::new(name).small()).truncate();
+                    if ui.add(button).clicked() {
                         let next = facilities
                             .iter()
                             .position(|f| f == facility)
@@ -957,7 +1071,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                             .push(CanvasEvent::SetFacility(id, facilities[next].clone()));
                     }
                 } else {
-                    ui.label(RichText::new(name).small());
+                    ui.add(egui::Label::new(RichText::new(name).small()).truncate());
                 }
                 let count = self.solution.facility_count.get(&id).copied().flatten();
                 match count.filter(|_| self.round_up).map(RoundUp::of) {
@@ -1024,13 +1138,10 @@ impl SnarlViewer<Member> for Viewer<'_> {
             }
             NodeKind::Storage { .. } => {
                 let through = self.solution.storage.get(&id).and_then(|s| s.pass_through);
-                ui.label(
-                    RichText::new(
-                        self.strings
-                            .format("storage-pass-through", &[("rate", &format::fixed(through))]),
-                    )
-                    .small(),
-                );
+                let text = self
+                    .strings
+                    .format("storage-pass-through", &[("rate", &format::fixed(through))]);
+                ui.add(egui::Label::new(RichText::new(text).small()).truncate());
             }
             NodeKind::MissingRecipe { .. } => {
                 ui.label(
@@ -1256,8 +1367,16 @@ struct LinkLabels<'a> {
 impl LinkLabels<'_> {
     /// Paints the labels on the canvas layer, in graph space, and returns a link whose label was
     /// clicked.
-    fn paint(&self, ui: &Ui, layer: LayerId, to_global: TSTransform) -> Option<LinkId> {
-        let painter = ui.ctx().layer_painter(layer);
+    fn paint(
+        &self,
+        ui: &Ui,
+        layer: LayerId,
+        to_global: TSTransform,
+        canvas: Rect,
+    ) -> Option<LinkId> {
+        // The layer is drawn through the canvas transform, so its clip rect is in graph space too.
+        let mut painter = ui.ctx().layer_painter(layer);
+        painter.set_clip_rect(to_global.inverse() * canvas);
         let clicked_at = ui.input(|i| {
             i.pointer
                 .primary_clicked()

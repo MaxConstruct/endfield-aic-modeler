@@ -174,8 +174,61 @@ pub fn image(
 
 /// An item's icon, or a colored square with its initials when the data has no image for it.
 pub fn paint_item(painter: &Painter, catalog: &Catalog, item: &str, rect: Rect) {
-    if !paint_image(painter, catalog, ImageKind::Item, item, rect) {
-        paint_item_badge(painter, catalog, item, rect);
+    ItemPicture::of(painter.ctx(), catalog, item).paint(painter, rect);
+}
+
+/// What an item looks like, ready to paint without the catalog: its icon, or a stand-in square.
+#[derive(Clone)]
+pub enum ItemPicture {
+    Icon(TextureHandle),
+    /// A colored square with the item's initials.
+    Badge {
+        fill: Color32,
+        initials: String,
+    },
+}
+
+impl ItemPicture {
+    pub fn of(ctx: &egui::Context, catalog: &Catalog, item: &str) -> Self {
+        match icon_texture(ctx, catalog, ImageKind::Item, item) {
+            Some(texture) => Self::Icon(texture),
+            None => Self::Badge {
+                fill: item_color(catalog, item),
+                initials: initials(names::item(catalog, item)),
+            },
+        }
+    }
+
+    /// Paints it into `rect`, keeping its shape.
+    pub fn paint(&self, painter: &Painter, rect: Rect) {
+        // egui-snarl lays a new node out once with unknown sizes, which can leave rects undefined.
+        if !rect.is_finite() {
+            return;
+        }
+        match self {
+            Self::Icon(texture) => {
+                let size = texture.size_vec2();
+                let scale = (rect.width() / size.x).min(rect.height() / size.y);
+                let fitted = Rect::from_center_size(rect.center(), size * scale);
+                let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+                painter.image(texture.id(), fitted, uv, Color32::WHITE);
+            }
+            Self::Badge { fill, initials } => {
+                painter.rect_filled(rect, 3.0, *fill);
+                let text_color = if fill.intensity() > 0.55 {
+                    Color32::BLACK
+                } else {
+                    Color32::WHITE
+                };
+                painter.text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    initials,
+                    FontId::proportional(rect.height() * 0.5),
+                    text_color,
+                );
+            }
+        }
     }
 }
 
@@ -184,28 +237,6 @@ pub fn item_icon(ui: &mut Ui, catalog: &Catalog, item: &str, size: f32) -> egui:
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
     paint_item(ui.painter(), catalog, item, rect);
     response.on_hover_text(names::item(catalog, item))
-}
-
-/// Stands in for an item icon the data has no image for: a colored square with the item's initials.
-fn paint_item_badge(painter: &Painter, catalog: &Catalog, item: &str, rect: Rect) {
-    // egui-snarl lays a new node out once with unknown sizes, which can leave rects undefined.
-    if !rect.is_finite() {
-        return;
-    }
-    let fill = item_color(catalog, item);
-    painter.rect_filled(rect, 3.0, fill);
-    let text_color = if fill.intensity() > 0.55 {
-        Color32::BLACK
-    } else {
-        Color32::WHITE
-    };
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        initials(names::item(catalog, item)),
-        FontId::proportional(rect.height() * 0.5),
-        text_color,
-    );
 }
 
 /// The item's icon color from the data, or a stable color derived from its ID.

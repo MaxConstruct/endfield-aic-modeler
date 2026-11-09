@@ -194,6 +194,11 @@ impl Workspace {
         self.picker = Some(Picker::new(origin, screen, graph_pos));
     }
 
+    /// The open picker's egui area.
+    pub fn picker_area(&self) -> Option<egui::Id> {
+        self.picker.as_ref().map(Picker::area_id)
+    }
+
     /// The origin of the open picker, if one is open.
     pub fn picker_origin(&self) -> Option<&Origin> {
         self.picker.as_ref().map(|picker| &picker.origin)
