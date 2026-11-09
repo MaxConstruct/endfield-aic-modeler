@@ -18,6 +18,8 @@ pub use catalog::{
     Region,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use discover::{DATA_DIR_ENV, DataDirSearch, DataVersion, find_data_dir, list_versions, load};
+pub use discover::{
+    DATA_DIR_ENV, DataDirSearch, DataVersion, find_data_dir, list_languages, list_versions, load,
+};
 pub use error::LoadError;
 pub use ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};

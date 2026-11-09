@@ -7,6 +7,7 @@ use aic_data::{Catalog, ItemId, RegionId};
 use eframe::egui::{self, RichText, Ui};
 use serde::{Deserialize, Serialize};
 
+use crate::data::{DEFAULT_LANGUAGE, DataChoice, DataFolder};
 use crate::i18n::Strings;
 use crate::names;
 use crate::widgets::{self, colors};
@@ -82,20 +83,32 @@ impl SettingsWindow {
         self.region = Some(region.clone());
     }
 
+    /// Shows the window. Returns the data version and language the player switched to, if they
+    /// did; `data` is the data folder and the current choice, when there is a folder to choose from.
     pub fn show(
         &mut self,
         ctx: &egui::Context,
         catalog: &Catalog,
         strings: &Strings,
         availability: &mut Availability,
-    ) {
+        data: Option<(&DataFolder, DataChoice)>,
+    ) -> Option<DataChoice> {
         let mut open = self.open;
+        let mut switch = None;
         egui::Window::new(strings.get("settings-title"))
             .open(&mut open)
             .resizable(false)
             .collapsible(false)
-            .show(ctx, |ui| self.contents(ui, catalog, strings, availability));
+            .show(ctx, |ui| {
+                if let Some((folder, choice)) = data {
+                    switch = data_choice(ui, strings, folder, choice);
+                    ui.separator();
+                }
+                ui.heading(strings.get("settings-raw-title"));
+                self.contents(ui, catalog, strings, availability);
+            });
         self.open = open;
+        switch
     }
 
     fn contents(
@@ -160,6 +173,59 @@ impl SettingsWindow {
                 }
             });
     }
+}
+
+/// The data version and language pickers. Returns the new choice when one changes.
+fn data_choice(
+    ui: &mut Ui,
+    strings: &Strings,
+    folder: &DataFolder,
+    choice: DataChoice,
+) -> Option<DataChoice> {
+    let mut changed = None;
+    let version = folder.version(&choice).name.clone();
+    let language = choice
+        .language
+        .clone()
+        .unwrap_or_else(|| DEFAULT_LANGUAGE.to_owned());
+    egui::Grid::new("data-choice")
+        .num_columns(2)
+        .spacing([8.0, 6.0])
+        .show(ui, |ui| {
+            ui.label(strings.get("settings-data-version"));
+            egui::ComboBox::from_id_salt("data-version")
+                .selected_text(version.as_str())
+                .show_ui(ui, |ui| {
+                    for (i, option) in folder.versions.iter().enumerate() {
+                        let mut text = option.name.clone();
+                        if i == 0 {
+                            text = strings.format("settings-newest", &[("version", &text)]);
+                        }
+                        if ui.selectable_label(option.name == version, text).clicked() {
+                            changed = Some(DataChoice {
+                                version: Some(option.name.clone()),
+                                ..choice.clone()
+                            });
+                        }
+                    }
+                });
+            ui.end_row();
+            ui.label(strings.get("settings-language"));
+            egui::ComboBox::from_id_salt("data-language")
+                .selected_text(language.as_str())
+                .show_ui(ui, |ui| {
+                    for option in folder.languages(&choice) {
+                        if ui.selectable_label(option == language, &option).clicked() {
+                            changed = Some(DataChoice {
+                                language: Some(option),
+                                ..choice.clone()
+                            });
+                        }
+                    }
+                });
+            ui.end_row();
+        });
+    changed.filter(|new| *new != choice)
 }
 
 #[cfg(test)]

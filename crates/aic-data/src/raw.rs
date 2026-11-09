@@ -119,6 +119,61 @@ pub(crate) struct RawRecipe {
     pub locations: Vec<String>,
 }
 
+/// `overlay.json`: our own patches on top of `data.json`, with items and recipes written in the same
+/// format. Unknown keys are an error, so a typo doesn't silently do nothing.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RawOverlay {
+    #[serde(default)]
+    pub items: RawOverlayList<RawItem>,
+    #[serde(default)]
+    pub recipes: RawOverlayList<RawRecipe>,
+    /// Facility ID to its new speed.
+    #[serde(default)]
+    pub facility_speeds: IndexMap<String, f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RawOverlayList<T> {
+    /// New entries; their IDs must not exist yet.
+    #[serde(default = "Vec::new")]
+    pub add: Vec<T>,
+    /// Entries that take the place of the one with the same ID, which must exist.
+    #[serde(default = "Vec::new")]
+    pub replace: Vec<T>,
+    /// IDs to drop.
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
+impl<T> Default for RawOverlayList<T> {
+    fn default() -> Self {
+        Self {
+            add: Vec::new(),
+            replace: Vec::new(),
+            remove: Vec::new(),
+        }
+    }
+}
+
+/// An item or recipe, found by its ID.
+pub(crate) trait RawEntry {
+    fn id(&self) -> &str;
+}
+
+impl RawEntry for RawItem {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+impl RawEntry for RawRecipe {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
 /// `i18n/<lang>.json`: display names keyed by the same IDs as `data.json`.
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct RawI18n {

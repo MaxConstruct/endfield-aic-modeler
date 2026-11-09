@@ -7,7 +7,8 @@ use aic_data::{Catalog, FacilityId, ItemId, RecipeId, RegionId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::graph::{Graph, Link, Node, NodeId, NodeKind, Pos};
+use crate::graph::{Graph, GroupId, Link, Node, NodeId, NodeKind, Pos};
+use crate::group::{Group, GroupMode};
 
 /// The save file format this build writes and the newest it reads.
 pub const FORMAT_VERSION: u32 = 1;
@@ -34,6 +35,10 @@ pub enum FileError {
     DuplicateNode { id: u32 },
     #[error("link {index} refers to node {id}, which isn't in the file")]
     UnknownNode { index: usize, id: u32 },
+    #[error("group {id} is used but isn't in the file, or two groups have that id")]
+    UnknownGroup { id: u32 },
+    #[error("group {id} is inside itself")]
+    GroupCycle { id: u32 },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -43,14 +48,38 @@ struct FileGraph {
     region: RegionId,
     nodes: Vec<FileNode>,
     links: Vec<FileLink>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    groups: Vec<FileGroup>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct FileNode {
     id: u32,
     pos: Pos,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<u32>,
     #[serde(flatten)]
     kind: FileNodeKind,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileGroup {
+    id: u32,
+    name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent: Option<u32>,
+    #[serde(default)]
+    collapsed: bool,
+    pos: Pos,
+    /// Present for a copies group; its value is the copies limit, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    copies: Option<FileCopies>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileCopies {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    limit: Option<f64>,
 }
 
 /// `MissingRecipe` is written back as the recipe it was, so it isn't a kind of its own here.
@@ -68,6 +97,12 @@ enum FileNodeKind {
         limit: f64,
     },
     Sink {
+        item: ItemId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<f64>,
+    },
+    OutpostOrder {
+        recipe: RecipeId,
         item: ItemId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<f64>,
@@ -92,12 +127,17 @@ struct FileLink {
     from: u32,
     to: u32,
     item: ItemId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    out_share: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    in_share: Option<f64>,
 }
 
 impl Graph {
     /// The graph as a save file, recording the data version it was made with.
     pub fn to_json(&self, data_version: &str) -> String {
         let ids: HashMap<NodeId, u32> = self.nodes.keys().zip(0..).collect();
+        let group_ids: HashMap<GroupId, u32> = self.groups.keys().zip(0..).collect();
         let file = FileGraph {
             format_version: FORMAT_VERSION,
             data_version: data_version.to_owned(),
@@ -108,7 +148,23 @@ impl Graph {
                 .map(|(id, node)| FileNode {
                     id: ids[&id],
                     pos: node.pos,
+                    group: node.group.map(|g| group_ids[&g]),
                     kind: FileNodeKind::from(&node.kind),
+                })
+                .collect(),
+            groups: self
+                .groups
+                .iter()
+                .map(|(id, group)| FileGroup {
+                    id: group_ids[&id],
+                    name: group.name.clone(),
+                    parent: group.parent.map(|p| group_ids[&p]),
+                    collapsed: group.collapsed,
+                    pos: group.pos,
+                    copies: match group.mode {
+                        GroupMode::Folder => None,
+                        GroupMode::Copies { limit } => Some(FileCopies { limit }),
+                    },
                 })
                 .collect(),
             links: self
@@ -118,6 +174,8 @@ impl Graph {
                     from: ids[&link.from],
                     to: ids[&link.to],
                     item: link.item.clone(),
+                    out_share: link.out_share,
+                    in_share: link.in_share,
                 })
                 .collect(),
         };
@@ -141,11 +199,53 @@ impl Graph {
         }
 
         let mut graph = Graph::new(file.region);
+        let mut group_ids = HashMap::new();
+        for group in &file.groups {
+            let id = graph.groups.insert(Group {
+                name: group.name.clone(),
+                parent: None,
+                collapsed: group.collapsed,
+                pos: group.pos,
+                mode: match &group.copies {
+                    None => GroupMode::Folder,
+                    Some(copies) => GroupMode::Copies {
+                        limit: copies.limit,
+                    },
+                },
+            });
+            if group_ids.insert(group.id, id).is_some() {
+                return Err(FileError::UnknownGroup { id: group.id });
+            }
+        }
+        let group = |id: Option<u32>| -> Result<Option<GroupId>, FileError> {
+            id.map(|id| {
+                group_ids
+                    .get(&id)
+                    .copied()
+                    .ok_or(FileError::UnknownGroup { id })
+            })
+            .transpose()
+        };
+        for file_group in &file.groups {
+            let parent = group(file_group.parent)?;
+            graph.groups[group_ids[&file_group.id]].parent = parent;
+        }
+        // Walking up from any group must end, or every lookup of what is inside what would loop.
+        for file_group in &file.groups {
+            let mut current = graph.groups[group_ids[&file_group.id]].parent;
+            for _ in 0..=file.groups.len() {
+                current = current.and_then(|g| graph.groups[g].parent);
+            }
+            if current.is_some() {
+                return Err(FileError::GroupCycle { id: file_group.id });
+            }
+        }
         let mut ids = HashMap::new();
         for node in file.nodes {
             let id = graph.nodes.insert(Node {
                 kind: node.kind.into_node_kind(catalog),
                 pos: node.pos,
+                group: group(node.group)?,
             });
             if ids.insert(node.id, id).is_some() {
                 return Err(FileError::DuplicateNode { id: node.id });
@@ -161,6 +261,9 @@ impl Graph {
                 from: node(link.from)?,
                 to: node(link.to)?,
                 item: link.item,
+                // A share that isn't a positive number can't lock a ratio; the link stays free.
+                out_share: link.out_share.filter(|s| s.is_finite() && *s > 0.0),
+                in_share: link.in_share.filter(|s| s.is_finite() && *s > 0.0),
             });
         }
         Ok(LoadedGraph {
@@ -189,6 +292,15 @@ impl From<&NodeKind> for FileNodeKind {
             },
             NodeKind::Source { item, limit } => Self::Source { item, limit },
             NodeKind::Sink { item, limit } => Self::Sink { item, limit },
+            NodeKind::OutpostOrder {
+                recipe,
+                item,
+                limit,
+            } => Self::OutpostOrder {
+                recipe,
+                item,
+                limit,
+            },
             NodeKind::Splitter { item } => Self::Splitter { item },
             NodeKind::Merger { item } => Self::Merger { item },
             NodeKind::Storage { item } => Self::Storage { item },
@@ -223,6 +335,15 @@ impl FileNodeKind {
             }
             Self::Source { item, limit } => NodeKind::Source { item, limit },
             Self::Sink { item, limit } => NodeKind::Sink { item, limit },
+            Self::OutpostOrder {
+                recipe,
+                item,
+                limit,
+            } => NodeKind::OutpostOrder {
+                recipe,
+                item,
+                limit,
+            },
             Self::Splitter { item } => NodeKind::Splitter { item },
             Self::Merger { item } => NodeKind::Merger { item },
             Self::Storage { item } => NodeKind::Storage { item },

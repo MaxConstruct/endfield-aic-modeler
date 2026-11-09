@@ -9,11 +9,14 @@ use aic_data::{Catalog, ItemId};
 use good_lp::{Constraint, Expression, ProblemVariables, Variable, variable};
 
 use crate::graph::{Graph, LinkId, NodeId, NodeKind, Port, Side};
+use crate::solve::copies::Module;
 use crate::solve::sections::Section;
 
 pub(crate) struct Ctx<'a> {
     pub catalog: &'a Catalog,
     pub graph: &'a Graph,
+    /// Stand-in nodes for copies groups (see `copies`).
+    pub modules: &'a HashMap<NodeId, Module>,
 }
 
 pub(crate) struct Model {
@@ -62,11 +65,29 @@ pub(crate) fn build(ctx: &Ctx<'_>, section: &Section, relaxed: Option<&Port>) ->
         .collect();
     // Sorted so the LP is built the same way every time: when several splits are equally good,
     // the same one wins on every solve.
-    let mut fan_groups: Vec<Vec<LinkId>> = linked_ports
-        .values()
-        .filter(|ids| ids.len() > 1)
-        .cloned()
-        .collect();
+    let mut fan_groups: Vec<Vec<LinkId>> = Vec::new();
+    let mut constraints = Vec::new();
+    for (port, ids) in &linked_ports {
+        let (locked, free): (Vec<LinkId>, Vec<LinkId>) = ids
+            .iter()
+            .partition(|id| ctx.graph.links[**id].share(port.side).is_some());
+        // A ratio lock: every locked link carries flow in proportion to its share.
+        if let [first, rest @ ..] = locked.as_slice() {
+            let first_share = ctx.graph.links[*first]
+                .share(port.side)
+                .expect("partitioned by share");
+            for id in rest {
+                let share = ctx.graph.links[*id]
+                    .share(port.side)
+                    .expect("partitioned by share");
+                constraints.push((links[id] * first_share).eq(links[first] * share));
+            }
+        }
+        // The even split is for the links the player left free.
+        if free.len() > 1 {
+            fan_groups.push(free);
+        }
+    }
     fan_groups.sort();
 
     let mut builder = Builder {
@@ -74,7 +95,7 @@ pub(crate) fn build(ctx: &Ctx<'_>, section: &Section, relaxed: Option<&Port>) ->
         relaxed,
         model: Model {
             vars,
-            constraints: Vec::new(),
+            constraints,
             activity: HashMap::new(),
             limits: HashMap::new(),
             links,
@@ -106,6 +127,10 @@ struct Builder<'a, 'b> {
 
 impl Builder<'_, '_> {
     fn node(&mut self, node: NodeId) {
+        if let Some(module) = self.ctx.modules.get(&node) {
+            self.module(node, module);
+            return;
+        }
         match &self.ctx.graph.nodes[node].kind {
             NodeKind::Recipe {
                 recipe,
@@ -117,7 +142,7 @@ impl Builder<'_, '_> {
                 self.side(node, item, Side::Output, supply.into());
                 self.add_throughput(supply.into());
             }
-            NodeKind::Sink { item, limit } => {
+            NodeKind::Sink { item, limit } | NodeKind::OutpostOrder { item, limit, .. } => {
                 let consumption = self.activity(node, *limit);
                 self.side(node, item, Side::Input, consumption.into());
                 self.add_throughput(consumption.into());
@@ -171,6 +196,25 @@ impl Builder<'_, '_> {
                 .map(|(_, qty)| recipe.rate_per_min(*qty, speed))
                 .sum();
             self.add_throughput(count * total);
+        }
+    }
+
+    /// A copies group: its activity is the number of copies, each running one copy's port rates.
+    fn module(&mut self, node: NodeId, module: &Module) {
+        let copies = self.activity(node, module.limit);
+        let mut fed_by_links = false;
+        for (item, side, rate) in &module.ports {
+            let linked = self.side(node, item, *side, copies * *rate);
+            fed_by_links |= linked && *side == Side::Input;
+        }
+        if !fed_by_links {
+            let outputs: f64 = module
+                .ports
+                .iter()
+                .filter(|(_, side, _)| *side == Side::Output)
+                .map(|(_, _, rate)| rate)
+                .sum();
+            self.add_throughput(copies * outputs);
         }
     }
 

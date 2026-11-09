@@ -546,31 +546,65 @@ since the PNGs (from jambochen/endfield-calc) cover more of the game and are nam
 - Splitter, merger, storage and control port have no picture yet.
 
 ### M6: Usability
-- File menu: New (asks for the region), Open, Save, Save As (`rfd`), plus a recent-files list kept in
-  eframe storage.
-- Undo/redo with a command stack of `Graph` snapshots. Graphs are small, so snapshot clones are fine.
-- Box selection, delete, duplicate, Ctrl+C/V within the app.
-- Totals panel: depot inputs, depot outputs, storage balances (a separate section), power
-  (draw / generation / net), and facility counts per facility type (rounded up).
-- Round-up view: `ceil(count)` facilities and the resulting utilization per facility.
+Done.
+- File menu: New (asks for the region), Open, Open Recent, Save, Save As (`rfd`). Recent files (8) live in
+  eframe storage. New, Open and closing the window ask before dropping unsaved changes. The window title
+  shows the file name and a dot when there are unsaved changes. Opening a file made with another data
+  version shows a note in the status bar. The region can only change through New, since a graph belongs
+  to one region.
+- Undo/redo keeps whole `Graph` snapshots (200 steps). Edits until the pointer is up and no field has
+  focus make one step, so a drag or a typed number undoes at once. Undo and redo rebuild the canvas from
+  the graph.
+- Selection: a click selects one node, Shift+click adds or removes one, Shift+drag on the background is
+  egui-snarl's box selection, which becomes the selection. Dragging a selected node moves the whole
+  selection. Delete/Backspace, Cmd/Ctrl+D (duplicate), Cmd/Ctrl+A, Cmd/Ctrl+C/X/V. Copied nodes go to the
+  system clipboard as save-file JSON, so they paste into another window too; links leaving the copy are
+  dropped (`Graph::copy_nodes`, `Graph::paste`).
+- Totals panel: depot inputs, depot outputs, storage balances, power, raw resources, and facility counts
+  per type with the rounded-up total (`Totals::facilities_rounded`: each node rounded up, then added).
+- Round-up view (View menu or the top bar toggle): cards show `ceil(count)` facilities and how busy they
+  are; the inspector always shows it. The rounding lives in `aic_core::RoundUp`.
 
 ### M7: Data updates & extras
-- `data/<version>/overlay.json`: add, replace or remove recipes and items, and override facility speeds.
-  Merge it at load time after `data.json`. Use it for small fixes; a whole new game version gets its own folder.
-- Settings: switch data version and game-name language (from the `i18n/*.json` files present).
-- **Groups, step 1 (folder):** collapse a selection into one node. Every unconnected port inside shows as
-  an external port of the group; if it's also unconnected outside, it's depot I/O. Groups nest without
-  limit. They are a view only: the solver sees the flat graph. Saved as a group tree next to nodes and links.
-- **Groups, step 2 (copies):** a group can stand for N identical copies. Limits inside define one copy:
-  solve the inside once on its own (its external ports treated as depot) to get per-copy port rates, then
-  treat the group as a single recipe-like node with those rates and a copies count (optional limit).
-  If one copy is undetermined, the copies count is undetermined, with `CopiesUndetermined`.
-- **Ratio locks** on fan-outs and fan-ins.
-- **Outpost order:** a sink kind for settlement trades. Items go in, coupons count in totals. Unhides the
-  `hideProducer` recipes as outpost orders.
-- Export the canvas as a PNG.
-- Re-run the M4 performance spike against the real app at about 200 nodes, with icons, inspector and
-  totals. Fix any regression inside egui.
+Done, except where noted.
+- `data/<version>/overlay.json`, merged into `data.json` before it is checked, so overlay entries get the
+  same checks. Format: `{ "items": { "add": [...], "replace": [...], "remove": ["id"] }, "recipes": { same },
+  "facility_speeds": { "<facility id>": <speed> } }`, with items and recipes written as in `data.json`.
+  Adding an ID that exists, or replacing or removing one that doesn't, is an error that names
+  `overlay.json` and the path; unknown keys are errors too. `Catalog::from_bytes_with_overlay` for the web.
+- Settings (renamed from Raw resources): data version and game-name language (from `i18n/*.json`), kept in
+  eframe storage. Switching keeps the open graph and its undo steps: recipe nodes are matched against the
+  new data by ID (`Graph::rebind`), so a recipe the new data lacks shows as missing until switched back.
+  A chosen version that is gone falls back to the newest, a language that is gone to English.
+- **Groups, step 1 (folder):** Cmd/Ctrl+G groups the selection into a collapsed group, Cmd/Ctrl+Shift+G
+  ungroups. Groups live in the `Graph` (`Graph::group`, `Member`), so undo and save files include them. A
+  collapsed group is one card on the canvas whose pins are its ports (`Graph::external_ports`): the ports
+  of its nodes not linked to another node in it. Each pin is the inner node's port, so linking, the port
+  menu and right-click work on it. Expand from the card's menu or button or the inspector; a node in an
+  expanded group offers Collapse. A group left without nodes goes away. Copy and paste leave groups out.
+  The canvas view now holds `Member` (a node or a collapsed group) as egui-snarl's payload.
+- **Groups, step 2 (copies):** "Stands for copies" in the inspector, with an optional copies limit. The
+  solver folds each outermost copies group into a stand-in node (`solve/copies.rs`): one copy is solved on
+  its own with its ports on the depot, and the stand-in runs copies × those port rates. Nodes inside show
+  one copy; `Solution::group_flow` has the ports' flow for all copies and `Solution::node_copies` how many
+  times totals count each node. Nested copies groups multiply. One copy that can't be solved leaves the
+  count undetermined (`Warning::CopiesUndetermined`, `UndeterminedReason::CopiesUndetermined`). Known
+  limit: a group's ports with the same item and side act as one port of the stand-in.
+- **Ratio locks:** each link has a share at each end (`Link::out_share`, `in_share`); links with a share at
+  the same port keep their flows in proportion. Typed in the port menu, which lists the port's links when
+  it has several; blank links stay free and share the rest evenly. A lock holds even when it costs
+  throughput.
+- **Outpost orders:** `NodeKind::OutpostOrder`, a sink for a settlement trade (`Recipe::is_trade`: the
+  `hideProducer` recipes). Offered in the picker from an output port and in the recipe browser. The
+  coupons earned show on the card, in the inspector and in a Coupons total; they never go to the depot.
+- Export the canvas as a PNG (File menu): a window screenshot cropped to the canvas, so it is what is on
+  screen, not the whole graph.
+- Performance run against the real app: `cargo run --release -p aic-app --example perf_app` (201 recipe
+  nodes, 109 links, real data and icons, inspector and totals). On the M1 Pro on 2026-11-09 the UI took
+  4.1 ms per frame idle, 4.1 ms panning and 6.3 ms with a solve every frame. The frame interval was
+  about 16 ms, but the M4 spike measured the same 16 ms that day (5.0–5.7 ms UI), so the cap is outside
+  the app (it measured 5–8 ms during M4). No regression in egui. Re-measure on Windows with both
+  examples before writing ADR 0005.
 
 ### M8: `aic-extract` CLI
 - `aic-extract <source-kind> <input> --out data/<version>/` writes `data.json` (factoriolab format,

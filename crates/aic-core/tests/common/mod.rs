@@ -91,6 +91,21 @@ impl TestCatalog {
         self
     }
 
+    /// A settlement trade, hidden like the game data's: `coupons` of `coupon` per item of `input`.
+    pub fn outpost_order(
+        mut self,
+        id: &str,
+        facility: &str,
+        input: &str,
+        coupon: &str,
+        coupons: f64,
+    ) -> Self {
+        self = self.recipe(id, facility, 2.0, &[(input, 1.0)], &[(coupon, coupons)]);
+        let recipe = self.recipes.last_mut().expect("just added");
+        recipe["flags"] = json!(["hideProducer"]);
+        self
+    }
+
     pub fn build(self) -> Catalog {
         let mut items: Vec<Value> = vec![
             json!({ "id": "belt", "name": "belt", "category": "belt-and-pipe", "belt": { "speed": 0.5 } }),

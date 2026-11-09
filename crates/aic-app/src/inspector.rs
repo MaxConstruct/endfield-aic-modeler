@@ -1,8 +1,8 @@
 //! The right panel: the selected node or link, the graph's totals and its warnings.
 
 use aic_core::{
-    Graph, Issue, LinkId, NodeId, NodeKind, Port, Side, UndeterminedReason, Warning,
-    check_resources,
+    Graph, GroupId, GroupMode, Issue, LinkId, NodeId, NodeKind, Port, RoundUp, Side,
+    UndeterminedReason, Warning, check_resources,
 };
 use aic_data::{Catalog, ItemId};
 use eframe::egui::{self, RichText, Ui};
@@ -21,14 +21,20 @@ impl Workspace {
     pub(crate) fn inspector(&mut self, ui: &mut Ui, strings: &Strings) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(strings.get("inspector-title"));
-            match self.selection {
-                Some(Selection::Node(node)) if self.doc.graph().node(node).is_some() => {
-                    self.node_details(ui, strings, node);
-                }
+            match self.selection.clone() {
                 Some(Selection::Link(link)) if self.doc.graph().link(link).is_some() => {
                     self.link_details(ui, strings, link);
                 }
-                _ => {
+                Some(selection) => match (selection.single_node(), selection.single_group()) {
+                    (Some(node), _) if self.doc.graph().node(node).is_some() => {
+                        self.node_details(ui, strings, node);
+                    }
+                    (_, Some(group)) if self.doc.graph().group_info(group).is_some() => {
+                        self.group_details(ui, strings, group);
+                    }
+                    _ => self.many_nodes(ui, strings, selection.items().len()),
+                },
+                None => {
                     ui.weak(strings.get("inspector-nothing"));
                 }
             }
@@ -36,6 +42,116 @@ impl Workspace {
             self.totals(ui, strings);
             ui.separator();
             self.warnings(ui, strings);
+        });
+    }
+
+    fn group_details(&mut self, ui: &mut Ui, strings: &Strings, group: GroupId) {
+        let catalog = &self.catalog;
+        let graph = self.doc.graph();
+        let info = graph.group_info(group).expect("checked by caller").clone();
+        ui.label(RichText::new(strings.get("kind-group")).small().weak());
+        let mut name = info.name.clone();
+        let response = ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY));
+        let label = strings.get("inspector-group-name");
+        ui.ctx()
+            .accesskit_node_builder(response.id, |node| node.set_label(label));
+        let count = graph.nodes_in_group(group).len();
+        ui.label(names::node_count(strings, count));
+        let solution = self.doc.solution();
+        let mut is_copies = matches!(info.mode, GroupMode::Copies { .. });
+        let mut new_mode = None;
+        if ui
+            .checkbox(&mut is_copies, strings.get("group-copies-mode"))
+            .on_hover_text(strings.get("group-copies-hint"))
+            .changed()
+        {
+            new_mode = Some(if is_copies {
+                GroupMode::Copies { limit: None }
+            } else {
+                GroupMode::Folder
+            });
+        }
+        if let GroupMode::Copies { limit } = info.mode {
+            egui::Grid::new("group-copies")
+                .num_columns(2)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label(strings.get("group-copies-label"));
+                    let copies = solution.copies.get(&group).copied().flatten();
+                    ui.monospace(format::fixed(copies));
+                    ui.end_row();
+                    ui.label(strings.get("inspector-limit"));
+                    let field = LimitField {
+                        id: egui::Id::new("group-copies-limit"),
+                        buffer: &mut self.limit_edit,
+                        current: limit,
+                        width: 90.0,
+                        hint: strings.get("inspector-limit-hint"),
+                        label: strings.get("group-copies-limit"),
+                    };
+                    if let (_, Some(typed)) = field.show(ui) {
+                        new_mode = Some(GroupMode::Copies { limit: typed });
+                    }
+                    ui.end_row();
+                });
+        }
+        let ports = graph.external_ports(catalog, group);
+        let is_copies = matches!(info.mode, GroupMode::Copies { .. });
+        ui.add_space(4.0);
+        ui.label(RichText::new(strings.get("inspector-ports")).strong());
+        egui::Grid::new("group-ports")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                for port in &ports {
+                    let key = match port.side {
+                        Side::Input => "inspector-port-in",
+                        Side::Output => "inspector-port-out",
+                    };
+                    let item = names::item(catalog, port.item.as_str());
+                    ui.label(strings.format(key, &[("item", item)]));
+                    let flow = if is_copies {
+                        solution.group_flow.get(port)
+                    } else {
+                        solution.port_flow.get(port)
+                    };
+                    ui.monospace(per_min(strings, flow.copied().flatten()));
+                    ui.end_row();
+                }
+            });
+        let mut expand = false;
+        let mut ungroup = false;
+        ui.horizontal(|ui| {
+            expand = ui.button(strings.get("group-expand")).clicked();
+            ungroup = ui.button(strings.get("group-ungroup")).clicked();
+        });
+        if let Some(mode) = new_mode {
+            let _ = self.doc.set_group_mode(group, mode);
+        }
+        if response.changed() && !name.trim().is_empty() {
+            let _ = self.doc.rename_group(group, name.trim());
+        }
+        if expand {
+            let _ = self.doc.set_group_collapsed(&self.catalog, group, false);
+            self.select(None);
+        } else if ungroup {
+            self.ungroup_selection();
+        }
+    }
+
+    fn many_nodes(&mut self, ui: &mut Ui, strings: &Strings, count: usize) {
+        ui.label(
+            RichText::new(strings.format("inspector-many", &[("count", &count.to_string())]))
+                .strong()
+                .size(16.0),
+        );
+        ui.horizontal(|ui| {
+            if ui.button(strings.get("menu-duplicate")).clicked() {
+                self.duplicate();
+            }
+            if ui.button(strings.get("inspector-remove-nodes")).clicked() {
+                self.delete_selection();
+            }
         });
     }
 
@@ -79,10 +195,33 @@ impl Workspace {
                     let count = solution.facility_count.get(&node).copied().flatten();
                     ui.monospace(format::fixed(count));
                     ui.end_row();
+                    if let Some(rounded) = count.map(RoundUp::of) {
+                        ui.label(strings.get("inspector-round-up"));
+                        let percent = format::short(Some(rounded.utilization * 100.0));
+                        ui.monospace(strings.format(
+                            "inspector-round-up-value",
+                            &[
+                                ("facilities", &rounded.facilities.to_string()),
+                                ("percent", &percent),
+                            ],
+                        ));
+                        ui.end_row();
+                    }
                 }
                 if let Some(rate) = solution.rate.get(&node) {
                     ui.label(strings.get("inspector-rate"));
                     ui.monospace(per_min(strings, *rate));
+                    ui.end_row();
+                }
+                for (coupon, earned) in solution.coupons.get(&node).into_iter().flatten() {
+                    ui.label(strings.get("inspector-earns"));
+                    ui.monospace(strings.format(
+                        "inspector-earns-value",
+                        &[
+                            ("rate", &format::fixed(Some(*earned))),
+                            ("coupon", names::item(catalog, coupon.as_str())),
+                        ],
+                    ));
                     ui.end_row();
                 }
                 if let Some(flow) = solution.storage.get(&node) {
@@ -98,6 +237,33 @@ impl Workspace {
             let _ = self.doc.set_facility(node, facility);
         }
 
+        let graph = self.doc.graph();
+        if let Some(group) = graph.node(node).and_then(|n| n.group) {
+            let name = graph
+                .group_info(group)
+                .map(|g| g.name.clone())
+                .unwrap_or_default();
+            let mut collapse = false;
+            ui.horizontal(|ui| {
+                ui.label(strings.format("inspector-in-group", &[("group", &name)]));
+                collapse = ui.small_button(strings.get("group-collapse")).clicked();
+            });
+            if let Some(&copies) = self.doc.solution().node_copies.get(&node) {
+                ui.label(
+                    RichText::new(strings.format(
+                        "inspector-one-copy",
+                        &[("copies", &format::fixed(Some(copies)))],
+                    ))
+                    .weak()
+                    .small(),
+                );
+            }
+            if collapse {
+                let _ = self.doc.set_group_collapsed(&self.catalog, group, true);
+                self.select(Some(Selection::Items(vec![aic_core::Member::Group(group)])));
+                return;
+            }
+        }
         self.limit_field(ui, strings, node, &kind);
         self.throttle_reason(ui, strings, node);
         self.port_list(ui, strings, node, &kind);
@@ -108,9 +274,10 @@ impl Workspace {
 
     fn limit_field(&mut self, ui: &mut Ui, strings: &Strings, node: NodeId, kind: &NodeKind) {
         let required = match kind {
-            NodeKind::Recipe { .. } | NodeKind::Sink { .. } | NodeKind::MissingRecipe { .. } => {
-                false
-            }
+            NodeKind::Recipe { .. }
+            | NodeKind::Sink { .. }
+            | NodeKind::OutpostOrder { .. }
+            | NodeKind::MissingRecipe { .. } => false,
             NodeKind::Source { .. } | NodeKind::ControlPort { .. } => true,
             _ => return,
         };
@@ -248,6 +415,17 @@ impl Workspace {
                     solution.link_belts.get(&link).copied().flatten(),
                 ));
                 ui.end_row();
+                let found = graph.link(link).expect("checked by caller");
+                for (side, key) in [
+                    (Side::Output, "inspector-share-out"),
+                    (Side::Input, "inspector-share-in"),
+                ] {
+                    if let Some(share) = found.share(side) {
+                        ui.label(strings.get(key));
+                        ui.monospace(format::short(Some(share)));
+                        ui.end_row();
+                    }
+                }
             });
         if ui.button(strings.get("inspector-remove-link")).clicked() {
             self.doc.remove_link(&self.catalog, link);
@@ -269,6 +447,9 @@ impl Workspace {
         }
         item_list(ui, catalog, strings, "totals-depot-in", &totals.depot_in);
         item_list(ui, catalog, strings, "totals-depot-out", &totals.depot_out);
+        if !totals.coupons.is_empty() {
+            item_list(ui, catalog, strings, "totals-coupons", &totals.coupons);
+        }
         if !totals.storage_balance.is_empty() {
             item_list(
                 ui,
@@ -306,11 +487,17 @@ impl Workspace {
                     ui.weak(strings.get("totals-none"));
                 }
                 egui::Grid::new("totals-facilities")
-                    .num_columns(2)
+                    .num_columns(3)
                     .show(ui, |ui| {
                         for (facility, count) in &totals.facilities {
                             ui.label(names::facility(catalog, facility.as_str()));
                             ui.monospace(format::fixed(Some(*count)));
+                            let rounded = totals.facilities_rounded.get(facility).copied();
+                            ui.monospace(strings.format(
+                                "totals-facilities-rounded",
+                                &[("count", &rounded.unwrap_or_default().to_string())],
+                            ))
+                            .on_hover_text(strings.get("totals-facilities-rounded-hint"));
                             ui.end_row();
                         }
                     });
@@ -409,7 +596,15 @@ fn warning_text(catalog: &Catalog, strings: &Strings, graph: &Graph, warning: &W
         Warning::Undetermined { reason, .. } => strings.get(match reason {
             UndeterminedReason::NoLimit => "warning-undetermined-no-limit",
             UndeterminedReason::Unbounded => "warning-undetermined-unbounded",
+            UndeterminedReason::CopiesUndetermined => "warning-copies-undetermined",
         }),
+        Warning::CopiesUndetermined { group } => {
+            let name = graph
+                .group_info(*group)
+                .map(|g| g.name.clone())
+                .unwrap_or_default();
+            strings.format("warning-copies-undetermined-group", &[("group", &name)])
+        }
         Warning::Failed { message, .. } => {
             strings.format("warning-failed", &[("message", message)])
         }

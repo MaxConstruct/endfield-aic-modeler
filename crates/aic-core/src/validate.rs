@@ -103,7 +103,9 @@ impl Graph {
     ) {
         let limit_ok = |limit: Option<f64>| limit.is_none_or(|v| v.is_finite() && v >= 0.0);
         let limit = match kind {
-            NodeKind::Recipe { limit, .. } | NodeKind::Sink { limit, .. } => *limit,
+            NodeKind::Recipe { limit, .. }
+            | NodeKind::Sink { limit, .. }
+            | NodeKind::OutpostOrder { limit, .. } => *limit,
             NodeKind::Source { limit, .. } | NodeKind::ControlPort { limit, .. } => Some(*limit),
             _ => None,
         };
@@ -147,6 +149,23 @@ impl Graph {
                 node: id,
                 recipe: recipe.clone(),
             }),
+            NodeKind::OutpostOrder { recipe, item, .. } => {
+                let trade = catalog.recipe(recipe.as_str()).filter(|r| r.is_trade);
+                match trade {
+                    Some(trade) if trade.inputs.first().map(|(i, _)| i) == Some(item) => {
+                        if !trade.available_in(&self.region) {
+                            issues.push(Issue::RecipeOutsideRegion {
+                                node: id,
+                                recipe: recipe.clone(),
+                            });
+                        }
+                    }
+                    _ => issues.push(Issue::MissingRecipe {
+                        node: id,
+                        recipe: recipe.clone(),
+                    }),
+                }
+            }
             _ => {
                 if let Some(item) = kind.item()
                     && catalog.item(item.as_str()).is_none()

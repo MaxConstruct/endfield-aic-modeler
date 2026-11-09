@@ -10,7 +10,9 @@ use crate::catalog::{
 };
 use crate::error::LoadError;
 use crate::ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};
-use crate::raw::{RawData, RawI18n, RawIcon, RawItem, RawRecipe, RawSpeed};
+use crate::raw::{
+    RawData, RawEntry, RawI18n, RawIcon, RawItem, RawOverlay, RawOverlayList, RawRecipe, RawSpeed,
+};
 
 /// Side length of one cell in `icons.webp`.
 const ICON_SIZE: u32 = 64;
@@ -27,6 +29,7 @@ type Regions = IndexMap<RegionId, Region>;
 /// The file names that errors report.
 pub(crate) struct Sources<'a> {
     pub data: &'a Path,
+    pub overlay: &'a Path,
     pub i18n: &'a Path,
 }
 
@@ -40,21 +43,38 @@ impl Catalog {
         i18n_json: &[u8],
         icons_webp: Option<&[u8]>,
     ) -> Result<Catalog, LoadError> {
+        Self::from_bytes_with_overlay(data_json, None, i18n_json, icons_webp)
+    }
+
+    /// Like [`Catalog::from_bytes`], with the contents of `overlay.json` merged on top of
+    /// `data.json` first.
+    pub fn from_bytes_with_overlay(
+        data_json: &[u8],
+        overlay_json: Option<&[u8]>,
+        i18n_json: &[u8],
+        icons_webp: Option<&[u8]>,
+    ) -> Result<Catalog, LoadError> {
         let sources = Sources {
             data: Path::new("data.json"),
+            overlay: Path::new("overlay.json"),
             i18n: Path::new("i18n.json"),
         };
-        parse(data_json, i18n_json, icons_webp, &sources)
+        parse(data_json, overlay_json, i18n_json, icons_webp, &sources)
     }
 }
 
 pub(crate) fn parse(
     data_json: &[u8],
+    overlay_json: Option<&[u8]>,
     i18n_json: &[u8],
     icons_webp: Option<&[u8]>,
     sources: &Sources<'_>,
 ) -> Result<Catalog, LoadError> {
-    let raw: RawData = from_json(data_json, sources.data)?;
+    let mut raw: RawData = from_json(data_json, sources.data)?;
+    if let Some(overlay) = overlay_json {
+        let overlay: RawOverlay = from_json(overlay, sources.overlay)?;
+        apply_overlay(&mut raw, overlay, sources.overlay)?;
+    }
     let i18n: RawI18n = from_json(i18n_json, sources.i18n)?;
     let mut builder = Builder {
         file: sources.data.to_path_buf(),
@@ -65,6 +85,64 @@ pub(crate) fn parse(
     catalog.icons_webp = icons_webp.map(<[u8]>::to_vec);
     catalog.warnings = builder.warnings;
     Ok(catalog)
+}
+
+/// Merges an overlay into the data before it is checked, so overlay entries get the same checks as
+/// the data's own.
+fn apply_overlay(raw: &mut RawData, overlay: RawOverlay, file: &Path) -> Result<(), LoadError> {
+    let invalid = |path: String, message: String| LoadError::Invalid {
+        file: file.to_path_buf(),
+        path,
+        message,
+    };
+    merge(&mut raw.items, overlay.items, "items", &invalid)?;
+    merge(&mut raw.recipes, overlay.recipes, "recipes", &invalid)?;
+    for (id, speed) in overlay.facility_speeds {
+        let path = format!("facility_speeds.{id}");
+        let machine = raw
+            .items
+            .iter_mut()
+            .find(|item| item.id == id)
+            .and_then(|item| item.machine.as_mut())
+            .ok_or_else(|| invalid(path.clone(), format!("`{id}` is not a facility")))?;
+        check_positive(speed).map_err(|m| invalid(path, m))?;
+        machine.speed = speed;
+    }
+    Ok(())
+}
+
+fn merge<T: RawEntry>(
+    entries: &mut Vec<T>,
+    changes: RawOverlayList<T>,
+    key: &str,
+    invalid: &dyn Fn(String, String) -> LoadError,
+) -> Result<(), LoadError> {
+    let position = |entries: &[T], id: &str| entries.iter().position(|e| e.id() == id);
+    for (i, id) in changes.remove.iter().enumerate() {
+        let at = position(entries, id)
+            .ok_or_else(|| invalid(format!("{key}.remove[{i}]"), format!("no `{id}` to remove")))?;
+        entries.remove(at);
+    }
+    for (i, entry) in changes.replace.into_iter().enumerate() {
+        let id = entry.id().to_owned();
+        let at = position(entries, &id).ok_or_else(|| {
+            invalid(
+                format!("{key}.replace[{i}].id"),
+                format!("no `{id}` to replace"),
+            )
+        })?;
+        entries[at] = entry;
+    }
+    for (i, entry) in changes.add.into_iter().enumerate() {
+        if position(entries, entry.id()).is_some() {
+            return Err(invalid(
+                format!("{key}.add[{i}].id"),
+                format!("`{}` already exists; use `replace`", entry.id()),
+            ));
+        }
+        entries.push(entry);
+    }
+    Ok(())
 }
 
 fn from_json<T: DeserializeOwned>(bytes: &[u8], file: &Path) -> Result<T, LoadError> {
@@ -252,6 +330,9 @@ impl Builder {
                 outputs: self.quantities(&recipe.outputs, items, &format!("{path}.out"))?,
                 power_override_kw: recipe.usage,
                 is_mining: has_flag(recipe, "mining"),
+                is_trade: has_flag(recipe, "hideProducer")
+                    && recipe.inputs.len() == 1
+                    && !recipe.outputs.is_empty(),
                 hidden: has_flag(recipe, "hideProducer")
                     || facility_ids.iter().any(|f| f.as_str() == DOMAIN_TRANSFER),
                 facilities: facility_ids,

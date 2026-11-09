@@ -5,9 +5,12 @@ use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use thiserror::Error;
 
+use crate::group::Group;
+
 new_key_type! {
     pub struct NodeId;
     pub struct LinkId;
+    pub struct GroupId;
 }
 
 /// One player-made plan. It belongs to exactly one region.
@@ -20,6 +23,7 @@ pub struct Graph {
     pub(crate) region: RegionId,
     pub(crate) nodes: SlotMap<NodeId, Node>,
     pub(crate) links: SlotMap<LinkId, Link>,
+    pub(crate) groups: SlotMap<GroupId, Group>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +31,8 @@ pub struct Node {
     pub kind: NodeKind,
     /// Position on the canvas. The solver ignores it.
     pub pos: Pos,
+    /// The group the node is directly in, if any.
+    pub group: Option<GroupId>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -48,6 +54,13 @@ pub enum NodeKind {
     Source { item: ItemId, limit: f64 },
     /// Consumes one item as a goal of the graph, up to `limit` per minute if set.
     Sink { item: ItemId, limit: Option<f64> },
+    /// A sink for a settlement trade: takes `item`, the trade recipe's input, up to `limit` per
+    /// minute if set. The coupons it earns count in the totals.
+    OutpostOrder {
+        recipe: RecipeId,
+        item: ItemId,
+        limit: Option<f64>,
+    },
     /// Passes one item from its input links to its output links. `None` until the first link.
     Splitter { item: Option<ItemId> },
     /// Joins links of one item. `None` until the first link.
@@ -66,10 +79,59 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
-    /// The single item of a source, sink or logistics node.
+    /// The items of the node's ports on one side, in port order. A logistics node has one port per
+    /// side, whose item is `None` until its first link.
+    pub fn port_items(&self, catalog: &Catalog, side: Side) -> Vec<Option<ItemId>> {
+        match (self, side) {
+            (Self::Recipe { recipe, .. }, _) => catalog
+                .recipe(recipe.as_str())
+                .map(|recipe| {
+                    let items = match side {
+                        Side::Input => &recipe.inputs,
+                        Side::Output => &recipe.outputs,
+                    };
+                    items.iter().map(|(item, _)| Some(item.clone())).collect()
+                })
+                .unwrap_or_default(),
+            (Self::Source { item, .. }, Side::Output)
+            | (Self::Sink { item, .. } | Self::OutpostOrder { item, .. }, Side::Input) => {
+                vec![Some(item.clone())]
+            }
+            (Self::Source { .. }, Side::Input)
+            | (Self::Sink { .. } | Self::OutpostOrder { .. }, Side::Output) => vec![],
+            (
+                Self::Splitter { item }
+                | Self::Merger { item }
+                | Self::Storage { item }
+                | Self::ControlPort { item, .. },
+                _,
+            ) => vec![item.clone()],
+            (Self::MissingRecipe { .. }, _) => vec![],
+        }
+    }
+
+    /// An outpost order for a trade recipe, with no limit. `None` when `recipe` isn't a trade.
+    pub fn outpost_order(catalog: &Catalog, recipe: &RecipeId) -> Option<Self> {
+        let found = catalog.recipe(recipe.as_str()).filter(|r| r.is_trade)?;
+        let (item, _) = found.inputs.first()?;
+        Some(Self::OutpostOrder {
+            recipe: recipe.clone(),
+            item: item.clone(),
+            limit: None,
+        })
+    }
+
+    /// Whether the node consumes its one item as a goal: a sink or an outpost order.
+    pub fn is_sink(&self) -> bool {
+        matches!(self, Self::Sink { .. } | Self::OutpostOrder { .. })
+    }
+
+    /// The single item of a source, sink, outpost order or logistics node.
     pub fn item(&self) -> Option<&ItemId> {
         match self {
-            Self::Source { item, .. } | Self::Sink { item, .. } => Some(item),
+            Self::Source { item, .. }
+            | Self::Sink { item, .. }
+            | Self::OutpostOrder { item, .. } => Some(item),
             Self::Splitter { item }
             | Self::Merger { item }
             | Self::Storage { item }
@@ -83,6 +145,7 @@ impl NodeKind {
         match self {
             Self::Recipe { limit, .. }
             | Self::Sink { limit, .. }
+            | Self::OutpostOrder { limit, .. }
             | Self::MissingRecipe { limit, .. } => *limit,
             Self::Source { limit, .. } | Self::ControlPort { limit, .. } => Some(*limit),
             Self::Splitter { .. } | Self::Merger { .. } | Self::Storage { .. } => None,
@@ -112,11 +175,37 @@ impl NodeKind {
 }
 
 /// A wire carrying one item from an output port of `from` to an input port of `to`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Link {
     pub from: NodeId,
     pub to: NodeId,
     pub item: ItemId,
+    /// Its share of a ratio lock on the fan-out at `from`. Links with a share at the same port
+    /// keep their flows in proportion to their shares.
+    pub out_share: Option<f64>,
+    /// Its share of a ratio lock on the fan-in at `to`.
+    pub in_share: Option<f64>,
+}
+
+impl Link {
+    pub fn new(from: NodeId, to: NodeId, item: ItemId) -> Self {
+        Self {
+            from,
+            to,
+            item,
+            out_share: None,
+            in_share: None,
+        }
+    }
+
+    /// Its share of the ratio lock at its `Output` end (the fan-out at `from`) or its `Input` end
+    /// (the fan-in at `to`).
+    pub fn share(&self, side: Side) -> Option<f64> {
+        match side {
+            Side::Output => self.out_share,
+            Side::Input => self.in_share,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -193,6 +282,16 @@ pub enum EditError {
     NotARecipe,
     #[error("the node has no such port")]
     NoSuchPort,
+    #[error("link {0:?} does not exist")]
+    UnknownLink(LinkId),
+    #[error("a share must be a finite number above 0, not {0}")]
+    InvalidShare(f64),
+    #[error("group {0:?} does not exist")]
+    UnknownGroup(GroupId),
+    #[error("a group needs at least one member")]
+    EmptyGroup,
+    #[error("only nodes and groups in the same group can be grouped together")]
+    MixedGroups,
 }
 
 impl Graph {
@@ -201,6 +300,7 @@ impl Graph {
             region,
             nodes: SlotMap::with_key(),
             links: SlotMap::with_key(),
+            groups: SlotMap::with_key(),
         }
     }
 
@@ -233,7 +333,11 @@ impl Graph {
     }
 
     pub fn add_node(&mut self, kind: NodeKind, pos: Pos) -> NodeId {
-        self.nodes.insert(Node { kind, pos })
+        self.nodes.insert(Node {
+            kind,
+            pos,
+            group: None,
+        })
     }
 
     /// Removes a node and every link touching it.
@@ -247,7 +351,11 @@ impl Graph {
         for link in touching {
             self.remove_link(link);
         }
-        self.nodes.remove(id)
+        let node = self.nodes.remove(id)?;
+        if let Some(group) = node.group {
+            self.drop_if_empty(group);
+        }
+        Some(node)
     }
 
     /// Links an output port to an input port. A logistics node without an item takes the link's item.
@@ -270,11 +378,7 @@ impl Graph {
                 slot.get_or_insert_with(|| item.clone());
             }
         }
-        Ok(self.links.insert(Link {
-            from: from.node,
-            to: to.node,
-            item,
-        }))
+        Ok(self.links.insert(Link::new(from.node, to.node, item)))
     }
 
     /// Removes a link. A logistics node left without links forgets its item.
@@ -294,6 +398,29 @@ impl Graph {
             }
         }
         Some(link)
+    }
+
+    /// Sets a link's share of the ratio lock at its `side` end, or clears it with `None`.
+    pub fn set_share(
+        &mut self,
+        link: LinkId,
+        side: Side,
+        share: Option<f64>,
+    ) -> Result<(), EditError> {
+        if let Some(value) = share
+            && !(value.is_finite() && value > 0.0)
+        {
+            return Err(EditError::InvalidShare(value));
+        }
+        let link = self
+            .links
+            .get_mut(link)
+            .ok_or(EditError::UnknownLink(link))?;
+        match side {
+            Side::Output => link.out_share = share,
+            Side::Input => link.in_share = share,
+        }
+        Ok(())
     }
 
     pub fn set_pos(&mut self, id: NodeId, pos: Pos) -> Result<(), EditError> {
@@ -316,6 +443,7 @@ impl Graph {
         match &mut node.kind {
             NodeKind::Recipe { limit: slot, .. }
             | NodeKind::Sink { limit: slot, .. }
+            | NodeKind::OutpostOrder { limit: slot, .. }
             | NodeKind::MissingRecipe { limit: slot, .. } => *slot = limit,
             NodeKind::Source { limit: slot, .. } | NodeKind::ControlPort { limit: slot, .. } => {
                 *slot = limit.ok_or(EditError::LimitRequired)?;
@@ -388,7 +516,9 @@ impl Graph {
             NodeKind::Source { item, .. } if port.side == Side::Output && *item == port.item => {
                 Ok(1.0)
             }
-            NodeKind::Sink { item, .. } if port.side == Side::Input && *item == port.item => {
+            NodeKind::Sink { item, .. } | NodeKind::OutpostOrder { item, .. }
+                if port.side == Side::Input && *item == port.item =>
+            {
                 Ok(1.0)
             }
             NodeKind::ControlPort { item, .. }
@@ -401,6 +531,105 @@ impl Graph {
             }
             _ => Err(EditError::NoSuchPort),
         }
+    }
+
+    /// Matches recipe nodes against another data version: a recipe or facility it lacks makes a
+    /// [`NodeKind::MissingRecipe`], and a missing recipe it has becomes a recipe node again. Node
+    /// IDs stay the same.
+    pub fn rebind(&mut self, catalog: &Catalog) {
+        for node in self.nodes.values_mut() {
+            let (recipe, facility, limit) = match &node.kind {
+                NodeKind::Recipe {
+                    recipe,
+                    facility,
+                    limit,
+                }
+                | NodeKind::MissingRecipe {
+                    recipe,
+                    facility,
+                    limit,
+                } => (recipe.clone(), facility.clone(), *limit),
+                _ => continue,
+            };
+            let known = catalog.recipe(recipe.as_str()).is_some()
+                && catalog.facility(facility.as_str()).is_some();
+            node.kind = if known {
+                NodeKind::Recipe {
+                    recipe,
+                    facility,
+                    limit,
+                }
+            } else {
+                NodeKind::MissingRecipe {
+                    recipe,
+                    facility,
+                    limit,
+                }
+            };
+        }
+    }
+
+    /// A new graph in the same region with copies of `nodes` and the links between them. A
+    /// logistics node left without links forgets its item, as it would after unlinking.
+    pub fn copy_nodes(&self, nodes: &[NodeId]) -> Graph {
+        let mut copy = Graph::new(self.region.clone());
+        let mut ids = std::collections::HashMap::new();
+        for &id in nodes {
+            if let Some(node) = self.nodes.get(id)
+                && !ids.contains_key(&id)
+            {
+                ids.insert(id, copy.nodes.insert(node.clone()));
+            }
+        }
+        for link in self.links.values() {
+            if let (Some(&from), Some(&to)) = (ids.get(&link.from), ids.get(&link.to)) {
+                copy.links.insert(Link {
+                    from,
+                    to,
+                    ..link.clone()
+                });
+            }
+        }
+        let unlinked: Vec<NodeId> = copy
+            .nodes
+            .keys()
+            .filter(|&id| !copy.links.values().any(|l| l.from == id || l.to == id))
+            .collect();
+        for id in unlinked {
+            if let Some(slot) = copy.nodes[id].kind.logistics_item_mut() {
+                *slot = None;
+            }
+        }
+        copy
+    }
+
+    /// Adds every node of `other`, moved by `offset`, and links them as they are linked there.
+    /// Returns the new nodes in `other`'s order. A link this graph refuses is left out.
+    pub fn paste(&mut self, catalog: &Catalog, other: &Graph, offset: Pos) -> Vec<NodeId> {
+        let mut ids = std::collections::HashMap::new();
+        let mut pasted = Vec::with_capacity(other.nodes.len());
+        for (id, node) in &other.nodes {
+            let pos = Pos {
+                x: node.pos.x + offset.x,
+                y: node.pos.y + offset.y,
+            };
+            let new = self.add_node(node.kind.clone(), pos);
+            ids.insert(id, new);
+            pasted.push(new);
+        }
+        for link in other.links.values() {
+            let (from, to) = (ids[&link.from], ids[&link.to]);
+            let linked = self.connect(
+                catalog,
+                PortRef::new(from, link.item.clone()),
+                PortRef::new(to, link.item.clone()),
+            );
+            if let Ok(id) = linked {
+                self.links[id].out_share = link.out_share;
+                self.links[id].in_share = link.in_share;
+            }
+        }
+        pasted
     }
 
     /// Picks which facility a recipe node runs on. [`Graph::validate`] reports one that can't run
@@ -477,11 +706,13 @@ impl Graph {
                     .map(|(id, _)| Some(id.clone()))
                     .ok_or_else(no_port)
             }
-            NodeKind::Source { item, .. } | NodeKind::Sink { item, .. } => {
-                let right_side = matches!(
-                    (&node.kind, side),
-                    (NodeKind::Source { .. }, Side::Output) | (NodeKind::Sink { .. }, Side::Input)
-                );
+            NodeKind::Source { item, .. }
+            | NodeKind::Sink { item, .. }
+            | NodeKind::OutpostOrder { item, .. } => {
+                let right_side = match side {
+                    Side::Output => matches!(node.kind, NodeKind::Source { .. }),
+                    Side::Input => node.kind.is_sink(),
+                };
                 let right_item = port.item.as_ref().is_none_or(|wanted| wanted == item);
                 if right_side && right_item {
                     Ok(Some(item.clone()))

@@ -198,3 +198,48 @@ fn nothing_found_lists_every_place_tried() {
     };
     assert_eq!(tried, [nowhere().join("data"), fixtures().join("data")]);
 }
+
+/// A version folder in the temp directory with the v1.10.0 fixture, plus `extra` files.
+fn temp_version(name: &str, extra: &[(&str, &str)]) -> PathBuf {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/v1.10.0");
+    let dir = std::env::temp_dir()
+        .join(format!("aic-data-{name}-{}", std::process::id()))
+        .join("v1.10.0");
+    std::fs::create_dir_all(dir.join("i18n")).unwrap();
+    std::fs::copy(fixture.join("data.json"), dir.join("data.json")).unwrap();
+    std::fs::copy(fixture.join("i18n/en.json"), dir.join("i18n/en.json")).unwrap();
+    for (file, text) in extra {
+        std::fs::write(dir.join(file), text).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn load_merges_the_folders_overlay() {
+    let dir = temp_version(
+        "overlay",
+        &[(
+            "overlay.json",
+            r#"{ "recipes": { "remove": ["liquid_sewage-mix"] } }"#,
+        )],
+    );
+    let catalog = aic_data::load(&dir, "en").expect("loads");
+    assert!(catalog.recipe("liquid_sewage-mix").is_none());
+
+    std::fs::write(dir.join("overlay.json"), r#"{ "oops": 1 }"#).unwrap();
+    match aic_data::load(&dir, "en") {
+        Err(aic_data::LoadError::Json { file, .. }) => assert_eq!(file, dir.join("overlay.json")),
+        other => panic!("expected the overlay's error, got {other:?}"),
+    }
+    let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+}
+
+#[test]
+fn languages_are_the_names_files_present() {
+    let dir = temp_version(
+        "languages",
+        &[("i18n/fr.json", "{}"), ("i18n/notes.txt", "")],
+    );
+    assert_eq!(aic_data::list_languages(&dir).unwrap(), ["en", "fr"]);
+    let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+}

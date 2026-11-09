@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
+use aic_app::data::DataFolder;
 use aic_app::i18n::Strings;
-use aic_app::{App, WINDOW_SIZE, load_catalog};
+use aic_app::{App, WINDOW_SIZE};
 
 fn main() -> eframe::Result {
     let strings = Strings::english();
     let title = strings.get("app-title");
-    let catalog = load_catalog(data_flag().as_deref()).map_err(|error| error.to_string());
+    let folder = DataFolder::find(data_flag().as_deref()).map_err(|error| error.to_string());
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title(title.clone())
@@ -16,7 +17,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         &title,
         options,
-        Box::new(|cc| Ok(Box::new(App::new(strings, catalog, cc.storage)))),
+        Box::new(|cc| Ok(Box::new(App::from_folder(strings, folder, cc.storage)))),
     )
 }
 

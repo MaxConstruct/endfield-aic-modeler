@@ -208,6 +208,8 @@ pub struct Recipe {
     pub is_mining: bool,
     /// Left out of the recipe browser: outpost trades and cross-region transfers.
     pub hidden: bool,
+    /// A settlement trade: one item in, coupons out. Placed as an outpost order, not a recipe node.
+    pub is_trade: bool,
     /// Regions the recipe exists in. Empty means every region.
     pub regions: Vec<RegionId>,
 }

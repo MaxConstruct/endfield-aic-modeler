@@ -13,6 +13,7 @@ use crate::parse::{Sources, parse};
 pub const DATA_DIR_ENV: &str = "AIC_DATA_DIR";
 
 const DATA_FILE: &str = "data.json";
+const OVERLAY_FILE: &str = "overlay.json";
 const ICONS_FILE: &str = "icons.webp";
 const IMAGES_DIR: &str = "images";
 
@@ -120,22 +121,25 @@ fn version_key(name: &str) -> (Option<Vec<u64>>, &str) {
     (numbers, name)
 }
 
-/// Reads `data.json`, `i18n/<lang>.json` and, if present, `icons.webp` and the PNG files under
-/// `images/` from one version folder.
+/// Reads `data.json`, `i18n/<lang>.json` and, if present, `overlay.json`, `icons.webp` and the PNG
+/// files under `images/` from one version folder.
 ///
 /// The catalog's version is the folder name. If `data.json` declares a different one, that is a
 /// [`LoadWarning::VersionMismatch`].
 pub fn load(version_dir: &Path, lang: &str) -> Result<Catalog, LoadError> {
     let data_path = version_dir.join(DATA_FILE);
     let i18n_path = version_dir.join("i18n").join(format!("{lang}.json"));
+    let overlay_path = version_dir.join(OVERLAY_FILE);
     let data = read(&data_path)?;
+    let overlay = read_optional(&overlay_path)?;
     let i18n = read(&i18n_path)?;
     let icons = read_optional(&version_dir.join(ICONS_FILE))?;
     let sources = Sources {
         data: &data_path,
+        overlay: &overlay_path,
         i18n: &i18n_path,
     };
-    let mut catalog = parse(&data, &i18n, icons.as_deref(), &sources)?;
+    let mut catalog = parse(&data, overlay.as_deref(), &i18n, icons.as_deref(), &sources)?;
     read_images(&version_dir.join(IMAGES_DIR), &mut catalog)?;
     if let Some(folder) = version_dir.file_name().and_then(|name| name.to_str()) {
         let declared = std::mem::replace(&mut catalog.version, folder.to_owned());
@@ -147,6 +151,25 @@ pub fn load(version_dir: &Path, lang: &str) -> Result<Catalog, LoadError> {
         }
     }
     Ok(catalog)
+}
+
+/// The languages a version folder has names for: the stems of `i18n/*.json`, sorted.
+pub fn list_languages(version_dir: &Path) -> Result<Vec<String>, LoadError> {
+    let dir = version_dir.join("i18n");
+    let read_error = |source| LoadError::Read {
+        file: dir.clone(),
+        source,
+    };
+    let mut languages = Vec::new();
+    for entry in fs::read_dir(&dir).map_err(read_error)? {
+        let path = entry.map_err(read_error)?.path();
+        let is_json = path.extension().is_some_and(|ext| ext == "json");
+        if let (true, Some(stem)) = (is_json, path.file_stem().and_then(|s| s.to_str())) {
+            languages.push(stem.to_owned());
+        }
+    }
+    languages.sort();
+    Ok(languages)
 }
 
 /// Reads `images/<kind folder>/<id>.png` for every kind. A missing folder is fine; other files are

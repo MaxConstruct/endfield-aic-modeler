@@ -117,7 +117,7 @@ Several links feeding one input port or merger. It draws evenly from the feeders
 _Avoid_: Merge, join
 
 **Ratio lock**:
-A fixed split the player sets on a fan-out (e.g. 70/30) that replaces the even split.
+A fixed split the player sets on a fan-out or fan-in (e.g. 70/30) that replaces the even split. Each locked link has a share; links without one share the rest evenly.
 _Avoid_: Weight, priority
 
 **Facility count**:

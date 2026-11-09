@@ -464,3 +464,38 @@ fn validation_catches_what_a_hand_edited_file_can_break() {
         "{issues:?}"
     );
 }
+
+#[test]
+fn rebinding_to_other_data_marks_missing_recipes_and_restores_known_ones() {
+    let old = TestCatalog::new()
+        .facility("furnace", 5.0)
+        .recipe("ingot", "furnace", 2.0, &[("ore", 1.0)], &[("ingot", 1.0)])
+        .build();
+    let new = TestCatalog::new()
+        .facility("furnace", 5.0)
+        .recipe(
+            "plate",
+            "furnace",
+            2.0,
+            &[("ingot", 1.0)],
+            &[("plate", 1.0)],
+        )
+        .build();
+    let mut g = Graph::new(region(TUNDRA));
+    let ingot = add_recipe(&mut g, &old, "ingot", Some(2.0));
+
+    g.rebind(&new);
+    assert_eq!(
+        g.node(ingot).unwrap().kind,
+        NodeKind::MissingRecipe {
+            recipe: "ingot".into(),
+            facility: "furnace".into(),
+            limit: Some(2.0),
+        }
+    );
+    g.rebind(&old);
+    assert!(matches!(
+        g.node(ingot).unwrap().kind,
+        NodeKind::Recipe { .. }
+    ));
+}

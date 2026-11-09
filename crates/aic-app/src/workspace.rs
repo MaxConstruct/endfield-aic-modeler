@@ -1,14 +1,18 @@
-//! Everything on screen once game data has loaded: the top bar, the recipe browser, the canvas, the
-//! inspector, the node picker and the settings window.
+//! Everything on screen once game data has loaded: the menu bar, the recipe browser, the canvas, the
+//! inspector, the node picker, the dialogs and the settings window.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
-use aic_core::{LinkError, NodeId, NodeKind, PortRef, Side};
+use aic_core::{Graph, GroupId, LinkError, Member, NodeId, NodeKind, PortRef, Side};
 use aic_data::{Catalog, RecipeId, RegionId};
-use eframe::egui::{self, Key, Pos2, RichText, Ui, vec2};
+use eframe::egui::{self, Pos2, RichText, Ui, vec2};
 
 use crate::canvas::{Canvas, CanvasEvent, Selection};
+use crate::data::{DataChoice, DataFolder};
 use crate::document::{Anchor, Document, port_ref};
+use crate::edit::Shortcut;
+use crate::files::Pending;
 use crate::format;
 use crate::i18n::Strings;
 use crate::names;
@@ -34,11 +38,32 @@ pub struct Workspace {
     /// What the player is typing in the inspector's limit field.
     pub(crate) limit_edit: String,
     pub(crate) port_menu: Option<PortMenu>,
-    show_browser: bool,
-    show_inspector: bool,
-    /// The last refused action, shown until the next edit.
-    status: Option<String>,
+    pub(crate) show_browser: bool,
+    pub(crate) show_inspector: bool,
+    /// Show whole facilities and how busy they are instead of fractional counts.
+    pub(crate) round_up: bool,
+    /// Nodes copied with Ctrl+C, and how many times they were pasted since.
+    pub(crate) clipboard: Option<(Graph, u32)>,
+    /// Files opened or saved lately, newest first. Kept in eframe storage.
+    pub(crate) recent_files: Vec<PathBuf>,
+    /// An action waiting for the player to agree to drop unsaved changes.
+    pub(crate) confirm_discard: Option<Pending>,
+    /// The New dialog, open with the region picked so far.
+    pub(crate) new_dialog: Option<RegionId>,
+    /// The window may close even with unsaved changes: the player agreed.
+    pub(crate) allow_close: bool,
+    /// The data version of the open file, when it isn't the active one.
+    pub(crate) other_data_version: Option<String>,
+    /// The data folder and what was loaded from it; `None` when the app was given a catalog.
+    pub(crate) data: Option<(DataFolder, DataChoice)>,
+    /// Decoded icons belong to the old data after a switch.
+    pub(crate) icons_stale: bool,
+    /// Where to save the canvas once the window is next drawn.
+    pub(crate) export_to: Option<PathBuf>,
+    /// The last refused action or file message, shown until the next one.
+    pub(crate) status: Option<String>,
     last_solve: Option<Duration>,
+    pub(crate) last_title: String,
 }
 
 impl Workspace {
@@ -62,16 +87,68 @@ impl Workspace {
             port_menu: None,
             show_browser: true,
             show_inspector: true,
+            round_up: false,
+            clipboard: None,
+            recent_files: Vec::new(),
+            confirm_discard: None,
+            new_dialog: None,
+            allow_close: false,
+            other_data_version: None,
+            data: None,
+            icons_stale: false,
+            export_to: None,
             status: None,
             last_solve: None,
+            last_title: String::new(),
         }
     }
 
-    /// Starts an empty graph in `region`.
+    /// Starts an empty graph in `region`, dropping the open one.
     pub fn new_graph(&mut self, region: RegionId) {
-        self.doc = Document::new(region);
+        self.set_document(Document::new(region));
+        self.other_data_version = None;
+    }
+
+    pub(crate) fn set_document(&mut self, doc: Document) {
+        self.doc = doc;
         self.picker = None;
+        self.port_menu = None;
         self.select(None);
+    }
+
+    pub fn set_data_folder(&mut self, folder: DataFolder, choice: DataChoice) {
+        self.data = Some((folder, choice));
+    }
+
+    pub fn settings_mut(&mut self) -> &mut SettingsWindow {
+        &mut self.settings
+    }
+
+    pub fn data_choice(&self) -> Option<&DataChoice> {
+        self.data.as_ref().map(|(_, choice)| choice)
+    }
+
+    /// Loads another data version or language from the data folder. The open graph stays; its
+    /// recipe nodes are matched against the new data by ID. A failure keeps the current data.
+    pub fn switch_data(&mut self, choice: DataChoice, strings: &Strings) {
+        let Some((folder, _)) = &self.data else {
+            return;
+        };
+        match folder.load(&choice) {
+            Ok(catalog) => {
+                self.doc.rebind(&catalog);
+                self.catalog = catalog;
+                self.icons_stale = true;
+                if let Some((_, current)) = &mut self.data {
+                    *current = choice;
+                }
+                self.status = None;
+            }
+            Err(error) => {
+                self.status =
+                    Some(strings.format("data-switch-failed", &[("error", &error.to_string())]));
+            }
+        }
     }
 
     pub fn catalog(&self) -> &Catalog {
@@ -90,8 +167,17 @@ impl Workspace {
         &self.availability
     }
 
-    pub fn selection(&self) -> Option<Selection> {
-        self.selection
+    pub fn selection(&self) -> Option<&Selection> {
+        self.selection.as_ref()
+    }
+
+    /// Selects these nodes, as a box selection would.
+    pub fn select_nodes(&mut self, nodes: Vec<NodeId>) {
+        self.select(Selection::of_nodes(nodes));
+    }
+
+    pub fn set_round_up(&mut self, on: bool) {
+        self.round_up = on;
     }
 
     /// Opens the node picker as if from `origin`, with the new node going to `graph_pos`.
@@ -119,12 +205,26 @@ impl Workspace {
             .port_on_screen(&self.doc, &self.catalog, node, side, &item.into())
     }
 
+    /// Where a node was drawn last frame, on screen.
+    pub fn node_on_screen(&self, node: NodeId) -> Option<eframe::egui::Rect> {
+        self.canvas.item_on_screen(Member::Node(node))
+    }
+
+    /// Where a collapsed group was drawn last frame, on screen.
+    pub fn group_on_screen(&self, group: GroupId) -> Option<eframe::egui::Rect> {
+        self.canvas.item_on_screen(Member::Group(group))
+    }
+
     /// The middle of the canvas, on screen.
     pub fn canvas_center_on_screen(&self) -> Pos2 {
         self.canvas.rect.center()
     }
 
     pub fn ui(&mut self, ui: &mut Ui, strings: &Strings) {
+        self.handle_close_request(ui.ctx());
+        if std::mem::take(&mut self.icons_stale) {
+            crate::widgets::forget_icons(ui.ctx());
+        }
         egui::Panel::top("top-bar").show(ui, |ui| self.top_bar(ui, strings));
         egui::Panel::bottom("status-bar").show(ui, |ui| self.status_bar(ui, strings));
         let mut show_browser = self.show_browser;
@@ -139,7 +239,7 @@ impl Workspace {
                     .and_then(|id| recipe_node(&self.catalog, id))
                 {
                     let node = self.doc.add_node(kind, self.canvas.center());
-                    self.select(Some(Selection::Node(node)));
+                    self.select(Some(Selection::node(node)));
                 }
             });
         self.show_browser = show_browser;
@@ -152,9 +252,14 @@ impl Workspace {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {
-                let events =
-                    self.canvas
-                        .show(ui, &mut self.doc, &self.catalog, strings, self.selection);
+                let events = self.canvas.show(
+                    ui,
+                    &mut self.doc,
+                    &self.catalog,
+                    strings,
+                    self.selection.as_ref(),
+                    self.round_up,
+                );
                 for event in events {
                     self.apply(event, strings);
                 }
@@ -162,12 +267,36 @@ impl Workspace {
         self.doc.sync_from_view(&self.catalog);
         self.picker_ui(ui.ctx(), strings);
         self.port_menu_ui(ui.ctx(), strings);
-        self.settings
-            .show(ui.ctx(), &self.catalog, strings, &mut self.availability);
-        self.keyboard(ui.ctx());
+        self.file_dialogs(ui.ctx(), strings);
+        let data = self
+            .data
+            .as_ref()
+            .map(|(folder, choice)| (folder, choice.clone()));
+        let switch = self.settings.show(
+            ui.ctx(),
+            &self.catalog,
+            strings,
+            &mut self.availability,
+            data,
+        );
+        if let Some(choice) = switch {
+            self.switch_data(choice, strings);
+        }
+        self.keyboard(ui.ctx(), strings);
+        self.finish_export(ui.ctx(), strings);
+        self.end_undo_step(ui.ctx());
+        self.update_title(ui.ctx(), strings);
         if let Some(took) = self.doc.solve_if_stale(&self.catalog) {
             self.last_solve = Some(took);
             ui.ctx().request_repaint();
+        }
+    }
+
+    /// Ends the undo step once the player lets go: a drag, or typing in a field, undoes in one go.
+    fn end_undo_step(&mut self, ctx: &egui::Context) {
+        let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
+        if !busy {
+            self.doc.checkpoint();
         }
     }
 
@@ -182,7 +311,34 @@ impl Workspace {
             }
             CanvasEvent::OpenPicker { origin, graph_pos } => self.open_picker(origin, graph_pos),
             CanvasEvent::Select(selection) => self.select(selection),
-            CanvasEvent::RemoveNode(node) => self.remove_node(node),
+            CanvasEvent::Toggle(member) => {
+                let mut items = self
+                    .selection
+                    .as_ref()
+                    .map(|s| s.items().to_vec())
+                    .unwrap_or_default();
+                if let Some(at) = items.iter().position(|m| *m == member) {
+                    items.remove(at);
+                } else {
+                    items.push(member);
+                }
+                self.select(Selection::of_items(items));
+            }
+            CanvasEvent::Remove(Member::Node(node)) => self.remove_node(node),
+            CanvasEvent::Remove(Member::Group(group)) => {
+                self.doc.remove_group(&self.catalog, group);
+                self.select(None);
+            }
+            CanvasEvent::SetCollapsed(group, collapsed) => {
+                let _ = self
+                    .doc
+                    .set_group_collapsed(&self.catalog, group, collapsed);
+                self.select(None);
+            }
+            CanvasEvent::Ungroup(group) => {
+                self.select(Selection::of_items(vec![Member::Group(group)]));
+                self.ungroup_selection();
+            }
             CanvasEvent::SetFacility(node, facility) => {
                 let _ = self.doc.set_facility(node, facility);
             }
@@ -202,9 +358,17 @@ impl Workspace {
     }
 
     pub(crate) fn remove_node(&mut self, node: NodeId) {
-        self.doc.remove_node(node);
-        if self.selection == Some(Selection::Node(node)) {
-            self.select(None);
+        self.doc.remove_node(&self.catalog, node);
+        if let Some(selection) = &self.selection
+            && selection.contains_node(node)
+        {
+            let rest: Vec<Member> = selection
+                .items()
+                .iter()
+                .copied()
+                .filter(|m| *m != Member::Node(node))
+                .collect();
+            self.select(Selection::of_items(rest));
         }
     }
 
@@ -272,7 +436,7 @@ impl Workspace {
                 "picker offered a node that doesn't fit: {linked:?}"
             );
         }
-        self.select(Some(Selection::Node(node)));
+        self.select(Some(Selection::node(node)));
         Some(node)
     }
 
@@ -309,6 +473,21 @@ impl Workspace {
             port_menu::Outcome::SetLimit(limit) => {
                 let _ = self.doc.set_port_limit(&self.catalog, &port, limit);
             }
+            port_menu::Outcome::SetShare(link, share) => {
+                let _ = self.doc.set_share(link, port.side, share);
+            }
+            port_menu::Outcome::ClearShares => {
+                let links: Vec<_> = self
+                    .doc
+                    .graph()
+                    .links_at(port.node, port.side)
+                    .filter(|(_, link)| link.item == port.item)
+                    .map(|(id, _)| id)
+                    .collect();
+                for link in links {
+                    let _ = self.doc.set_share(link, port.side, None);
+                }
+            }
             port_menu::Outcome::ClearLinks => {
                 self.doc.clear_port(&self.catalog, &port);
                 self.port_menu = None;
@@ -316,56 +495,26 @@ impl Workspace {
         }
     }
 
-    fn keyboard(&mut self, ctx: &egui::Context) {
-        let typing = ctx.memory(|m| m.focused().is_some());
-        if typing || self.picker.is_some() || self.port_menu.is_some() {
-            return;
-        }
-        let delete = ctx.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace));
-        if delete {
-            match self.selection {
-                Some(Selection::Node(node)) => self.remove_node(node),
-                Some(Selection::Link(link)) => {
-                    self.doc.remove_link(&self.catalog, link);
-                    self.select(None);
-                }
-                None => {}
-            }
-        }
-        if ctx.input(|i| i.key_pressed(Key::Escape)) {
-            self.select(None);
-        }
-    }
-
     fn top_bar(&mut self, ui: &mut Ui, strings: &Strings) {
-        ui.horizontal(|ui| {
+        egui::MenuBar::new().ui(ui, |ui| {
+            ui.menu_button(strings.get("menu-file"), |ui| self.file_menu(ui, strings));
+            ui.menu_button(strings.get("menu-edit"), |ui| self.edit_menu(ui, strings));
+            ui.menu_button(strings.get("menu-view"), |ui| {
+                ui.checkbox(&mut self.show_browser, strings.get("toggle-recipes"));
+                ui.checkbox(&mut self.show_inspector, strings.get("toggle-inspector"));
+                ui.checkbox(&mut self.round_up, strings.get("menu-round-up"));
+            });
+            ui.separator();
             ui.toggle_value(&mut self.show_browser, strings.get("toggle-recipes"));
             ui.separator();
             ui.strong(strings.get("app-title"));
             ui.separator();
             ui.label(strings.get("region-label"));
-            let current = self.doc.graph().region().clone();
-            let empty = self.doc.graph().nodes().is_empty();
-            let mut chosen = None;
-            ui.add_enabled_ui(empty, |ui| {
-                egui::ComboBox::from_id_salt("region")
-                    .selected_text(names::region(&self.catalog, current.as_str()))
-                    .show_ui(ui, |ui| {
-                        for region in self.catalog.regions().keys() {
-                            let name = names::region(&self.catalog, region.as_str());
-                            if ui.selectable_label(*region == current, name).clicked() {
-                                chosen = Some(region.clone());
-                            }
-                        }
-                    });
-            })
-            .response
-            .on_disabled_hover_text(strings.get("region-locked"));
-            if let Some(region) = chosen
-                && region != current
-            {
-                self.new_graph(region);
-            }
+            ui.label(names::region(
+                &self.catalog,
+                self.doc.graph().region().as_str(),
+            ))
+            .on_hover_text(strings.get("region-locked"));
             ui.separator();
             ui.weak(strings.format("data-version", &[("version", self.catalog.version())]));
             ui.separator();
@@ -374,12 +523,95 @@ impl Workspace {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.toggle_value(&mut self.show_inspector, strings.get("toggle-inspector"));
+                ui.toggle_value(&mut self.round_up, strings.get("toggle-round-up"));
             });
         });
     }
 
+    fn file_menu(&mut self, ui: &mut Ui, strings: &Strings) {
+        let item = |ui: &mut Ui, key: &str, shortcut: Option<Shortcut>| {
+            let mut button = egui::Button::new(strings.get(key));
+            if let Some(shortcut) = shortcut {
+                button = button.shortcut_text(ui.ctx().format_shortcut(&shortcut.keys()));
+            }
+            ui.add(button).clicked()
+        };
+        if item(ui, "menu-new", Some(Shortcut::New)) {
+            self.request(Pending::New, strings);
+        }
+        if item(ui, "menu-open", Some(Shortcut::Open)) {
+            self.request(Pending::Open, strings);
+        }
+        ui.add_enabled_ui(!self.recent_files.is_empty(), |ui| {
+            ui.menu_button(strings.get("menu-open-recent"), |ui| {
+                let mut chosen = None;
+                for path in &self.recent_files {
+                    let name = path.display().to_string();
+                    if ui.button(name).clicked() {
+                        chosen = Some(path.clone());
+                    }
+                }
+                if let Some(path) = chosen {
+                    self.request(Pending::OpenPath(path), strings);
+                }
+            });
+        });
+        ui.separator();
+        if item(ui, "menu-save", Some(Shortcut::Save)) {
+            self.save(strings);
+        }
+        if item(ui, "menu-save-as", Some(Shortcut::SaveAs)) {
+            self.save_as(strings);
+        }
+        ui.separator();
+        if item(ui, "menu-export-png", None) {
+            ui.close();
+            self.export_png(strings);
+        }
+    }
+
+    fn edit_menu(&mut self, ui: &mut Ui, strings: &Strings) {
+        let entries = [
+            (Shortcut::Undo, "menu-undo", self.doc.can_undo()),
+            (Shortcut::Redo, "menu-redo", self.doc.can_redo()),
+            (Shortcut::Copy, "menu-copy", self.has_selected_nodes()),
+            (Shortcut::Paste, "menu-paste", self.clipboard.is_some()),
+            (
+                Shortcut::Duplicate,
+                "menu-duplicate",
+                self.has_selected_nodes(),
+            ),
+            (Shortcut::Delete, "menu-delete", self.selection.is_some()),
+            (Shortcut::SelectAll, "menu-select-all", true),
+            (Shortcut::Group, "menu-group", self.has_selected_nodes()),
+            (
+                Shortcut::Ungroup,
+                "menu-ungroup",
+                self.selection
+                    .as_ref()
+                    .and_then(Selection::single_group)
+                    .is_some(),
+            ),
+        ];
+        for (shortcut, key, enabled) in entries {
+            let button = egui::Button::new(strings.get(key))
+                .shortcut_text(ui.ctx().format_shortcut(&shortcut.keys()));
+            if ui.add_enabled(enabled, button).clicked() {
+                self.run(shortcut, strings);
+            }
+        }
+    }
+
     fn status_bar(&self, ui: &mut Ui, strings: &Strings) {
         ui.horizontal(|ui| {
+            if let Some(version) = &self.other_data_version {
+                let text = strings.format(
+                    "file-other-data-version",
+                    &[("file", version), ("active", self.catalog.version())],
+                );
+                ui.label(RichText::new(text).color(colors::WARN));
+                ui.separator();
+            }
             // Solving runs on the UI thread. Say so when it gets slow enough to drop frames; that is
             // the point to move it to a worker (PLAN.md, M4).
             if let Some(took) = self.last_solve
@@ -409,8 +641,11 @@ fn port_menu_pos(pin: Pos2, side: Side) -> Pos2 {
 }
 
 /// A new recipe node: on the recipe's first facility, with no limit, so the solver sizes it from the
-/// rest of the graph.
+/// rest of the graph. A settlement trade becomes an outpost order.
 fn recipe_node(catalog: &Catalog, recipe: RecipeId) -> Option<NodeKind> {
+    if let Some(order) = NodeKind::outpost_order(catalog, &recipe) {
+        return Some(order);
+    }
     let facility = catalog.recipe(recipe.as_str())?.facilities.first()?.clone();
     Some(NodeKind::Recipe {
         recipe,

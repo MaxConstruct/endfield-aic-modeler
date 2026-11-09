@@ -1,5 +1,6 @@
 //! The solver: runs every node as high as its limits and supply allow (ADR 0003, ADR 0004).
 
+mod copies;
 mod model;
 mod passes;
 mod sections;
@@ -10,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use aic_data::{Catalog, FacilityId, ItemId};
 use indexmap::IndexMap;
 
-use crate::graph::{Graph, LinkId, NodeId, NodeKind, Port, Side};
+use crate::graph::{Graph, GroupId, LinkId, NodeId, NodeKind, Port, Side};
 use crate::validate::Issue;
 use model::Ctx;
 use passes::{Outcome, Values};
@@ -34,8 +35,18 @@ pub struct Solution {
     /// Flow through each unconnected port: pulled from the depot on an input, sent to it on an output.
     pub depot: HashMap<Port, Option<f64>>,
     pub storage: HashMap<NodeId, StorageFlow>,
+    /// Coupons each solved outpost order earns, per minute.
+    pub coupons: HashMap<NodeId, Vec<(ItemId, f64)>>,
     /// Nodes running below their limit, and why.
     pub throttle: HashMap<NodeId, ThrottleReason>,
+    /// How many copies each copies group runs; `None` when one copy can't be solved on its own.
+    pub copies: HashMap<GroupId, Option<f64>>,
+    /// Flow through each port of a copies group for all its copies, per minute. `port_flow` has
+    /// one copy's flow, as do the other values of the nodes inside.
+    pub group_flow: HashMap<Port, Option<f64>>,
+    /// For each node inside a copies group, how many copies of it run in all: the product of the
+    /// counts of the copies groups around it. The totals count it that many times.
+    pub node_copies: HashMap<NodeId, f64>,
     pub totals: Totals,
     pub warnings: Vec<Warning>,
 }
@@ -62,6 +73,8 @@ pub enum UndeterminedReason {
     NoLimit,
     /// The section has limits, but some part of it can still grow without end.
     Unbounded,
+    /// A copies group in it can't solve one copy on its own, so its count can't be settled.
+    CopiesUndetermined,
 }
 
 /// Flows of a storage node, per minute.
@@ -97,6 +110,10 @@ pub struct Totals {
     pub power_net_kw: f64,
     /// Facility count per facility type.
     pub facilities: IndexMap<FacilityId, f64>,
+    /// Whole facilities to build per facility type: each node's count rounded up, then added.
+    pub facilities_rounded: IndexMap<FacilityId, u32>,
+    /// Coupons earned by outpost orders, per minute.
+    pub coupons: IndexMap<ItemId, f64>,
     /// Use of each raw resource of the graph's region: the output of mining recipe nodes, the
     /// supply of source nodes and pulls from the depot. Compare it with what the region can supply
     /// using [`check_resources`].
@@ -127,6 +144,10 @@ pub enum Warning {
         used: f64,
         available: f64,
     },
+    /// One copy of a copies group can't be solved on its own: add a limit inside it.
+    CopiesUndetermined {
+        group: GroupId,
+    },
     /// A problem with the graph itself. The nodes and links involved are left out of the solve.
     Issue(Issue),
 }
@@ -150,7 +171,9 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
             _ => {}
         }
     }
-    let nodes: Vec<NodeId> = graph
+    let folded = copies::fold(catalog, graph);
+    let flat = &folded.graph;
+    let nodes: Vec<NodeId> = flat
         .nodes()
         .iter()
         .filter(|(id, node)| {
@@ -159,7 +182,7 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
         .map(|(id, _)| id)
         .collect();
     let usable: HashSet<NodeId> = nodes.iter().copied().collect();
-    let links: Vec<LinkId> = graph
+    let links: Vec<LinkId> = flat
         .links()
         .iter()
         .filter(|(id, link)| {
@@ -168,16 +191,30 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
         .map(|(id, _)| id)
         .collect();
 
-    let ctx = Ctx { catalog, graph };
+    let ctx = Ctx {
+        catalog,
+        graph: flat,
+        modules: &folded.modules,
+    };
     let mut solution = Solution {
         warnings: issues.into_iter().map(Warning::Issue).collect(),
         ..Solution::default()
     };
-    for (index, section) in sections::split(graph, &nodes, &links)
+    for (index, section) in sections::split(flat, &nodes, &links)
         .into_iter()
         .enumerate()
     {
-        let outcome = passes::solve_section(&ctx, &section);
+        let blocked = section.nodes.iter().any(|node| {
+            folded
+                .modules
+                .get(node)
+                .is_some_and(|module| !module.is_determined())
+        });
+        let outcome = if blocked {
+            Outcome::Undetermined(UndeterminedReason::CopiesUndetermined)
+        } else {
+            passes::solve_section(&ctx, &section)
+        };
         let status = match &outcome {
             Outcome::Solved(values) => {
                 solution
@@ -186,10 +223,13 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
                 SectionStatus::Solved
             }
             Outcome::Undetermined(reason) => {
-                solution.warnings.push(Warning::Undetermined {
-                    section: index,
-                    reason: *reason,
-                });
+                // A copies group says why itself.
+                if *reason != UndeterminedReason::CopiesUndetermined {
+                    solution.warnings.push(Warning::Undetermined {
+                        section: index,
+                        reason: *reason,
+                    });
+                }
                 SectionStatus::Undetermined(*reason)
             }
             Outcome::Failed(message) => {
@@ -211,8 +251,10 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
             status,
         });
     }
-    record_storage(graph, &nodes, &mut solution);
-    count_belts(catalog, graph, &mut solution);
+    record_storage(flat, &nodes, &mut solution);
+    record_coupons(catalog, flat, &mut solution);
+    count_belts(catalog, flat, &mut solution);
+    solution.node_copies = copies::unfold(&folded, &mut solution);
     solution.totals = totals(catalog, graph, &solution);
     solution
 }
@@ -289,6 +331,29 @@ fn record_storage(graph: &Graph, nodes: &[NodeId], solution: &mut Solution) {
     }
 }
 
+/// What each outpost order earns: its rate times the trade's coupons per item.
+fn record_coupons(catalog: &Catalog, graph: &Graph, solution: &mut Solution) {
+    for (id, node) in graph.nodes() {
+        let NodeKind::OutpostOrder { recipe, .. } = &node.kind else {
+            continue;
+        };
+        let (Some(Some(rate)), Some(trade)) =
+            (solution.rate.get(&id), catalog.recipe(recipe.as_str()))
+        else {
+            continue;
+        };
+        let Some(&(_, per_trade)) = trade.inputs.first() else {
+            continue;
+        };
+        let earned = trade
+            .outputs
+            .iter()
+            .map(|(coupon, qty)| (coupon.clone(), rate * qty / per_trade))
+            .collect();
+        solution.coupons.insert(id, earned);
+    }
+}
+
 /// Fills in `link_belts`, and warns about links that need more than one belt or pipe.
 fn count_belts(catalog: &Catalog, graph: &Graph, solution: &mut Solution) {
     for (id, link) in graph.links() {
@@ -319,11 +384,14 @@ fn count_belts(catalog: &Catalog, graph: &Graph, solution: &mut Solution) {
 }
 
 fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
+    // A node inside a copies group counts once per copy.
+    let times = |node: NodeId| solution.node_copies.get(&node).copied().unwrap_or(1.0);
     let mut totals = Totals {
         complete: solution
             .sections
             .iter()
-            .all(|s| s.status == SectionStatus::Solved),
+            .all(|s| s.status == SectionStatus::Solved)
+            && solution.copies.values().all(Option::is_some),
         ..Totals::default()
     };
     let mut depot: Vec<(&Port, f64)> = solution
@@ -344,15 +412,16 @@ fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
         match &node.kind {
             NodeKind::Storage { item: Some(item) } => {
                 if let Some(balance) = solution.storage.get(&id).and_then(|s| s.balance) {
-                    *totals.storage_balance.entry(item.clone()).or_default() += balance;
+                    *totals.storage_balance.entry(item.clone()).or_default() += balance * times(id);
                 }
             }
             NodeKind::Recipe {
                 recipe, facility, ..
             } => {
-                let Some(Some(count)) = solution.facility_count.get(&id) else {
+                let Some(&Some(per_copy)) = solution.facility_count.get(&id) else {
                     continue;
                 };
+                let count = &(per_copy * times(id));
                 let (Some(recipe), Some(found)) = (
                     catalog.recipe(recipe.as_str()),
                     catalog.facility(facility.as_str()),
@@ -366,6 +435,17 @@ fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
                     totals.power_generation_kw -= power;
                 }
                 *totals.facilities.entry(facility.clone()).or_default() += count;
+                // Each copy builds its own facilities: round one copy up, then count the copies.
+                let whole = f64::from(RoundUp::of(per_copy).facilities) * times(id);
+                *totals
+                    .facilities_rounded
+                    .entry(facility.clone())
+                    .or_default() += whole.ceil() as u32;
+            }
+            NodeKind::OutpostOrder { .. } => {
+                for (coupon, earned) in solution.coupons.get(&id).into_iter().flatten() {
+                    *totals.coupons.entry(coupon.clone()).or_default() += earned * times(id);
+                }
             }
             _ => {}
         }
@@ -389,7 +469,9 @@ fn raw_resource_use(
             *used.entry(raw_item).or_default() += amount;
         }
     };
+    let times = |node: NodeId| solution.node_copies.get(&node).copied().unwrap_or(1.0);
     for (port, flow) in &solution.port_flow {
+        let flow = &flow.map(|f| f * times(port.node));
         let mined = port.side == Side::Output
             && matches!(
                 &graph.nodes()[port.node].kind,
@@ -407,12 +489,37 @@ fn raw_resource_use(
     }
     for (id, node) in graph.nodes() {
         if let NodeKind::Source { item, .. } = &node.kind {
-            add(item, solution.rate.get(&id).copied().flatten());
+            let rate = solution.rate.get(&id).copied().flatten();
+            add(item, rate.map(|r| r * times(id)));
         }
     }
     raw.into_iter()
         .filter_map(|item| Some((item.clone(), used.get(item).copied()?)))
         .collect()
+}
+
+/// A facility count as whole facilities to build, and how busy each of them is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RoundUp {
+    pub facilities: u32,
+    /// The count over the whole facilities, from 0 to 1: 1.75 facilities run 2 at 0.875.
+    pub utilization: f64,
+}
+
+impl RoundUp {
+    pub fn of(count: f64) -> Self {
+        // Solver noise just above a whole number doesn't call for another facility.
+        let facilities = (count - passes::tolerance(count)).ceil().max(0.0);
+        let utilization = if facilities > 0.0 {
+            (count / facilities).min(1.0)
+        } else {
+            0.0
+        };
+        Self {
+            facilities: facilities as u32,
+            utilization,
+        }
+    }
 }
 
 /// Compares raw resource use with what the region can supply per minute. A resource missing from

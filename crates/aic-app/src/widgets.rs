@@ -90,6 +90,11 @@ struct IconCache(Arc<Mutex<Textures>>);
 
 type Textures = HashMap<(ImageKind, String), Option<TextureHandle>>;
 
+/// Drops every decoded icon, after a switch to other data.
+pub fn forget_icons(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<IconCache>(Id::new("icon-cache")));
+}
+
 /// The texture for an image of the data version, decoded on first use.
 pub fn icon_texture(
     ctx: &egui::Context,

@@ -83,6 +83,8 @@ pub fn builtins(origin: &Origin) -> Vec<Builtin> {
 
 /// The recipes offered for `origin`, in data order: those of the region, not hidden, that make
 /// (from an input port) or take (from an output port) the port's item, and match `query`.
+/// Settlement trades are offered as outpost orders, except from an input port: they make only
+/// coupons.
 pub fn recipes<'a>(
     catalog: &'a Catalog,
     region: &RegionId,
@@ -100,7 +102,17 @@ pub fn recipes<'a>(
     catalog
         .recipes()
         .values()
-        .filter(|recipe| !recipe.hidden && recipe.available_in(region))
+        .filter(|recipe| {
+            let trade_ok = recipe.is_trade
+                && !matches!(
+                    origin,
+                    Origin::Port {
+                        side: Side::Input,
+                        ..
+                    }
+                );
+            (!recipe.hidden || trade_ok) && recipe.available_in(region)
+        })
         .filter(|recipe| match origin {
             Origin::Canvas => true,
             Origin::Port { side, item, .. } => {
@@ -209,7 +221,7 @@ impl Picker {
                     }
                 });
             });
-        let escape = ctx.input(|i| i.key_pressed(Key::Escape));
+        let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape));
         // The click that opened the picker lands outside it on its first frame.
         let clicked_away = !self.just_opened && area.response.clicked_elsewhere();
         self.just_opened = false;
@@ -402,7 +414,8 @@ mod tests {
                 "iron_rod",
                 "screw",
                 "reinforced_plate",
-                "modular_frame"
+                "modular_frame",
+                "coupon-iron_plate"
             ]
         );
         let wuling = ids(recipes(
@@ -414,8 +427,8 @@ mod tests {
         ));
         assert!(wuling.contains(&"iron_wire"));
         assert!(
-            !wuling.contains(&"coupon-iron_plate"),
-            "hidden recipes stay out"
+            wuling.contains(&"coupon-iron_plate"),
+            "a settlement trade is offered as an outpost order"
         );
     }
 
@@ -471,7 +484,7 @@ mod tests {
                 "PLATE",
                 by_name
             )),
-            ["iron_plate", "reinforced_plate"]
+            ["iron_plate", "reinforced_plate", "coupon-iron_plate"]
         );
         let by_inputs = Matching {
             name: false,

@@ -3,13 +3,18 @@
 //!
 //! Every edit goes through [`Document`], which changes the graph and the view together. The view
 //! holds each node's `NodeId` as its payload and one wire per link.
+//!
+//! Undo and redo keep whole `Graph` snapshots: graphs are small, so a clone per step is cheap.
+//! Edits since the last [`Document::checkpoint`] make one step, so a drag or a typed number undoes
+//! in one go.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use aic_core::{
-    EditError, Graph, LinkError, LinkId, NodeId, NodeKind, Port, PortRef, Pos, Side, Solution,
-    solve,
+    EditError, Graph, GroupId, GroupMode, LinkError, LinkId, Member, NodeId, NodeKind, Port,
+    PortRef, Pos, Side, Solution, solve,
 };
 use aic_data::{Catalog, FacilityId, ItemId, RegionId};
 use eframe::egui::Pos2;
@@ -26,25 +31,182 @@ pub enum Anchor {
     Right(f32),
 }
 
+/// How many undo steps are kept.
+const HISTORY_LIMIT: usize = 200;
+
 pub struct Document {
     pub(crate) graph: Graph,
-    pub(crate) view: Snarl<NodeId>,
-    view_ids: HashMap<NodeId, ViewId>,
+    pub(crate) view: Snarl<Member>,
+    view_ids: HashMap<Member, ViewId>,
     pub(crate) anchors: HashMap<NodeId, Anchor>,
     solution: Solution,
     stale: bool,
+    /// The graph as of the last checkpoint, and that state's revision.
+    committed: Graph,
+    revision: u64,
+    /// Whether the graph changed since the last checkpoint.
+    pending: bool,
+    undo: Vec<(Graph, u64)>,
+    redo: Vec<(Graph, u64)>,
+    /// The revision last saved to (or opened from) `path`; 0, the starting state, before that.
+    saved_revision: u64,
+    next_revision: u64,
+    path: Option<PathBuf>,
 }
 
 impl Document {
     pub fn new(region: RegionId) -> Self {
+        Self::bare(Graph::new(region), None)
+    }
+
+    /// A document showing `graph`, opened from `path` if it came from a file.
+    pub fn from_graph(catalog: &Catalog, graph: Graph, path: Option<PathBuf>) -> Self {
+        let mut doc = Self::bare(graph, path);
+        doc.rebuild_view(catalog);
+        doc
+    }
+
+    /// A document whose view isn't built yet.
+    fn bare(graph: Graph, path: Option<PathBuf>) -> Self {
         Self {
-            graph: Graph::new(region),
+            committed: graph.clone(),
+            graph,
             view: Snarl::new(),
             view_ids: HashMap::new(),
             anchors: HashMap::new(),
             solution: Solution::default(),
             stale: true,
+            revision: 0,
+            pending: false,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            saved_revision: 0,
+            next_revision: 1,
+            path,
         }
+    }
+
+    /// The file this document was opened from or last saved to.
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    /// Whether there are changes not saved to the file (or, with no file, any changes at all).
+    pub fn is_modified(&self) -> bool {
+        self.pending || self.revision != self.saved_revision
+    }
+
+    /// Records that the current state was saved to `path`.
+    pub fn mark_saved(&mut self, path: PathBuf) {
+        self.checkpoint();
+        self.saved_revision = self.revision;
+        self.path = Some(path);
+    }
+
+    /// Ends the current undo step: everything changed since the last checkpoint undoes together.
+    pub fn checkpoint(&mut self) {
+        if !self.pending {
+            return;
+        }
+        let previous = std::mem::replace(&mut self.committed, self.graph.clone());
+        self.undo.push((previous, self.revision));
+        if self.undo.len() > HISTORY_LIMIT {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
+        self.revision = self.next_revision;
+        self.next_revision += 1;
+        self.pending = false;
+    }
+
+    pub fn can_undo(&self) -> bool {
+        self.pending || !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.pending && !self.redo.is_empty()
+    }
+
+    /// Goes back one step. Returns false when there is nothing to undo.
+    pub fn undo(&mut self, catalog: &Catalog) -> bool {
+        self.checkpoint();
+        let Some((graph, revision)) = self.undo.pop() else {
+            return false;
+        };
+        let current = std::mem::replace(&mut self.committed, graph);
+        self.redo.push((current, self.revision));
+        self.revision = revision;
+        self.restore(catalog);
+        true
+    }
+
+    /// Goes forward one undone step. Returns false when there is nothing to redo.
+    pub fn redo(&mut self, catalog: &Catalog) -> bool {
+        if self.pending {
+            return false;
+        }
+        let Some((graph, revision)) = self.redo.pop() else {
+            return false;
+        };
+        let current = std::mem::replace(&mut self.committed, graph);
+        self.undo.push((current, self.revision));
+        self.revision = revision;
+        self.restore(catalog);
+        true
+    }
+
+    /// Switches to another data version or language: recipe nodes are matched against `catalog`
+    /// again, in the graph and in every undo step. Not an edit, so it isn't an undo step itself.
+    pub fn rebind(&mut self, catalog: &Catalog) {
+        self.graph.rebind(catalog);
+        self.committed.rebind(catalog);
+        for (graph, _) in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            graph.rebind(catalog);
+        }
+        self.rebuild_view(catalog);
+        self.stale = true;
+    }
+
+    /// Shows the committed graph again.
+    fn restore(&mut self, catalog: &Catalog) {
+        self.graph = self.committed.clone();
+        self.rebuild_view(catalog);
+        self.stale = true;
+    }
+
+    /// Draws the graph afresh: one view node per node shown on its own and per outermost
+    /// collapsed group, and one wire per link between two of them.
+    fn rebuild_view(&mut self, catalog: &Catalog) {
+        self.view = Snarl::new();
+        self.view_ids.clear();
+        self.anchors.clear();
+        let mut items: Vec<(Member, Pos)> = Vec::new();
+        for (id, node) in self.graph.nodes() {
+            match self.graph.shown_as(id) {
+                None => items.push((Member::Node(id), node.pos)),
+                Some(group) => {
+                    if !items.iter().any(|(m, _)| *m == Member::Group(group)) {
+                        items.push((Member::Group(group), self.graph.groups()[group].pos));
+                    }
+                }
+            }
+        }
+        for (member, pos) in items {
+            let view_id = self.view.insert_node(Pos2::new(pos.x, pos.y), member);
+            self.view_ids.insert(member, view_id);
+        }
+        let links: Vec<LinkId> = self.graph.links().keys().collect();
+        for link in links {
+            if let Some((out_pin, in_pin)) = self.wire(catalog, link) {
+                self.view.connect(out_pin, in_pin);
+            }
+        }
+    }
+
+    /// Marks the graph as changed: it needs a solve and makes an undo step.
+    fn changed(&mut self) {
+        self.stale = true;
+        self.pending = true;
     }
 
     pub fn graph(&self) -> &Graph {
@@ -61,7 +223,7 @@ impl Document {
         &mut self,
     ) -> (
         &Graph,
-        &mut Snarl<NodeId>,
+        &mut Snarl<Member>,
         &mut HashMap<NodeId, Anchor>,
         &Solution,
     ) {
@@ -73,15 +235,26 @@ impl Document {
         )
     }
 
-    pub fn view_id(&self, node: NodeId) -> Option<ViewId> {
-        self.view_ids.get(&node).copied()
+    /// The canvas's nodes and wires.
+    pub fn view(&self) -> &Snarl<Member> {
+        &self.view
+    }
+
+    /// The view node drawing a node or collapsed group, if it is drawn.
+    pub fn view_id(&self, member: Member) -> Option<ViewId> {
+        self.view_ids.get(&member).copied()
+    }
+
+    /// What draws `node` on the canvas: the node itself, or the collapsed group it is in.
+    pub fn shown(&self, node: NodeId) -> Member {
+        shown(&self.graph, node)
     }
 
     pub fn add_node(&mut self, kind: NodeKind, pos: Pos2) -> NodeId {
         let id = self.graph.add_node(kind, Pos { x: pos.x, y: pos.y });
-        let view_id = self.view.insert_node(pos, id);
-        self.view_ids.insert(id, view_id);
-        self.stale = true;
+        let view_id = self.view.insert_node(pos, Member::Node(id));
+        self.view_ids.insert(Member::Node(id), view_id);
+        self.changed();
         id
     }
 
@@ -92,14 +265,97 @@ impl Document {
         id
     }
 
-    pub fn remove_node(&mut self, id: NodeId) {
-        if self.graph.remove_node(id).is_some()
-            && let Some(view_id) = self.view_ids.remove(&id)
-        {
-            self.view.remove_node(view_id);
+    /// Adds copies of `other`'s nodes and links, moved by `offset` (see [`Graph::paste`]).
+    pub fn paste(&mut self, catalog: &Catalog, other: &Graph, offset: Pos) -> Vec<NodeId> {
+        let pasted = self.graph.paste(catalog, other, offset);
+        for &id in &pasted {
+            let pos = self.graph.node(id).map(|n| n.pos).unwrap_or_default();
+            let view_id = self
+                .view
+                .insert_node(Pos2::new(pos.x, pos.y), Member::Node(id));
+            self.view_ids.insert(Member::Node(id), view_id);
+        }
+        let links: Vec<LinkId> = self
+            .graph
+            .links()
+            .iter()
+            .filter(|(_, link)| pasted.contains(&link.from))
+            .map(|(id, _)| id)
+            .collect();
+        for link in links {
+            if let Some((out_pin, in_pin)) = self.wire(catalog, link) {
+                self.view.connect(out_pin, in_pin);
+            }
+        }
+        self.changed();
+        pasted
+    }
+
+    pub fn remove_node(&mut self, catalog: &Catalog, id: NodeId) {
+        let hidden = self.graph.shown_as(id).is_some();
+        if self.graph.remove_node(id).is_some() {
+            if hidden {
+                // The collapsed group around it loses ports, or the group itself.
+                self.rebuild_view(catalog);
+            } else if let Some(view_id) = self.view_ids.remove(&Member::Node(id)) {
+                self.view.remove_node(view_id);
+            }
         }
         self.anchors.remove(&id);
-        self.stale = true;
+        self.changed();
+    }
+
+    /// Removes a group with everything in it.
+    pub fn remove_group(&mut self, catalog: &Catalog, id: GroupId) {
+        self.graph.remove_group(id);
+        self.rebuild_view(catalog);
+        self.changed();
+    }
+
+    /// Puts `members` in a new group (see [`Graph::group`]).
+    pub fn group(
+        &mut self,
+        catalog: &Catalog,
+        members: &[Member],
+        name: &str,
+    ) -> Result<GroupId, EditError> {
+        let group = self.graph.group(members, name)?;
+        self.rebuild_view(catalog);
+        self.changed();
+        Ok(group)
+    }
+
+    pub fn ungroup(&mut self, catalog: &Catalog, id: GroupId) -> Result<(), EditError> {
+        self.graph.ungroup(id)?;
+        self.rebuild_view(catalog);
+        self.changed();
+        Ok(())
+    }
+
+    /// Collapses a group into one card, or expands it back into its members.
+    pub fn set_group_collapsed(
+        &mut self,
+        catalog: &Catalog,
+        id: GroupId,
+        collapsed: bool,
+    ) -> Result<(), EditError> {
+        self.graph.set_group_collapsed(id, collapsed)?;
+        self.rebuild_view(catalog);
+        self.changed();
+        Ok(())
+    }
+
+    /// Makes a group a folder or a stand-in for copies (see [`Graph::set_group_mode`]).
+    pub fn set_group_mode(&mut self, id: GroupId, mode: GroupMode) -> Result<(), EditError> {
+        self.graph.set_group_mode(id, mode)?;
+        self.changed();
+        Ok(())
+    }
+
+    pub fn rename_group(&mut self, id: GroupId, name: &str) -> Result<(), EditError> {
+        self.graph.rename_group(id, name)?;
+        self.changed();
+        Ok(())
     }
 
     pub fn connect(
@@ -109,24 +365,50 @@ impl Document {
         to: PortRef,
     ) -> Result<LinkId, LinkError> {
         let link = self.graph.connect(catalog, from, to)?;
-        if let Some((out_pin, in_pin)) = self.wire(catalog, link) {
-            self.view.connect(out_pin, in_pin);
-        }
-        self.stale = true;
+        self.redraw_link(catalog, link);
+        self.changed();
         Ok(link)
     }
 
     pub fn remove_link(&mut self, catalog: &Catalog, id: LinkId) {
-        if let Some((out_pin, in_pin)) = self.wire(catalog, id) {
-            self.view.disconnect(out_pin, in_pin);
-        }
+        let wire = self.wire(catalog, id);
+        let ends = self.graph.link(id).map(|l| (l.from, l.to));
         self.graph.remove_link(id);
-        self.stale = true;
+        let in_group = ends.is_some_and(|(from, to)| {
+            self.graph.shown_as(from).is_some() || self.graph.shown_as(to).is_some()
+        });
+        if in_group {
+            self.rebuild_view(catalog);
+        } else if let Some((out_pin, in_pin)) = wire {
+            // Another link between the same two ports may still need the wire.
+            let still_drawn = self
+                .graph
+                .links()
+                .keys()
+                .any(|other| self.wire(catalog, other) == Some((out_pin, in_pin)));
+            if !still_drawn {
+                self.view.disconnect(out_pin, in_pin);
+            }
+        }
+        self.changed();
+    }
+
+    /// Draws a new link. A link touching a collapsed group changes the group's ports, so the view
+    /// is redrawn.
+    fn redraw_link(&mut self, catalog: &Catalog, link: LinkId) {
+        let in_group = self.graph.link(link).is_some_and(|l| {
+            self.graph.shown_as(l.from).is_some() || self.graph.shown_as(l.to).is_some()
+        });
+        if in_group {
+            self.rebuild_view(catalog);
+        } else if let Some((out_pin, in_pin)) = self.wire(catalog, link) {
+            self.view.connect(out_pin, in_pin);
+        }
     }
 
     pub fn set_limit(&mut self, id: NodeId, limit: Option<f64>) -> Result<(), EditError> {
         self.graph.set_limit(id, limit)?;
-        self.stale = true;
+        self.changed();
         Ok(())
     }
 
@@ -138,7 +420,19 @@ impl Document {
         rate: Option<f64>,
     ) -> Result<(), EditError> {
         self.graph.set_port_limit(catalog, port, rate)?;
-        self.stale = true;
+        self.changed();
+        Ok(())
+    }
+
+    /// Sets a link's share of the ratio lock at its `side` end (see [`Graph::set_share`]).
+    pub fn set_share(
+        &mut self,
+        link: LinkId,
+        side: Side,
+        share: Option<f64>,
+    ) -> Result<(), EditError> {
+        self.graph.set_share(link, side, share)?;
+        self.changed();
         Ok(())
     }
 
@@ -157,7 +451,7 @@ impl Document {
 
     pub fn set_facility(&mut self, id: NodeId, facility: FacilityId) -> Result<(), EditError> {
         self.graph.set_facility(id, facility)?;
-        self.stale = true;
+        self.changed();
         Ok(())
     }
 
@@ -169,34 +463,45 @@ impl Document {
             .find(|&id| self.wire(catalog, id) == Some((out_pin, in_pin)))
     }
 
-    /// The wire that draws `link`: from the pin of its item on one node to the pin on the other.
+    /// The wire that draws `link`: from the pin of its port on what shows its source to the pin on
+    /// what shows its target. A link inside one collapsed group has no wire.
     pub fn wire(&self, catalog: &Catalog, link: LinkId) -> Option<(OutPinId, InPinId)> {
         let link = self.graph.link(link)?;
         let pin_of = |node: NodeId, side: Side| -> Option<(ViewId, usize)> {
-            let kind = &self.graph.node(node)?.kind;
-            let index = if kind.is_logistics() {
-                0
-            } else {
-                pins(catalog, kind, side)
-                    .iter()
-                    .position(|item| item.as_ref() == Some(&link.item))?
-            };
-            Some((self.view_id(node)?, index))
+            let member = self.shown(node);
+            let index = pin_targets(&self.graph, catalog, member, side)
+                .iter()
+                .position(|target| target.is(node, &link.item))?;
+            Some((self.view_id(member)?, index))
         };
+        if self.shown(link.from) == self.shown(link.to) {
+            return None;
+        }
         let (from, output) = pin_of(link.from, Side::Output)?;
         let (to, input) = pin_of(link.to, Side::Input)?;
         Some((OutPinId { node: from, output }, InPinId { node: to, input }))
     }
 
-    /// Copies node moves from the view into the graph, and drops links whose wire the view lost.
+    /// Copies moves from the view into the graph, and drops links whose wire the view lost.
     /// egui-snarl's Cmd+drag on a pin ("yank") removes wires without telling the viewer.
     pub fn sync_from_view(&mut self, catalog: &Catalog) {
-        for (view_id, pos, &id) in self.view.nodes_pos_ids() {
-            debug_assert_eq!(self.view_ids.get(&id), Some(&view_id));
+        for (view_id, pos, &member) in self.view.nodes_pos_ids() {
+            debug_assert_eq!(self.view_ids.get(&member), Some(&view_id));
             let new = Pos { x: pos.x, y: pos.y };
-            if self.graph.node(id).is_some_and(|node| node.pos != new) {
-                // Position doesn't affect the solve, so this doesn't make the solution stale.
-                let _ = self.graph.set_pos(id, new);
+            // Position doesn't affect the solve, so a move doesn't make the solution stale.
+            match member {
+                Member::Node(id) => {
+                    if self.graph.node(id).is_some_and(|node| node.pos != new) {
+                        let _ = self.graph.set_pos(id, new);
+                        self.pending = true;
+                    }
+                }
+                Member::Group(id) => {
+                    if self.graph.group_info(id).is_some_and(|g| g.pos != new) {
+                        let _ = self.graph.set_group_pos(id, new);
+                        self.pending = true;
+                    }
+                }
             }
         }
         let wires: HashSet<(OutPinId, InPinId)> = self.view.wires().collect();
@@ -211,7 +516,7 @@ impl Document {
             .collect();
         for id in lost {
             self.graph.remove_link(id);
-            self.stale = true;
+            self.changed();
         }
     }
 
@@ -227,34 +532,58 @@ impl Document {
     }
 }
 
+/// What one pin on the canvas stands for: a port of `node`. On a collapsed group's card it is the
+/// port of a node inside the group. `item` is `None` on a logistics node with no item yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinTarget {
+    pub node: NodeId,
+    pub item: Option<ItemId>,
+}
+
+impl PinTarget {
+    /// Whether a link of `item` at `node` uses this pin.
+    pub fn is(&self, node: NodeId, item: &ItemId) -> bool {
+        self.node == node && self.item.as_ref().is_none_or(|own| own == item)
+    }
+}
+
+/// What draws `node` on the canvas: the node itself, or the outermost collapsed group it is in.
+pub fn shown(graph: &Graph, node: NodeId) -> Member {
+    graph
+        .shown_as(node)
+        .map_or(Member::Node(node), Member::Group)
+}
+
+/// The pins of a node or collapsed group on one side, in order. A group's pins are its ports
+/// (see [`Graph::external_ports`]).
+pub fn pin_targets(graph: &Graph, catalog: &Catalog, member: Member, side: Side) -> Vec<PinTarget> {
+    match member {
+        Member::Node(node) => graph
+            .node(node)
+            .map(|n| {
+                n.kind
+                    .port_items(catalog, side)
+                    .into_iter()
+                    .map(|item| PinTarget { node, item })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        Member::Group(group) => graph
+            .external_ports(catalog, group)
+            .into_iter()
+            .filter(|port| port.side == side)
+            .map(|port| PinTarget {
+                node: port.node,
+                item: Some(port.item),
+            })
+            .collect(),
+    }
+}
+
 /// The items of a node's ports on one side, in pin order. A logistics node has one port per side,
 /// whose item is `None` until its first link.
 pub fn pins(catalog: &Catalog, kind: &NodeKind, side: Side) -> Vec<Option<ItemId>> {
-    match (kind, side) {
-        (NodeKind::Recipe { recipe, .. }, _) => catalog
-            .recipe(recipe.as_str())
-            .map(|recipe| {
-                let items = match side {
-                    Side::Input => &recipe.inputs,
-                    Side::Output => &recipe.outputs,
-                };
-                items.iter().map(|(item, _)| Some(item.clone())).collect()
-            })
-            .unwrap_or_default(),
-        (NodeKind::Source { item, .. }, Side::Output)
-        | (NodeKind::Sink { item, .. }, Side::Input) => {
-            vec![Some(item.clone())]
-        }
-        (NodeKind::Source { .. }, Side::Input) | (NodeKind::Sink { .. }, Side::Output) => vec![],
-        (
-            NodeKind::Splitter { item }
-            | NodeKind::Merger { item }
-            | NodeKind::Storage { item }
-            | NodeKind::ControlPort { item, .. },
-            _,
-        ) => vec![item.clone()],
-        (NodeKind::MissingRecipe { .. }, _) => vec![],
-    }
+    kind.port_items(catalog, side)
 }
 
 /// The port a link end names: by item on a recipe, source or sink node; the single port of a
@@ -348,8 +677,101 @@ mod tests {
         doc.solve_if_stale(&catalog);
         assert!(doc.solve_if_stale(&catalog).is_none(), "nothing changed");
 
-        doc.remove_node(furnace);
+        doc.remove_node(&catalog, furnace);
         assert_eq!(doc.view.nodes().count(), 0);
         assert!(doc.solve_if_stale(&catalog).is_some(), "removal re-solves");
+    }
+
+    #[test]
+    fn edits_between_checkpoints_undo_as_one_step() {
+        let catalog = catalog();
+        let mut doc = Document::new("tundra".into());
+        let furnace = doc.add_node(recipe(), Pos2::ZERO);
+        doc.checkpoint();
+        doc.set_limit(furnace, Some(2.0)).unwrap();
+        doc.set_limit(furnace, Some(3.0)).unwrap();
+        doc.checkpoint();
+
+        assert!(doc.undo(&catalog));
+        assert_eq!(doc.graph().node(furnace).unwrap().kind.limit(), Some(1.0));
+        assert!(doc.undo(&catalog));
+        assert!(doc.graph().nodes().is_empty());
+        assert!(!doc.undo(&catalog), "nothing left to undo");
+
+        assert!(doc.redo(&catalog));
+        assert!(doc.redo(&catalog));
+        assert_eq!(doc.graph().node(furnace).unwrap().kind.limit(), Some(3.0));
+        assert_eq!(doc.view.nodes().count(), 1, "the view follows");
+    }
+
+    #[test]
+    fn undo_brings_back_links_and_their_wires() {
+        let catalog = catalog();
+        let mut doc = Document::new("tundra".into());
+        let furnace = doc.add_node(recipe(), Pos2::ZERO);
+        let splitter = doc.add_node(NodeKind::Splitter { item: None }, Pos2::ZERO);
+        doc.connect(
+            &catalog,
+            PortRef::new(furnace, "ingot"),
+            PortRef::any(splitter),
+        )
+        .unwrap();
+        doc.checkpoint();
+        doc.remove_node(&catalog, splitter);
+        doc.checkpoint();
+
+        doc.undo(&catalog);
+        assert_eq!(doc.graph().links().len(), 1);
+        assert_eq!(doc.view.wires().count(), 1);
+    }
+
+    #[test]
+    fn a_new_edit_drops_the_redo_steps() {
+        let catalog = catalog();
+        let mut doc = Document::new("tundra".into());
+        doc.add_node(recipe(), Pos2::ZERO);
+        doc.checkpoint();
+        doc.undo(&catalog);
+        doc.add_node(NodeKind::Splitter { item: None }, Pos2::ZERO);
+        doc.checkpoint();
+        assert!(!doc.redo(&catalog));
+    }
+
+    #[test]
+    fn undoing_back_to_the_saved_state_is_unmodified() {
+        let catalog = catalog();
+        let mut doc = Document::new("tundra".into());
+        assert!(!doc.is_modified());
+        doc.add_node(recipe(), Pos2::ZERO);
+        assert!(doc.is_modified());
+        doc.mark_saved("plan.aicm".into());
+        assert!(!doc.is_modified());
+        doc.add_node(recipe(), Pos2::ZERO);
+        doc.checkpoint();
+        assert!(doc.is_modified());
+        doc.undo(&catalog);
+        assert!(!doc.is_modified());
+    }
+
+    #[test]
+    fn a_document_from_a_graph_draws_its_links() {
+        let catalog = catalog();
+        let mut graph = Graph::new("tundra".into());
+        let furnace = graph.add_node(recipe(), Pos { x: 5.0, y: 6.0 });
+        let splitter = graph.add_node(NodeKind::Splitter { item: None }, Pos::default());
+        graph
+            .connect(
+                &catalog,
+                PortRef::new(furnace, "ingot"),
+                PortRef::any(splitter),
+            )
+            .unwrap();
+        let doc = Document::from_graph(&catalog, graph, Some("plan.aicm".into()));
+        assert_eq!(doc.view.wires().count(), 1);
+        assert_eq!(
+            doc.view[doc.view_id(Member::Node(furnace)).unwrap()],
+            Member::Node(furnace)
+        );
+        assert!(!doc.is_modified());
     }
 }

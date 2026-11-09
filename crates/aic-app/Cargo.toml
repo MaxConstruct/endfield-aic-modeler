@@ -14,6 +14,7 @@ egui-snarl = "0.12"
 fluent-bundle = "0.16.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 indexmap = "2"
+rfd = "0.18.0"
 serde = { version = "1.0.229", features = ["derive"] }
 unic-langid = "0.9.6"
 

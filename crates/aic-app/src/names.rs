@@ -38,6 +38,7 @@ pub fn kind_key(kind: &NodeKind) -> &'static str {
         NodeKind::Recipe { .. } => "kind-recipe",
         NodeKind::Source { .. } => "kind-source",
         NodeKind::Sink { .. } => "kind-sink",
+        NodeKind::OutpostOrder { .. } => "kind-outpost-order",
         NodeKind::Splitter { .. } => "kind-splitter",
         NodeKind::Merger { .. } => "kind-merger",
         NodeKind::Storage { .. } => "kind-storage",
@@ -51,6 +52,7 @@ pub fn node_subject(catalog: &Catalog, strings: &Strings, kind: &NodeKind) -> St
     match kind {
         NodeKind::Recipe { recipe: id, .. } => recipe(catalog, id.as_str()).to_owned(),
         NodeKind::MissingRecipe { recipe, .. } => recipe.to_string(),
+        NodeKind::OutpostOrder { recipe: id, .. } => recipe(catalog, id.as_str()).to_owned(),
         _ => maybe_item(catalog, strings, kind.item()),
     }
 }
@@ -66,5 +68,14 @@ pub fn node_title(catalog: &Catalog, strings: &Strings, kind: &NodeKind) -> Stri
                 ("subject", &node_subject(catalog, strings, kind)),
             ],
         ),
+    }
+}
+
+/// "1 node", "3 nodes".
+pub fn node_count(strings: &Strings, count: usize) -> String {
+    if count == 1 {
+        strings.get("group-node-count-one")
+    } else {
+        strings.format("group-node-count", &[("count", &count.to_string())])
     }
 }
