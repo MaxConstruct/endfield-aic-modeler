@@ -398,6 +398,8 @@ fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
         .depot
         .iter()
         .filter_map(|(port, amount)| Some((port, (*amount)?)))
+        // A port that moves nothing, such as an idle branch's, isn't worth listing.
+        .filter(|(_, amount)| amount.abs() > passes::tolerance(*amount))
         .collect();
     // Graph order, so the totals panel doesn't reshuffle between solves.
     depot.sort_by_key(|(port, _)| *port);

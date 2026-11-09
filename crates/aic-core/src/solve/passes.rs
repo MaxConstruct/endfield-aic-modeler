@@ -2,6 +2,10 @@
 //!
 //! 1. Maximize throughput: what the section's origins put out plus what its sinks take in.
 //! 2. Hold throughput at that optimum and split every fan-out and fan-in as evenly as possible.
+//!
+//! When throughput has no ceiling (the section has limits, but some part can grow from the depot
+//! without end), pass 1 settles the section by its limits instead (ADR 0006): run every limited
+//! node as close to its limit as it gets, then every other node as low as its links allow.
 
 use std::collections::HashMap;
 
@@ -38,14 +42,17 @@ pub(crate) fn solve_section(ctx: &Ctx<'_>, section: &Section) -> Outcome {
         return Outcome::Undetermined(UndeterminedReason::NoLimit);
     }
     let objective = first.throughput.clone();
-    let best = match run(first, objective, Direction::Maximise, Vec::new()) {
-        Ok((values, best)) => (values, best),
-        Err(ResolutionError::Unbounded) => {
-            return Outcome::Undetermined(UndeterminedReason::Unbounded);
-        }
+    let (values, settled) = match run(first, objective, Direction::Maximise, Vec::new()) {
+        Ok((values, optimum)) => (values, Settled::Throughput(optimum)),
+        Err(ResolutionError::Unbounded) => match settle_by_limits(ctx, section) {
+            Ok(settled) => settled,
+            Err(ResolutionError::Unbounded) => {
+                return Outcome::Undetermined(UndeterminedReason::Unbounded);
+            }
+            Err(error) => return Outcome::Failed(error.to_string()),
+        },
         Err(error) => return Outcome::Failed(error.to_string()),
     };
-    let (values, optimum) = best;
 
     let mut second = build(ctx, section, None);
     if second.fan_groups.is_empty() {
@@ -65,18 +72,79 @@ pub(crate) fn solve_section(ctx: &Ctx<'_>, section: &Section) -> Outcome {
         }
         unevenness += largest;
     }
-    // Pass 2 must not trade throughput for evenness.
-    extra.push(
-        second
-            .throughput
-            .clone()
-            .geq(optimum - tolerance(optimum) * 1e-2),
-    );
+    // Pass 2 must not trade what pass 1 settled for evenness.
+    extra.extend(settled.keep(&second));
     match run(second, unevenness, Direction::Minimise, extra) {
         Ok((even, _)) => Outcome::Solved(even),
         // Numerical trouble in pass 2 only costs evenness; pass 1's answer is still right.
         Err(_) => Outcome::Solved(values),
     }
+}
+
+/// What pass 1 settled, which pass 2 keeps while it evens out the splits.
+enum Settled {
+    /// Throughput reached this optimum.
+    Throughput(f64),
+    /// Throughput had no ceiling, so the limits settled it (ADR 0006): limited nodes got as close
+    /// to their limits as `drivers` (their activity over their limit, added up), and the other
+    /// nodes came down to `least` (their activity, added up).
+    Limits { drivers: f64, least: f64 },
+}
+
+impl Settled {
+    fn keep(&self, model: &Model) -> Vec<good_lp::Constraint> {
+        match *self {
+            Self::Throughput(optimum) => {
+                vec![model.throughput.clone().geq(optimum - slack(optimum))]
+            }
+            Self::Limits { drivers, least } => vec![
+                drivers_reach(model).geq(drivers - slack(drivers)),
+                others_run(model).leq(least + slack(least)),
+            ],
+        }
+    }
+}
+
+/// How far below an optimum a later pass may go: a hundredth of the tolerance.
+fn slack(optimum: f64) -> f64 {
+    tolerance(optimum) * 1e-2
+}
+
+/// How close the limited nodes are to their limits, added up: activity over limit.
+fn drivers_reach(model: &Model) -> Expression {
+    model
+        .limits
+        .iter()
+        .filter(|(_, limit)| **limit > 0.0)
+        .map(|(node, limit)| model.activity[node] * (1.0 / limit))
+        .sum()
+}
+
+/// How much the nodes without a limit run, added up.
+fn others_run(model: &Model) -> Expression {
+    model
+        .activity
+        .iter()
+        .filter(|(node, _)| !model.limits.contains_key(node))
+        .map(|(_, var)| Expression::from(*var))
+        .sum()
+}
+
+/// Pass 1 when throughput has no ceiling: run every limited node as close to its limit as it
+/// gets, then every node without a limit as low as its links allow. A node nothing asks anything
+/// of runs at 0 rather than without end.
+fn settle_by_limits(
+    ctx: &Ctx<'_>,
+    section: &Section,
+) -> Result<(Values, Settled), ResolutionError> {
+    let first = build(ctx, section, None);
+    let reach = drivers_reach(&first);
+    let (_, drivers) = run(first, reach, Direction::Maximise, Vec::new())?;
+    let second = build(ctx, section, None);
+    let hold = vec![drivers_reach(&second).geq(drivers - slack(drivers))];
+    let others = others_run(&second);
+    let (values, least) = run(second, others, Direction::Minimise, hold)?;
+    Ok((values, Settled::Limits { drivers, least }))
 }
 
 enum Direction {

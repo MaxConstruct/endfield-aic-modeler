@@ -1409,3 +1409,50 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     harness.snapshot("toolbar");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The player's Buckflower graph from real data: a limit on the middle planter settles everything
+/// linked to it (ADR 0006).
+#[test]
+fn a_limit_in_the_middle_settles_the_buckflower_graph() {
+    let mut harness = harness(&fixture("../../data/v1.5.3"));
+    let recipe = |recipe: &str, facility: &str, limit: Option<f64>| NodeKind::Recipe {
+        recipe: recipe.into(),
+        facility: facility.into(),
+        limit,
+    };
+    let picker = add(
+        &mut harness,
+        recipe("plant_moss_seed_1", "seedcol_1", None),
+        0.0,
+        80.0,
+    );
+    let limited = add(
+        &mut harness,
+        recipe("plant_moss_1", "planter_1", Some(3.0)),
+        380.0,
+        0.0,
+    );
+    let free = add(
+        &mut harness,
+        recipe("plant_moss_1", "planter_1", None),
+        380.0,
+        240.0,
+    );
+    let carbon = add(
+        &mut harness,
+        recipe("carbon_mtl-plant_moss_1", "furnance_1", None),
+        760.0,
+        110.0,
+    );
+    link(&mut harness, picker, limited, "plant_moss_seed_1");
+    link(&mut harness, limited, carbon, "plant_moss_1");
+    link(&mut harness, free, carbon, "plant_moss_1");
+
+    let s = workspace(&mut harness).document().solution().clone();
+    assert_near(count(&s, limited), 3.0);
+    assert_near(count(&s, picker), 1.5);
+    assert_near(count(&s, carbon), 3.0);
+    assert_near(count(&s, free), 0.0);
+    fit_view(&mut harness);
+    snapshot_graph(&mut harness, "limit_in_the_middle");
+}

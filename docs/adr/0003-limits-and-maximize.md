@@ -11,3 +11,4 @@ Every value the player types is an upper limit: a facility count, a sink rate, a
 - A node shows two numbers: actual and limit. Falling short of a limit is normal output, not an error, so infeasible graphs mostly disappear.
 - A linked output port can't produce more than its links carry away. A backed-up byproduct throttles its facility, just like the in-game stall. Surplus is a reason a node is throttled, not a warning about leftover output.
 - A section with no limit anywhere is unbounded, and its values show as undetermined (blank).
+- A section with limits that still can grow without end (a free branch fed from the depot) is settled by its limits instead (ADR 0006).

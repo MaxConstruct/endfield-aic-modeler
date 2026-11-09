@@ -388,11 +388,12 @@ fn golden_08_undetermined_lone_node() {
 }
 
 #[test]
-fn undetermined_when_a_limit_exists_but_does_not_bound() {
+fn a_limit_that_does_not_bound_its_section_settles_it_at_the_least_it_needs() {
     let catalog = furnace_catalog();
     let mut g = graph();
-    // A storage drained through a splitter: one branch has a limit, the other doesn't, so the
-    // section has a limit but nothing bounds it.
+    // A storage drained through a splitter: one branch has a limit, the other doesn't. A full
+    // storage could feed the drain without end, so the limit settles the section (ADR 0006): the
+    // limited sink fills, and the drain, which nothing limits or asks for more, takes nothing.
     let store = add(&mut g, NodeKind::Storage { item: None });
     let ingot = add_recipe(&mut g, &catalog, "ingot", Some(1.0));
     let splitter = add(&mut g, NodeKind::Splitter { item: None });
@@ -404,17 +405,17 @@ fn undetermined_when_a_limit_exists_but_does_not_bound() {
     link(&mut g, &catalog, splitter, drain, "ingot");
 
     let s = solve(&catalog, &g);
-    // The upstream section is fine; the drain's section is unbounded.
     assert_near(count(&s, ingot), 1.0);
-    assert_eq!(rate(&s, drain), None);
-    assert_eq!(s.storage[&store].balance, None);
-    assert!(s.warnings.iter().any(|w| matches!(
-        w,
-        Warning::Undetermined {
-            reason: UndeterminedReason::Unbounded,
-            ..
-        }
-    )));
+    assert_near(rate(&s, limited), 10.0);
+    assert_near(rate(&s, drain), 0.0);
+    assert_near(s.storage[&store].balance, 20.0);
+    assert!(
+        !s.warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Undetermined { .. })),
+        "{:?}",
+        s.warnings
+    );
 }
 
 // 9. Storage decouples: upstream runs at its limits and the balance holds the difference.
@@ -771,4 +772,58 @@ fn added_producer_shares_evenly_with_a_feeder_that_has_room() {
     assert_near(s.link_flow[&new_wire], 12.5);
     assert_near(count(&s, existing), 1.25);
     assert_near(count(&s, added), 1.25);
+}
+
+// A limit in the middle settles the nodes around it, even when another branch could grow without
+// end from the depot (ADR 0006). The player's Buckflower graph, in per-minute terms.
+#[test]
+fn a_limit_in_the_middle_settles_the_nodes_around_it() {
+    let catalog = TestCatalog::new()
+        .facility("seed_picker", 10.0)
+        .facility("planter", 20.0)
+        .facility("furnace", 5.0)
+        .recipe(
+            "seed",
+            "seed_picker",
+            2.0,
+            &[("flower", 1.0)],
+            &[("seed", 2.0)],
+        )
+        .recipe(
+            "flower",
+            "planter",
+            2.0,
+            &[("seed", 1.0)],
+            &[("flower", 1.0)],
+        )
+        .recipe(
+            "carbon",
+            "furnace",
+            2.0,
+            &[("flower", 1.0)],
+            &[("carbon", 1.0)],
+        )
+        .build();
+    let mut g = graph();
+    let picker = add_recipe(&mut g, &catalog, "seed", None);
+    let limited = add_recipe(&mut g, &catalog, "flower", Some(3.0));
+    let free = add_recipe(&mut g, &catalog, "flower", None);
+    let carbon = add_recipe(&mut g, &catalog, "carbon", None);
+    link(&mut g, &catalog, picker, limited, "seed");
+    link(&mut g, &catalog, limited, carbon, "flower");
+    link(&mut g, &catalog, free, carbon, "flower");
+
+    let s = solve(&catalog, &g);
+    assert_near(count(&s, limited), 3.0);
+    assert_near(count(&s, picker), 1.5);
+    assert_near(count(&s, carbon), 3.0);
+    // Nothing asks the unlimited planter for more: it runs at nothing, rather than without end.
+    assert_near(count(&s, free), 0.0);
+    assert!(
+        s.sections
+            .iter()
+            .all(|section| section.status == SectionStatus::Solved),
+        "{:?}",
+        s.warnings
+    );
 }
