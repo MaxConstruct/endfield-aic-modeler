@@ -336,7 +336,6 @@ impl Canvas {
         }
         let path = doc.level_path();
         let (graph, view, anchors, solution) = doc.parts();
-        self.pin_ports_to_edges(ui.ctx(), graph, view, level);
         let before: HashMap<ViewId, Pos2> = view
             .nodes_pos_ids()
             .filter(|(_, _, member)| match member {
@@ -357,6 +356,9 @@ impl Canvas {
             pins: &self.pins,
             to_global: &mut self.to_global,
             hold: self.right_press.map(|(_, camera)| camera),
+            level,
+            canvas_rect: self.rect,
+            ctx: ui.ctx().clone(),
             pending_view: self
                 .pending_view
                 .take()
@@ -424,49 +426,6 @@ impl Canvas {
 }
 
 impl Canvas {
-    /// Puts the shown workspace's own ports on the canvas's edges, whatever the camera: inputs
-    /// down the left, outputs down the right, below the buttons at the top.
-    fn pin_ports_to_edges(
-        &self,
-        ctx: &egui::Context,
-        graph: &Graph,
-        view: &mut Snarl<Member>,
-        level: Option<WorkspaceId>,
-    ) {
-        let Some(workspace) = level else {
-            return;
-        };
-        let from_screen = self.to_global.inverse();
-        let ids: Vec<(ViewId, Member)> = view.nodes_pos_ids().map(|(v, _, m)| (v, *m)).collect();
-        for side in [Side::Input, Side::Output] {
-            let mut top = self.rect.top() + EDGE_TOP;
-            for port in graph.ports_of(workspace, side) {
-                let member = Member::Node(port);
-                let Some(&(view_id, _)) = ids.iter().find(|(_, m)| *m == member) else {
-                    continue;
-                };
-                // Last frame's size; a new tile starts with a guess.
-                let size = self
-                    .node_rects
-                    .get(&member)
-                    .map_or(vec2(80.0, 64.0), |r| r.size() * self.to_global.scaling);
-                let left = match side {
-                    Side::Input => self.rect.left() + EDGE_GAP,
-                    Side::Output => self.rect.right() - EDGE_GAP - size.x,
-                };
-                if let Some(info) = view.get_node_info_mut(view_id) {
-                    let pos = from_screen * Pos2::new(left, top);
-                    // A tile that moves changes size as it settles; draw again until it stops.
-                    if (info.pos - pos).length() > 0.5 {
-                        ctx.request_repaint();
-                    }
-                    info.pos = pos;
-                }
-                top += size.y + EDGE_GAP;
-            }
-        }
-    }
-
     /// The back button and the way down from the top, and the buttons that add ports, over the
     /// canvas of a workspace.
     fn level_bar(
@@ -703,6 +662,51 @@ impl Canvas {
     }
 }
 
+/// Puts the shown workspace's own ports on the canvas's edges, whatever the camera: inputs down
+/// the left, outputs down the right, below the buttons at the top. Runs with this frame's camera,
+/// before the cards are drawn, so a tile never trails a pan or zoom.
+fn pin_ports_to_edges(
+    ctx: &egui::Context,
+    graph: &Graph,
+    view: &mut Snarl<Member>,
+    level: Option<WorkspaceId>,
+    canvas: Rect,
+    node_rects: &HashMap<Member, Rect>,
+    to_global: TSTransform,
+) {
+    let Some(workspace) = level else {
+        return;
+    };
+    let from_screen = to_global.inverse();
+    let ids: Vec<(ViewId, Member)> = view.nodes_pos_ids().map(|(v, _, m)| (v, *m)).collect();
+    for side in [Side::Input, Side::Output] {
+        let mut top = canvas.top() + EDGE_TOP;
+        for port in graph.ports_of(workspace, side) {
+            let member = Member::Node(port);
+            let Some(&(view_id, _)) = ids.iter().find(|(_, m)| *m == member) else {
+                continue;
+            };
+            // Last frame's size; a new tile starts with a guess.
+            let size = node_rects
+                .get(&member)
+                .map_or(vec2(80.0, 64.0), |r| r.size() * to_global.scaling);
+            let left = match side {
+                Side::Input => canvas.left() + EDGE_GAP,
+                Side::Output => canvas.right() - EDGE_GAP - size.x,
+            };
+            if let Some(info) = view.get_node_info_mut(view_id) {
+                let pos = from_screen * Pos2::new(left, top);
+                // A new tile changes size as it settles; draw again until it stops.
+                if (info.pos - pos).length() > 0.5 {
+                    ctx.request_repaint();
+                }
+                info.pos = pos;
+            }
+            top += size.y + EDGE_GAP;
+        }
+    }
+}
+
 /// A port's pin: its item's icon inside the card against the edge, on a tile colored like the
 /// port (linked, or pulling from or sending to the depot). It records where snarl drew it.
 struct RecordingPin {
@@ -797,6 +801,11 @@ struct Viewer<'a> {
     pending_view: Option<TSTransform>,
     /// A camera to keep, whatever snarl's pan and zoom did this frame.
     hold: Option<TSTransform>,
+    /// The workspace shown, whose ports sit on the canvas's edges.
+    level: Option<WorkspaceId>,
+    /// The canvas area on screen.
+    canvas_rect: Rect,
+    ctx: egui::Context,
     node_rects: &'a mut HashMap<Member, Rect>,
     /// Each drawn item's pins this frame; a workspace's take a walk over the graph to find.
     pin_cache: HashMap<(Member, Side), Vec<PinTarget>>,
@@ -1625,7 +1634,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
         }
     }
 
-    fn current_transform(&mut self, to_global: &mut TSTransform, _snarl: &mut Snarl<Member>) {
+    fn current_transform(&mut self, to_global: &mut TSTransform, snarl: &mut Snarl<Member>) {
         // egui-snarl fits the view to its nodes the first time it sees the canvas. With no nodes
         // that fit divides by zero; start from the plain view instead.
         let usable = to_global.scaling.is_finite()
@@ -1640,6 +1649,15 @@ impl SnarlViewer<Member> for Viewer<'_> {
         if let Some(camera) = self.hold {
             *to_global = camera;
         }
+        pin_ports_to_edges(
+            &self.ctx,
+            self.graph,
+            snarl,
+            self.level,
+            self.canvas_rect,
+            self.node_rects,
+            *to_global,
+        );
         *self.to_global = *to_global;
     }
 }

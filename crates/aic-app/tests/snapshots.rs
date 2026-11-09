@@ -1154,6 +1154,27 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
     fit_view(&mut harness);
     snapshot_graph(&mut harness, "workspace_inside");
 
+    // Panning moves the nodes, not the port tiles: they hold still in the same frame.
+    let port_in = editor(&mut harness).document().graph().ports_of(workspace, Side::Input)[0];
+    let before = node_rect(&mut harness, port_in);
+    let center = editor(&mut harness).canvas_center_on_screen();
+    harness.hover_at(center);
+    harness.step();
+    for _ in 0..3 {
+        harness.event(Event::MouseWheel {
+            unit: eframe::egui::MouseWheelUnit::Point,
+            delta: vec2(40.0, 25.0),
+            modifiers: Modifiers::NONE,
+            phase: eframe::egui::TouchPhase::Move,
+        });
+        harness.step();
+        let now = node_rect(&mut harness, port_in);
+        assert!(
+            (now.min - before.min).length() < 0.5,
+            "the tile moved from {before:?} to {now:?}"
+        );
+    }
+
     harness.get_by_label("‹ Back").click();
     harness.run();
     assert_eq!(editor(&mut harness).document().level(), None);
