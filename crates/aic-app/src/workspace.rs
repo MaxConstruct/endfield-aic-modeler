@@ -58,6 +58,11 @@ pub struct Workspace {
     pub(crate) data: Option<(DataFolder, DataChoice)>,
     /// Decoded icons belong to the old data after a switch.
     pub(crate) icons_stale: bool,
+    /// The shortcut last pressed, and when: its toolbar button lights up for a moment.
+    pub(crate) flash: Option<(Shortcut, std::time::Instant)>,
+    /// When the document was last written, and whether the last try failed.
+    pub(crate) last_saved: Option<std::time::Instant>,
+    pub(crate) save_failed: bool,
     /// Where to save the canvas once the window is next drawn.
     pub(crate) export_to: Option<PathBuf>,
     /// The last refused action or file message, shown until the next one.
@@ -97,6 +102,9 @@ impl Workspace {
             data: None,
             icons_stale: false,
             export_to: None,
+            flash: None,
+            last_saved: None,
+            save_failed: false,
             status: None,
             last_solve: None,
             last_title: String::new(),
@@ -231,6 +239,7 @@ impl Workspace {
             crate::widgets::forget_icons(ui.ctx());
         }
         egui::Panel::top("top-bar").show(ui, |ui| self.top_bar(ui, strings));
+        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui, strings));
         egui::Panel::bottom("status-bar").show(ui, |ui| self.status_bar(ui, strings));
         let mut show_browser = self.show_browser;
         egui::Panel::left("recipe-browser")
@@ -524,7 +533,6 @@ impl Workspace {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.toggle_value(&mut self.show_inspector, strings.get("toggle-inspector"));
-                ui.toggle_value(&mut self.round_up, strings.get("toggle-round-up"));
             });
         });
     }
@@ -600,31 +608,20 @@ impl Workspace {
 
     fn edit_menu(&mut self, ui: &mut Ui, strings: &Strings) {
         let entries = [
-            (Shortcut::Undo, "menu-undo", self.doc.can_undo()),
-            (Shortcut::Redo, "menu-redo", self.doc.can_redo()),
-            (Shortcut::Copy, "menu-copy", self.has_selected_nodes()),
-            (Shortcut::Paste, "menu-paste", self.clipboard.is_some()),
-            (
-                Shortcut::Duplicate,
-                "menu-duplicate",
-                self.has_selected_nodes(),
-            ),
-            (Shortcut::Delete, "menu-delete", self.selection.is_some()),
-            (Shortcut::SelectAll, "menu-select-all", true),
-            (Shortcut::Group, "menu-group", self.has_selected_nodes()),
-            (
-                Shortcut::Ungroup,
-                "menu-ungroup",
-                self.selection
-                    .as_ref()
-                    .and_then(Selection::single_group)
-                    .is_some(),
-            ),
+            Shortcut::Undo,
+            Shortcut::Redo,
+            Shortcut::Copy,
+            Shortcut::Paste,
+            Shortcut::Duplicate,
+            Shortcut::Delete,
+            Shortcut::SelectAll,
+            Shortcut::Group,
+            Shortcut::Ungroup,
         ];
-        for (shortcut, key, enabled) in entries {
-            let button = egui::Button::new(strings.get(key))
+        for shortcut in entries {
+            let button = egui::Button::new(strings.get(shortcut.name_key()))
                 .shortcut_text(ui.ctx().format_shortcut(&shortcut.keys()));
-            if ui.add_enabled(enabled, button).clicked() {
+            if ui.add_enabled(self.can_run(shortcut), button).clicked() {
                 self.run(shortcut, strings);
             }
         }
@@ -655,6 +652,9 @@ impl Workspace {
             if let Some(status) = &self.status {
                 ui.label(RichText::new(status).color(colors::WARN));
             }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                self.save_indicator(ui, strings);
+            });
         });
     }
 }

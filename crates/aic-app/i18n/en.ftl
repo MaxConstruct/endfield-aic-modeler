@@ -34,6 +34,19 @@ menu-ungroup = Ungroup
 menu-view = View
 menu-round-up = Round up facilities
 toggle-round-up = Round up
+toolbar-hint = { $name } ({ $keys })
+
+## Save indicator (status bar)
+
+save-state-saved = ✔ Saved
+save-state-draft = ✔ Saved as a draft
+save-state-saving = ⟳ Saving…
+save-state-unsaved = ⚠ Not saved
+save-state-failed = ⚠ Not saved
+save-state-empty = Nothing to save yet
+save-state-hint = { $file }, saved { $when }
+save-state-just-now = just now
+save-state-minutes = { $minutes } min ago
 
 ## Files
 

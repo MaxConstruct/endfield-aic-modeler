@@ -91,6 +91,7 @@ impl Workspace {
                 || shortcut == Shortcut::Delete
                     && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Backspace));
             if pressed {
+                self.flash(shortcut);
                 self.run(shortcut, strings);
             }
         }
@@ -112,6 +113,7 @@ impl Workspace {
             (copy, cut, pasted)
         });
         if copy || cut {
+            self.flash(Shortcut::Copy);
             self.copy();
             if let Some((graph, _)) = &self.clipboard {
                 ctx.copy_text(graph.to_json(self.catalog.version()));
@@ -121,6 +123,7 @@ impl Workspace {
             self.delete_selection();
         }
         if let Some(text) = pasted {
+            self.flash(Shortcut::Paste);
             self.paste_text(&text);
         }
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
@@ -162,6 +165,11 @@ impl Workspace {
             Shortcut::Group => self.group_selection(strings),
             Shortcut::Ungroup => self.ungroup_selection(),
         }
+    }
+
+    /// Lights the shortcut's toolbar button for a moment, so a key press shows where its button is.
+    pub(crate) fn flash(&mut self, shortcut: Shortcut) {
+        self.flash = Some((shortcut, std::time::Instant::now()));
     }
 
     pub(crate) fn has_selected_nodes(&self) -> bool {

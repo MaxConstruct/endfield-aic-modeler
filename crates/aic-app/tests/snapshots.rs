@@ -1380,3 +1380,32 @@ fn the_region_can_change_until_the_first_node() {
             .is_err()
     );
 }
+
+#[test]
+fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let dir = temp_dir("toolbar");
+    workspace(&mut harness).set_drafts_dir(Some(dir.clone()));
+    harness.get_by_label("Nothing to save yet");
+
+    let node = smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    harness.get_by_label("✔ Saved as a draft");
+    workspace(&mut harness).select_nodes(vec![node]);
+    harness.run();
+
+    harness.get_by_label("Duplicate").click();
+    harness.run();
+    assert_eq!(node_count(&mut harness), 2);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.step();
+    assert_eq!(
+        workspace(&mut harness).flashing(),
+        Some(aic_app::edit::Shortcut::Undo),
+        "the key lights its button"
+    );
+    assert_eq!(node_count(&mut harness), 1);
+    harness.snapshot("toolbar");
+    let _ = std::fs::remove_dir_all(dir);
+}

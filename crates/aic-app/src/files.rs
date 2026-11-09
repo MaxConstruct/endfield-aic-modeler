@@ -234,9 +234,12 @@ impl Workspace {
             Ok(()) => {
                 self.doc.mark_saved(path.to_owned(), draft);
                 self.saved_view = view;
+                self.last_saved = Some(Instant::now());
+                self.save_failed = false;
                 true
             }
             Err(error) => {
+                self.save_failed = true;
                 let file = path.display().to_string();
                 self.status = Some(strings.format(
                     "file-save-failed",

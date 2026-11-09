@@ -567,6 +567,12 @@ Done.
     canvas's top-left and the zoom). Panning or zooming is saved too, but isn't an undo step.
   - Pretty JSON stays: 200 nodes is about 60 KB and writes in well under a millisecond, and the files
     stay readable and diffable.
+- Toolbar under the menus with a button for every keyboard command (file, undo/redo, copy, paste,
+  duplicate, delete, select all, group, ungroup) and the round-up toggle; the tooltip names the key. A
+  key press lights its button for 0.4 s, as Excel does, so the toolbar teaches the keys. Icons are
+  symbols egui's built-in fonts draw; several common ones (📋, ⧉, ●) are missing, so check new ones in a
+  snapshot. The status bar's right end says whether the work is saved (Saved, Saved as a draft,
+  Saving…, Not saved), with the file and time on hover.
 - Undo/redo keeps whole `Graph` snapshots (200 steps). Edits until the pointer is up and no field has
   focus make one step, so a drag or a typed number undoes at once. Undo and redo rebuild the canvas from
   the graph.

@@ -16,6 +16,7 @@ pub mod picker;
 mod port_menu;
 pub mod settings;
 mod throttle;
+mod toolbar;
 mod widgets;
 pub mod workspace;
 
