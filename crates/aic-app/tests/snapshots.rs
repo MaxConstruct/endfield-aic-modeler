@@ -629,6 +629,175 @@ fn double_clicking_a_port_sets_the_limit_as_a_rate() {
     );
 }
 
+/// One wheel event at `pos`, in mouse-wheel lines or trackpad points, played out.
+fn scroll_at(
+    harness: &mut Harness<'_, App>,
+    pos: eframe::egui::Pos2,
+    unit: eframe::egui::MouseWheelUnit,
+    delta: eframe::egui::Vec2,
+) {
+    harness.hover_at(pos);
+    harness.step();
+    harness
+        .input_mut()
+        .events
+        .push(eframe::egui::Event::MouseWheel {
+            unit,
+            delta,
+            phase: eframe::egui::TouchPhase::Move,
+            modifiers: eframe::egui::Modifiers::NONE,
+        });
+    // egui spreads a wheel's scroll over a few frames.
+    harness.run_steps(30);
+}
+
+/// Whether `zoom` is a whole step of 5%.
+fn on_a_5_percent_step(zoom: f32) -> bool {
+    let steps = zoom * 20.0;
+    (steps - steps.round()).abs() < 1e-3
+}
+
+/// The graph point under `pos` on screen.
+fn graph_point(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) -> eframe::egui::Pos2 {
+    let view = editor(harness).canvas_view().expect("canvas is shown");
+    let corner = editor(harness).canvas_corner_on_screen();
+    eframe::egui::pos2(
+        view.x + (pos.x - corner.x) / view.zoom,
+        view.y + (pos.y - corner.y) / view.zoom,
+    )
+}
+
+#[test]
+fn the_mouse_wheel_zooms_the_canvas_around_the_pointer() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    add_from_browser(&mut harness, "Iron Plate");
+    let at = editor(&mut harness).canvas_center_on_screen() + eframe::egui::vec2(100.0, 50.0);
+    let before = editor(&mut harness).canvas_view().expect("canvas is shown");
+    let under = graph_point(&mut harness, at);
+    // Wheel away from the player: zoom in.
+    scroll_at(
+        &mut harness,
+        at,
+        eframe::egui::MouseWheelUnit::Line,
+        eframe::egui::vec2(0.0, 1.0),
+    );
+    let after = editor(&mut harness).canvas_view().expect("canvas is shown");
+    assert!(after.zoom > before.zoom, "{} > {}", after.zoom, before.zoom);
+    assert!(on_a_5_percent_step(after.zoom), "zoom is {}", after.zoom);
+    let moved = graph_point(&mut harness, at) - under;
+    assert!(
+        moved.length() < 0.5,
+        "the point under the pointer stays: {moved:?}"
+    );
+    scroll_at(
+        &mut harness,
+        at,
+        eframe::egui::MouseWheelUnit::Line,
+        eframe::egui::vec2(0.0, -2.0),
+    );
+    let out = editor(&mut harness).canvas_view().expect("canvas is shown");
+    assert!(out.zoom < before.zoom, "{} < {}", out.zoom, before.zoom);
+    assert!(on_a_5_percent_step(out.zoom), "zoom is {}", out.zoom);
+}
+
+#[test]
+fn small_scrolls_add_up_to_5_percent_steps() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    add_from_browser(&mut harness, "Iron Plate");
+    let at = editor(&mut harness).canvas_center_on_screen();
+    let before = editor(&mut harness).canvas_view().expect("canvas is shown");
+    // Each is well under a 5% step on its own.
+    for _ in 0..12 {
+        scroll_at(
+            &mut harness,
+            at,
+            eframe::egui::MouseWheelUnit::Point,
+            eframe::egui::vec2(0.0, 2.0),
+        );
+        let zoom = editor(&mut harness)
+            .canvas_view()
+            .expect("canvas is shown")
+            .zoom;
+        assert!(on_a_5_percent_step(zoom), "zoom is {zoom}");
+    }
+    let after = editor(&mut harness).canvas_view().expect("canvas is shown");
+    assert!(after.zoom > before.zoom, "{} > {}", after.zoom, before.zoom);
+}
+
+#[test]
+fn the_status_bar_shows_the_zoom_and_sets_it() {
+    use eframe::egui::accesskit::Role;
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    add_from_browser(&mut harness, "Iron Plate");
+    let zoom = |harness: &mut Harness<'_, App>| {
+        editor(harness).canvas_view().expect("canvas is shown").zoom
+    };
+    let shown = |harness: &mut Harness<'_, App>| {
+        let percent = format!("{}%", (zoom(harness) * 100.0).round());
+        harness.get_by_label(&percent);
+    };
+    shown(&mut harness);
+    let center = editor(&mut harness).canvas_center_on_screen();
+    let under = graph_point(&mut harness, center);
+
+    // − and + step through 25%, 50%, … 200%.
+    harness
+        .get_by_role_and_label(Role::Button, "Zoom out")
+        .click();
+    harness.run();
+    let out = zoom(&mut harness);
+    harness
+        .get_by_role_and_label(Role::Button, "Zoom out")
+        .click();
+    harness.run();
+    assert!(
+        (out - zoom(&mut harness) - 0.25).abs() < 1e-4,
+        "{out} then {}",
+        zoom(&mut harness)
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Zoom in")
+        .click();
+    harness.run();
+    assert!((zoom(&mut harness) - out).abs() < 1e-4);
+    shown(&mut harness);
+
+    // The slider runs from 20% to 200% in steps of 5%; its middle is 110%. It stays put while
+    // the percentage beside it changes width.
+    let slider = harness.get_by_role_and_label(Role::Slider, "Zoom").rect();
+    harness.get_by_role_and_label(Role::Slider, "Zoom").click();
+    harness.run();
+    let middle = zoom(&mut harness);
+    assert!((middle - 1.1).abs() < 1e-4, "zoom is {middle}");
+    shown(&mut harness);
+    assert_eq!(
+        harness.get_by_role_and_label(Role::Slider, "Zoom").rect(),
+        slider
+    );
+    let moved = graph_point(&mut harness, center) - under;
+    assert!(
+        moved.length() < 0.5,
+        "the middle of the canvas stays: {moved:?}"
+    );
+}
+
+#[test]
+fn a_scroll_in_pixels_zooms_too() {
+    // A Magic Mouse, or a wheel with smooth scrolling, reports points rather than lines.
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    add_from_browser(&mut harness, "Iron Plate");
+    let at = editor(&mut harness).canvas_center_on_screen();
+    let before = editor(&mut harness).canvas_view().expect("canvas is shown");
+    scroll_at(
+        &mut harness,
+        at,
+        eframe::egui::MouseWheelUnit::Point,
+        eframe::egui::vec2(0.0, 40.0),
+    );
+    let after = editor(&mut harness).canvas_view().expect("canvas is shown");
+    assert!(after.zoom > before.zoom, "{} > {}", after.zoom, before.zoom);
+}
+
 #[test]
 fn double_clicking_a_ports_icon_opens_its_menu() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
@@ -1228,16 +1397,21 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
         .to_image()
     };
     let still = tile(&mut harness);
-    let center = editor(&mut harness).canvas_center_on_screen();
-    harness.hover_at(center);
+    // A scroll zooms; a middle-button drag on the background pans.
+    let mut at = editor(&mut harness).canvas_center_on_screen() + vec2(0.0, 200.0);
+    harness.hover_at(at);
     harness.step();
+    harness.event(Event::PointerButton {
+        pos: at,
+        button: eframe::egui::PointerButton::Middle,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
+    let view = editor(&mut harness).canvas_view().expect("canvas is shown");
     for _ in 0..3 {
-        harness.event(Event::MouseWheel {
-            unit: eframe::egui::MouseWheelUnit::Point,
-            delta: vec2(40.0, 25.0),
-            modifiers: Modifiers::NONE,
-            phase: eframe::egui::TouchPhase::Move,
-        });
+        at += vec2(40.0, 25.0);
+        harness.event(Event::PointerMoved(at));
         harness.step();
         let now = node_rect(&mut harness, port_in);
         assert!(
@@ -1252,6 +1426,18 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
             .count();
         assert!(differ < 40, "{differ} pixels of the tile changed");
     }
+    let panned = editor(&mut harness).canvas_view().expect("canvas is shown");
+    assert!(
+        (panned.x - view.x).abs() > 1.0,
+        "the drag panned: {view:?} to {panned:?}"
+    );
+    harness.event(Event::PointerButton {
+        pos: at,
+        button: eframe::egui::PointerButton::Middle,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run();
 
     harness.get_by_label("‹ Back").click();
     harness.run();
@@ -1502,6 +1688,25 @@ fn the_region_can_change_until_the_first_node() {
             .set_region("tundra".into())
             .is_err()
     );
+}
+
+#[test]
+fn the_save_state_does_not_move_the_zoom_control() {
+    let slider = |harness: &mut Harness<'_, App>| {
+        harness
+            .get_by_role_and_label(eframe::egui::accesskit::Role::Slider, "Zoom")
+            .rect()
+    };
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let dir = temp_dir("save-state-width");
+    editor(&mut harness).set_drafts_dir(Some(dir.clone()));
+    harness.get_by_label("Nothing to save yet");
+    let before = slider(&mut harness);
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    harness.get_by_label("✔ Saved as a draft");
+    assert_eq!(slider(&mut harness), before);
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

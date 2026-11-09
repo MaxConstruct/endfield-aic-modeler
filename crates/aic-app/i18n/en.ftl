@@ -66,6 +66,10 @@ settings-button = Settings…
 toggle-recipes = Recipes
 toggle-inspector = Inspector
 status-slow-solve = Solving took { $ms } ms. The canvas may stutter.
+zoom-label = Zoom
+zoom-in = Zoom in
+zoom-out = Zoom out
+zoom-percent = { $percent }%
 
 ## Node kinds
 

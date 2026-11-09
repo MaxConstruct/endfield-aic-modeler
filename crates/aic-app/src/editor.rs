@@ -10,7 +10,7 @@ use aic_core::{
 use aic_data::{Catalog, RecipeId, RegionId};
 use eframe::egui::{self, Pos2, RichText, Ui, vec2};
 
-use crate::canvas::{Canvas, CanvasEvent, Selection};
+use crate::canvas::{self, Canvas, CanvasEvent, Selection};
 use crate::data::{DataChoice, DataFolder};
 use crate::document::{Anchor, Document, port_ref};
 use crate::edit::Shortcut;
@@ -26,6 +26,8 @@ use crate::widgets::colors;
 
 /// A solve slower than this is reported in the status bar.
 const SLOW_SOLVE: Duration = Duration::from_millis(16);
+/// The status bar's zoom slider.
+const ZOOM_SLIDER_WIDTH: f32 = 96.0;
 /// Space between a port's pin and the menu it opens.
 const PORT_MENU_GAP: f32 = 12.0;
 
@@ -250,6 +252,11 @@ impl Editor {
     /// The middle of the canvas, on screen.
     pub fn canvas_center_on_screen(&self) -> Pos2 {
         self.canvas.rect.center()
+    }
+
+    /// The top-left of the canvas, on screen: where [`Self::canvas_view`]'s point is.
+    pub fn canvas_corner_on_screen(&self) -> Pos2 {
+        self.canvas.rect.min
     }
 
     pub fn ui(&mut self, ui: &mut Ui, strings: &Strings) {
@@ -670,7 +677,7 @@ impl Editor {
         }
     }
 
-    fn status_bar(&self, ui: &mut Ui, strings: &Strings) {
+    fn status_bar(&mut self, ui: &mut Ui, strings: &Strings) {
         ui.horizontal(|ui| {
             if let Some(version) = &self.other_data_version {
                 let text = strings.format(
@@ -697,8 +704,57 @@ impl Editor {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 self.save_indicator(ui, strings);
+                ui.separator();
+                self.zoom_control(ui, strings);
             });
         });
+    }
+
+    /// `− ──●── + 100%`: the canvas's zoom, set by the slider or stepped by the buttons. Laid out
+    /// right to left, so the percentage comes first.
+    fn zoom_control(&mut self, ui: &mut Ui, strings: &Strings) {
+        let Some(view) = self.canvas.view() else {
+            return;
+        };
+        let percent = |zoom: f32| {
+            let percent = (zoom * 100.0).round().to_string();
+            egui::WidgetText::from(strings.format("zoom-percent", &[("percent", &percent)]))
+        };
+        // As wide as the widest, so the slider never shifts under the pointer while it drags.
+        let widest = percent(canvas::MAX_ZOOM)
+            .into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Body,
+            )
+            .size();
+        ui.add_sized(widest, egui::Label::new(percent(view.zoom)));
+        let step = |ui: &mut Ui, text: &str, label: String| {
+            let response = ui.add(egui::Button::new(text).frame(false));
+            ui.ctx()
+                .accesskit_node_builder(response.id, |node| node.set_label(label));
+            response.clicked()
+        };
+        let mut zoom = view.zoom;
+        if step(ui, "+", strings.get("zoom-in")) {
+            zoom = canvas::zoom_step(view.zoom, true);
+        }
+        ui.spacing_mut().slider_width = ZOOM_SLIDER_WIDTH;
+        let slider = ui.add(
+            egui::Slider::new(&mut zoom, canvas::MIN_ZOOM..=canvas::MAX_ZOOM)
+                .step_by(f64::from(canvas::ZOOM_STEP))
+                .show_value(false),
+        );
+        let label = strings.get("zoom-label");
+        ui.ctx()
+            .accesskit_node_builder(slider.id, |node| node.set_label(label));
+        if step(ui, "−", strings.get("zoom-out")) {
+            zoom = canvas::zoom_step(view.zoom, false);
+        }
+        if zoom != view.zoom {
+            self.canvas.zoom_to(zoom);
+        }
     }
 }
 

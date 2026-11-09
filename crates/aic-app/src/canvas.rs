@@ -54,6 +54,36 @@ const EDGE_TOP: f32 = 48.0;
 const EDGE_GAP: f32 = 8.0;
 /// How far the pointer moves with the right button down before it draws a selection box.
 const BOX_THRESHOLD: f32 = 4.0;
+/// How far the canvas zooms out and in.
+pub const MIN_ZOOM: f32 = 0.2;
+pub const MAX_ZOOM: f32 = 2.0;
+/// The wheel and the slider zoom in whole steps of this: 65%, 70%, never 67%.
+pub const ZOOM_STEP: f32 = 0.05;
+/// The zooms the status bar's − and + step through.
+const ZOOM_STEPS: [f32; 7] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+/// `zoom` to the nearest whole [`ZOOM_STEP`], within the range.
+fn round_zoom(zoom: f32) -> f32 {
+    ((zoom / ZOOM_STEP).round() * ZOOM_STEP).clamp(MIN_ZOOM, MAX_ZOOM)
+}
+
+/// The next step from `zoom`, in or out; past the last step, the end of the range.
+pub fn zoom_step(zoom: f32, zoom_in: bool) -> f32 {
+    // Within this of a step counts as on it.
+    const ON: f32 = 0.005;
+    if zoom_in {
+        ZOOM_STEPS
+            .into_iter()
+            .find(|step| *step > zoom + ON)
+            .unwrap_or(MAX_ZOOM)
+    } else {
+        ZOOM_STEPS
+            .into_iter()
+            .rev()
+            .find(|step| *step < zoom - ON)
+            .unwrap_or(MIN_ZOOM)
+    }
+}
 
 /// egui-snarl's id for the canvas of one level. Each level keeps its own camera and selection.
 fn snarl_id(level: Option<WorkspaceId>) -> Id {
@@ -192,6 +222,11 @@ pub struct Canvas {
     grabbed: Option<Member>,
     /// A view to show from the next frame, set when a file opens.
     pending_view: Option<aic_core::CanvasView>,
+    /// A zoom to show from the next frame, around the middle of the canvas.
+    pending_zoom: Option<f32>,
+    /// Wheel scroll not yet turned into a zoom step, as a factor. Small scrolls add up here until
+    /// they reach the next 5%.
+    wheel_rest: f32,
     /// The level shown last frame.
     level: Option<WorkspaceId>,
     /// Where the top of the graph was looked at last, kept while a workspace is open so a save
@@ -213,6 +248,8 @@ impl Default for Canvas {
                 pin_size: Some(PIN_ICON),
                 wire_width: Some(2.0),
                 collapsible: Some(false),
+                min_scale: Some(MIN_ZOOM),
+                max_scale: Some(MAX_ZOOM),
                 bg_pattern: Some(BackgroundPattern::grid(vec2(40.0, 40.0), 0.0)),
                 bg_pattern_stroke: Some(Stroke::new(1.0, theme::color::GRID)),
                 bg_frame: Some(egui::Frame::new().fill(theme::color::CANVAS)),
@@ -235,6 +272,8 @@ impl Default for Canvas {
             snarl_selection: Vec::new(),
             grabbed: None,
             pending_view: None,
+            pending_zoom: None,
+            wheel_rest: 1.0,
             level: None,
             top_view: None,
             right_press: None,
@@ -265,6 +304,11 @@ impl Canvas {
         } else {
             self.top_view
         }
+    }
+
+    /// Zooms to `zoom` from the next frame on, around the middle of the canvas.
+    pub fn zoom_to(&mut self, zoom: f32) {
+        self.pending_zoom = Some(zoom);
     }
 
     /// Looks at `view` from the next frame on, as when a file is opened.
@@ -348,6 +392,10 @@ impl Canvas {
             })
             .map(|(view_id, pos, _)| (view_id, pos))
             .collect();
+        let zoom = match self.pending_zoom.take() {
+            Some(zoom) => Some((self.rect.center(), zoom)),
+            None => self.wheel_zoom(ui),
+        };
         let mut viewer = Viewer {
             catalog,
             strings,
@@ -360,6 +408,7 @@ impl Canvas {
             pins: &self.pins,
             to_global: &mut self.to_global,
             hold: self.right_press.map(|(_, camera)| camera),
+            zoom,
             level,
             canvas_rect: self.rect,
             ctx: ui.ctx().clone(),
@@ -493,6 +542,37 @@ impl Canvas {
                     events.push(CanvasEvent::AddPort(Side::Output));
                 }
             });
+    }
+
+    /// A scroll over the canvas zooms around the pointer instead of panning: the scroll is taken
+    /// from the input before egui-snarl sees it, and returned as the pointer on screen and the new
+    /// zoom, a whole 5% step. Whatever the wheel reports, lines or points (a Magic Mouse, a
+    /// smooth-scrolling wheel, a trackpad), it zooms; dragging the background pans.
+    fn wheel_zoom(&mut self, ui: &Ui) -> Option<(Pos2, f32)> {
+        let (delta, pos, modifiers) =
+            ui.input(|i| (i.smooth_scroll_delta, i.pointer.latest_pos(), i.modifiers));
+        let pos = pos?;
+        let over_canvas = self.rect.contains(pos)
+            && ui
+                .ctx()
+                .layer_id_at(pos)
+                .is_none_or(|layer| layer.order == ui.layer_id().order);
+        // Shift scrolls sideways, as everywhere.
+        if !over_canvas || modifiers.shift || delta == Vec2::ZERO {
+            return None;
+        }
+        ui.ctx().input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+        let speed = ui.ctx().options(|o| o.input_options.scroll_zoom_speed);
+        let current = self.to_global.scaling;
+        let wanted = current * self.wheel_rest * (speed * (delta.x + delta.y)).exp();
+        let zoom = round_zoom(wanted);
+        // Past either end of the range, the rest of the scroll is dropped.
+        self.wheel_rest = if (MIN_ZOOM..=MAX_ZOOM).contains(&wanted) {
+            wanted / zoom
+        } else {
+            1.0
+        };
+        ((zoom - current).abs() > ZOOM_STEP * 0.01).then_some((pos, zoom))
     }
 
     /// A box drawn by dragging with the right button on the background, as on a desktop: what it
@@ -834,6 +914,8 @@ struct Viewer<'a> {
     pending_view: Option<TSTransform>,
     /// A camera to keep, whatever snarl's pan and zoom did this frame.
     hold: Option<TSTransform>,
+    /// A zoom this frame: the point on screen that holds still, and the new zoom.
+    zoom: Option<(Pos2, f32)>,
     /// The workspace shown, whose ports sit on the canvas's edges.
     level: Option<WorkspaceId>,
     /// The canvas area on screen.
@@ -1680,6 +1762,12 @@ impl SnarlViewer<Member> for Viewer<'_> {
             && to_global.translation.is_finite();
         if !usable {
             *to_global = TSTransform::IDENTITY;
+        }
+        if let Some((fixed, zoom)) = self.zoom {
+            // The graph point at `fixed` stays there.
+            let under = to_global.inverse() * fixed;
+            let zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+            *to_global = TSTransform::new(fixed.to_vec2() - under.to_vec2() * zoom, zoom);
         }
         if let Some(view) = self.pending_view.take() {
             *to_global = view;

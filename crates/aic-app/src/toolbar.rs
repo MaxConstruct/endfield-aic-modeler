@@ -12,6 +12,16 @@ use crate::editor::Editor;
 use crate::i18n::Strings;
 use crate::widgets::colors;
 
+/// Every text the save indicator shows; it is as wide as the widest.
+const SAVE_STATES: [&str; 6] = [
+    "save-state-failed",
+    "save-state-saving",
+    "save-state-unsaved",
+    "save-state-draft",
+    "save-state-saved",
+    "save-state-empty",
+];
+
 /// How long a button stays lit after its key is pressed.
 const FLASH: Duration = Duration::from_millis(400);
 const BUTTON: egui::Vec2 = vec2(28.0, 22.0);
@@ -167,7 +177,31 @@ impl Editor {
                 ui.visuals().weak_text_color(),
             )
         };
-        let response = ui.label(RichText::new(text).color(color));
+        // A fixed width, so what sits beside it doesn't move as the state changes.
+        let widest = SAVE_STATES
+            .iter()
+            .map(|key| {
+                egui::WidgetText::from(strings.get(key))
+                    .into_galley(
+                        ui,
+                        Some(egui::TextWrapMode::Extend),
+                        f32::INFINITY,
+                        egui::TextStyle::Body,
+                    )
+                    .size()
+                    .x
+            })
+            .fold(0.0, f32::max);
+        let response = ui
+            .allocate_ui_with_layout(
+                vec2(widest, ui.available_height()),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    ui.set_min_width(widest);
+                    ui.label(RichText::new(text).color(color))
+                },
+            )
+            .inner;
         let file = self
             .doc
             .path()
