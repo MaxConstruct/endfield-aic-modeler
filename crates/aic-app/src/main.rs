@@ -17,7 +17,10 @@ fn main() -> eframe::Result {
     eframe::run_native(
         &title,
         options,
-        Box::new(|cc| Ok(Box::new(App::from_folder(strings, folder, cc.storage)))),
+        Box::new(|cc| {
+            aic_app::theme::install(&cc.egui_ctx);
+            Ok(Box::new(App::from_folder(strings, folder, cc.storage)))
+        }),
     )
 }
 

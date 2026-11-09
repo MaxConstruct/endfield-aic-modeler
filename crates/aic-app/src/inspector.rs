@@ -15,6 +15,7 @@ use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::settings::parse_amount;
+use crate::theme;
 use crate::widgets::{self, LimitField, colors};
 
 impl Editor {
@@ -68,7 +69,7 @@ impl Editor {
         ui.label(names::node_count(strings, count));
         let solution = self.doc.solution();
         ui.add_space(4.0);
-        ui.label(RichText::new(strings.get("inspector-ports")).strong());
+        ui.label(theme::strong(strings.get("inspector-ports")));
         egui::Grid::new("workspace-ports")
             .num_columns(2)
             .spacing([8.0, 4.0])
@@ -113,8 +114,9 @@ impl Editor {
     fn many_nodes(&mut self, ui: &mut Ui, strings: &Strings, count: usize) {
         ui.label(
             RichText::new(strings.format("inspector-many", &[("count", &count.to_string())]))
-                .strong()
-                .size(16.0),
+                .family(theme::semibold())
+                .color(theme::color::TEXT_STRONG)
+                .size(theme::text::HEADING),
         );
         ui.horizontal(|ui| {
             if ui.button(strings.get("menu-duplicate")).clicked() {
@@ -133,8 +135,9 @@ impl Editor {
         let kind = graph.node(node).expect("checked by caller").kind.clone();
         ui.label(
             RichText::new(names::node_title(catalog, strings, &kind))
-                .strong()
-                .size(16.0),
+                .family(theme::semibold())
+                .color(theme::color::TEXT_STRONG)
+                .size(theme::text::HEADING),
         );
 
         let mut facility_choice = None;
@@ -285,7 +288,7 @@ impl Editor {
         let graph = self.doc.graph();
         let solution = self.doc.solution();
         ui.add_space(4.0);
-        ui.label(RichText::new(strings.get("inspector-ports")).strong());
+        ui.label(theme::strong(strings.get("inspector-ports")));
         egui::Grid::new("node-ports")
             .num_columns(3)
             .spacing([8.0, 4.0])
@@ -335,8 +338,9 @@ impl Editor {
             widgets::item_icon(ui, catalog, item.as_str(), 18.0);
             ui.label(
                 RichText::new(strings.get("inspector-link"))
-                    .strong()
-                    .size(16.0),
+                    .family(theme::semibold())
+                    .color(theme::color::TEXT_STRONG)
+                    .size(theme::text::HEADING),
             );
             ui.label(names::item(catalog, item.as_str()));
         });

@@ -23,7 +23,10 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
     let catalog = aic_data::load(version_dir, "en").expect("data loads");
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
-        .build_eframe(|_cc| App::new(Strings::english(), Ok(catalog), None));
+        .build_eframe(|cc| {
+            aic_app::theme::install(&cc.egui_ctx);
+            App::new(Strings::english(), Ok(catalog), None)
+        });
     harness.run();
     harness
 }
@@ -143,7 +146,8 @@ fn flow(solution: &Solution, node: NodeId, item: &str, side: Side) -> Option<f64
 fn load_error_screen() {
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
-        .build_eframe(|_cc| {
+        .build_eframe(|cc| {
+            aic_app::theme::install(&cc.egui_ctx);
             App::new(
                 Strings::english(),
                 Err("no data folder found (tried ./data)".into()),
@@ -266,13 +270,7 @@ fn rebuild_golden_05_through_the_picker() {
     editor(&mut harness).new_graph("jinlong".into());
     harness.run();
     // The browser lists recipes in data order; the planting recipe is called Yazhen.
-    harness
-        .get_all_by_label("Yazhen")
-        .next()
-        .expect("browser lists Yazhen")
-        .click();
-    harness.run();
-    let planting = selected(&mut harness);
+    let planting = add_from_browser(&mut harness, "Yazhen");
 
     let picking = pick(
         &mut harness,
@@ -327,7 +325,10 @@ fn secondary_click_at(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) {
     harness.run();
 }
 
+/// Clicks `label` in the recipe browser, scrolling it into view first.
 fn add_from_browser(harness: &mut Harness<'_, App>, label: &str) -> NodeId {
+    harness.get_by_label(label).scroll_to_me();
+    harness.run();
     harness.get_by_label(label).click();
     harness.run();
     selected(harness)
@@ -926,7 +927,10 @@ fn data_folder_app() -> Harness<'static, App> {
     let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
-        .build_eframe(move |_cc| App::from_folder(Strings::english(), folder.clone(), None));
+        .build_eframe(move |cc| {
+            aic_app::theme::install(&cc.egui_ctx);
+            App::from_folder(Strings::english(), folder.clone(), None)
+        });
     harness.run();
     harness
 }

@@ -27,6 +27,7 @@ use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::picker::Origin;
+use crate::theme;
 use crate::widgets::{self, ItemPicture, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
 
 const CANVAS_ID: &str = "aic-canvas";
@@ -213,6 +214,9 @@ impl Default for Canvas {
                 wire_width: Some(2.0),
                 collapsible: Some(false),
                 bg_pattern: Some(BackgroundPattern::grid(vec2(40.0, 40.0), 0.0)),
+                bg_pattern_stroke: Some(Stroke::new(1.0, theme::color::GRID)),
+                bg_frame: Some(egui::Frame::new().fill(theme::color::CANVAS)),
+                node_frame: Some(theme::node_frame()),
                 // The canvas draws the player's selection itself; egui-snarl's own is only used
                 // for box selection.
                 select_style: Some(egui_snarl::ui::SelectionStyle {
@@ -781,7 +785,7 @@ impl SnarlPin for RecordingPin {
                     anchor,
                     align,
                     &rate.text,
-                    FontId::monospace(13.0),
+                    FontId::monospace(theme::text::MONO),
                     rate.color,
                 );
             }
@@ -1054,8 +1058,8 @@ impl Viewer<'_> {
         let text = format::fixed(value);
         ui.label(
             RichText::new(if text.is_empty() { " ".into() } else { text })
-                .size(20.0)
-                .strong(),
+                .font(theme::number(theme::text::NUMBER))
+                .color(theme::color::TEXT_STRONG),
         );
     }
 }
@@ -1110,10 +1114,10 @@ impl SnarlViewer<Member> for Viewer<'_> {
         snarl: &Snarl<Member>,
     ) -> egui::Frame {
         let frame = default
-            .corner_radius(CornerRadius::same(6))
+            .corner_radius(CornerRadius::same(theme::radius::MEDIUM))
             .inner_margin(egui::Margin::same(NODE_MARGIN));
         if self.selection.is_some_and(|s| s.contains(snarl[node])) {
-            frame.stroke(Stroke::new(2.0, colors::WARN))
+            frame.stroke(Stroke::new(2.0, colors::ACCENT))
         } else {
             frame
         }
@@ -1155,19 +1159,22 @@ impl SnarlViewer<Member> for Viewer<'_> {
             Member::Node(id) => self.kind(id),
             Member::Workspace(_) => {
                 return default
-                    .fill(Color32::from_rgb(70, 55, 90))
-                    .corner_radius(CornerRadius::same(6));
+                    .fill(theme::color::node::WORKSPACE)
+                    .corner_radius(CornerRadius::same(theme::radius::MEDIUM));
             }
         };
+        use theme::color::node;
         let tint = match kind {
-            Some(NodeKind::Recipe { .. }) => Color32::from_rgb(45, 60, 85),
-            Some(NodeKind::Source { .. }) => Color32::from_rgb(40, 75, 50),
-            Some(NodeKind::Sink { .. }) => Color32::from_rgb(85, 45, 70),
-            Some(NodeKind::OutpostOrder { .. }) => Color32::from_rgb(90, 70, 35),
-            Some(NodeKind::MissingRecipe { .. }) => Color32::from_rgb(90, 40, 40),
-            _ => Color32::from_rgb(60, 60, 60),
+            Some(NodeKind::Recipe { .. }) => node::RECIPE,
+            Some(NodeKind::Source { .. }) => node::SOURCE,
+            Some(NodeKind::Sink { .. }) => node::SINK,
+            Some(NodeKind::OutpostOrder { .. }) => node::OUTPOST_ORDER,
+            Some(NodeKind::MissingRecipe { .. }) => node::MISSING,
+            _ => node::LOGISTICS,
         };
-        default.fill(tint).corner_radius(CornerRadius::same(6))
+        default
+            .fill(tint)
+            .corner_radius(CornerRadius::same(theme::radius::MEDIUM))
     }
 
     fn show_header(
@@ -1188,7 +1195,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                             .small()
                             .weak(),
                     );
-                    title_label(ui, RichText::new(name).strong());
+                    title_label(ui, theme::strong(name));
                 });
                 return;
             }
@@ -1213,7 +1220,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 );
             }
             let subject = names::node_subject(self.catalog, self.strings, kind);
-            title_label(ui, RichText::new(subject).strong());
+            title_label(ui, theme::strong(subject));
             if let NodeKind::Storage { .. } = kind {
                 let balance = self.solution.storage.get(&id).and_then(|s| s.balance);
                 if let Some(balance) = balance {
@@ -1353,8 +1360,8 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     Some(rounded) => {
                         ui.label(
                             RichText::new(rounded.facilities.to_string())
-                                .size(20.0)
-                                .strong(),
+                                .font(theme::number(theme::text::NUMBER))
+                                .color(theme::color::TEXT_STRONG),
                         );
                         let percent = format::short(Some(rounded.utilization * 100.0));
                         ui.label(
@@ -1765,11 +1772,12 @@ impl LinkLabels<'_> {
                 } else {
                     visuals.text_color()
                 };
-                let galley = painter.layout_no_wrap(text, FontId::proportional(12.0), color);
+                let galley =
+                    painter.layout_no_wrap(text, FontId::proportional(theme::text::SMALL), color);
                 let rect = Rect::from_center_size(a.lerp(b, 0.5), galley.size()).expand(3.0);
                 let selected = self.selection == Some(&Selection::Link(id));
                 let stroke = if selected {
-                    Stroke::new(1.5, colors::WARN)
+                    Stroke::new(1.5, colors::ACCENT)
                 } else {
                     Stroke::NONE
                 };

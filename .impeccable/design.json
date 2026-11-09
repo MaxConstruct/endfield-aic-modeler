@@ -1,0 +1,745 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T12:54:39+00:00",
+  "title": "Design System: AIC Modeler",
+  "extensions": {
+    "platform": "Native egui 0.36 + egui-snarl 0.12 desktop app. Tokens are Rust constants in crates/aic-app/src/theme.rs; CSS here is a preview translation only (1pt = 1px at 1x).",
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "rustConst": "color::CANVAS",
+        "canonical": "#111214",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "rustConst": "color::PANEL",
+        "canonical": "#18191C",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised",
+        "rustConst": "color::RAISED",
+        "canonical": "#1F2024",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "inset": {
+        "role": "neutral",
+        "displayName": "Inset",
+        "rustConst": "color::INSET",
+        "canonical": "#0F1012",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "stripe": {
+        "role": "neutral",
+        "displayName": "Stripe",
+        "rustConst": "color::STRIPE",
+        "canonical": "#1B1C20",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "control": {
+        "role": "neutral",
+        "displayName": "Control",
+        "rustConst": "color::CONTROL",
+        "canonical": "#26282D",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "control-hover": {
+        "role": "neutral",
+        "displayName": "Control Hover",
+        "rustConst": "color::CONTROL_HOVER",
+        "canonical": "#2E3036",
+        "oklch": "oklch(31.0% 0.011 271)",
+        "tonalRamp": [
+          "#0A0B0F",
+          "#23252A",
+          "#404247",
+          "#5F6168",
+          "#808289",
+          "#A3A5AB",
+          "#C7C9CF",
+          "#ECEEF4"
+        ]
+      },
+      "control-active": {
+        "role": "neutral",
+        "displayName": "Control Active",
+        "rustConst": "color::CONTROL_ACTIVE",
+        "canonical": "#36383F",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "divider": {
+        "role": "neutral",
+        "displayName": "Divider",
+        "rustConst": "color::DIVIDER",
+        "canonical": "#26272B",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "rustConst": "color::BORDER",
+        "canonical": "#303238",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Border Strong",
+        "rustConst": "color::BORDER_STRONG",
+        "canonical": "#44474F",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "grid": {
+        "role": "neutral",
+        "displayName": "Grid",
+        "rustConst": "color::GRID",
+        "canonical": "#1C1D21",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "text-strong": {
+        "role": "neutral",
+        "displayName": "Text Strong",
+        "rustConst": "color::TEXT_STRONG",
+        "canonical": "#F3F4F6",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "rustConst": "color::TEXT",
+        "canonical": "#D3D5DA",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Text Muted",
+        "rustConst": "color::TEXT_MUTED",
+        "canonical": "#A0A3AB",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "text-faint": {
+        "role": "neutral",
+        "displayName": "Text Faint",
+        "rustConst": "color::TEXT_FAINT",
+        "canonical": "#868991",
+        "tonalRamp": [
+          "#0F1012",
+          "#111214",
+          "#18191C",
+          "#1F2024",
+          "#2E3036",
+          "#44474F",
+          "#A0A3AB",
+          "#F3F4F6"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Focus Blue",
+        "rustConst": "color::ACCENT",
+        "canonical": "#6E9BFF",
+        "oklch": "oklch(70.2% 0.155 264)",
+        "tonalRamp": [
+          "#01003B",
+          "#041A62",
+          "#1B3A8A",
+          "#355BB5",
+          "#547EDB",
+          "#79A2FC",
+          "#9FC8FF",
+          "#C7EEFF"
+        ]
+      },
+      "accent-fill": {
+        "role": "primary",
+        "displayName": "Selection Wash",
+        "rustConst": "color::ACCENT_FILL",
+        "canonical": "#243761",
+        "oklch": "oklch(34.3% 0.078 264)",
+        "tonalRamp": [
+          "#020824",
+          "#152344",
+          "#2F4167",
+          "#4C608C",
+          "#6C82B0",
+          "#8FA5D2",
+          "#B4C9F4",
+          "#DBEFFF"
+        ]
+      },
+      "accent-text": {
+        "role": "primary",
+        "displayName": "Selection Ink",
+        "rustConst": "color::ACCENT_TEXT",
+        "canonical": "#9CBBFF",
+        "oklch": "oklch(79.5% 0.103 265)",
+        "tonalRamp": [
+          "#01052B",
+          "#10214E",
+          "#2A3F73",
+          "#455F9A",
+          "#6581BE",
+          "#89A4E0",
+          "#AEC9FF",
+          "#D5EEFF"
+        ]
+      },
+      "depot-in": {
+        "role": "secondary",
+        "displayName": "Depot Pink",
+        "rustConst": "color::DEPOT_IN",
+        "canonical": "#F07AAE",
+        "oklch": "oklch(72.8% 0.155 354)",
+        "tonalRamp": [
+          "#29000E",
+          "#4E0029",
+          "#751247",
+          "#9E3367",
+          "#C45789",
+          "#E77EAB",
+          "#FFA5CF",
+          "#FFCEF4"
+        ]
+      },
+      "depot-out": {
+        "role": "secondary",
+        "displayName": "Depot Green",
+        "rustConst": "color::DEPOT_OUT",
+        "canonical": "#6CC77E",
+        "oklch": "oklch(75.5% 0.136 149)",
+        "tonalRamp": [
+          "#001400",
+          "#003200",
+          "#005217",
+          "#137533",
+          "#3F9754",
+          "#6BBA7A",
+          "#94DEA0",
+          "#BEFFC8"
+        ]
+      },
+      "linked": {
+        "role": "secondary",
+        "displayName": "Link Grey",
+        "rustConst": "color::LINKED",
+        "canonical": "#9AA0AB",
+        "oklch": "oklch(70.4% 0.017 263)",
+        "tonalRamp": [
+          "#080B11",
+          "#21252C",
+          "#3E424B",
+          "#5C616B",
+          "#7D838D",
+          "#A0A5AF",
+          "#C4C9D3",
+          "#EAEFF8"
+        ]
+      },
+      "warn": {
+        "role": "secondary",
+        "displayName": "Throttle Amber",
+        "rustConst": "color::WARN",
+        "canonical": "#E9A23B",
+        "oklch": "oklch(76.4% 0.142 72)",
+        "tonalRamp": [
+          "#230000",
+          "#451400",
+          "#693100",
+          "#8F5000",
+          "#B37200",
+          "#D6973F",
+          "#F8BD6F",
+          "#FFE39D"
+        ]
+      },
+      "positive": {
+        "role": "secondary",
+        "displayName": "Fill Green",
+        "rustConst": "color::POSITIVE",
+        "canonical": "#6CC77E",
+        "oklch": "oklch(75.5% 0.136 149)",
+        "tonalRamp": [
+          "#001400",
+          "#003200",
+          "#005217",
+          "#137533",
+          "#3F9754",
+          "#6BBA7A",
+          "#94DEA0",
+          "#BEFFC8"
+        ]
+      },
+      "negative": {
+        "role": "secondary",
+        "displayName": "Drain Red",
+        "rustConst": "color::NEGATIVE",
+        "canonical": "#EF6461",
+        "oklch": "oklch(67.7% 0.173 24)",
+        "tonalRamp": [
+          "#300000",
+          "#570000",
+          "#810012",
+          "#AC292E",
+          "#D4504F",
+          "#F77974",
+          "#FFA29B",
+          "#FFCBC3"
+        ]
+      },
+      "node-recipe": {
+        "role": "tertiary",
+        "displayName": "Recipe Header",
+        "rustConst": "color::node::RECIPE",
+        "canonical": "#283349",
+        "oklch": "oklch(32.1% 0.042 264)",
+        "tonalRamp": [
+          "#050B19",
+          "#1C2536",
+          "#384257",
+          "#556179",
+          "#76839B",
+          "#99A5BE",
+          "#BECAE1",
+          "#E4EFFF"
+        ]
+      },
+      "node-source": {
+        "role": "tertiary",
+        "displayName": "Source Header",
+        "rustConst": "color::node::SOURCE",
+        "canonical": "#4A2A3C",
+        "oklch": "oklch(33.2% 0.055 346)",
+        "tonalRamp": [
+          "#17040F",
+          "#351C2A",
+          "#553748",
+          "#785568",
+          "#9A7689",
+          "#BD99AC",
+          "#E0BED0",
+          "#FFE4F5"
+        ]
+      },
+      "node-sink": {
+        "role": "tertiary",
+        "displayName": "Sink Header",
+        "rustConst": "color::node::SINK",
+        "canonical": "#213A29",
+        "oklch": "oklch(32.2% 0.044 154)",
+        "tonalRamp": [
+          "#010F05",
+          "#162A1D",
+          "#324838",
+          "#4F6956",
+          "#6F8A77",
+          "#93AD9A",
+          "#B8D0BE",
+          "#DEF5E4"
+        ]
+      },
+      "node-outpost-order": {
+        "role": "tertiary",
+        "displayName": "Outpost Order Header",
+        "rustConst": "color::node::OUTPOST_ORDER",
+        "canonical": "#45361C",
+        "oklch": "oklch(34.3% 0.045 80)",
+        "tonalRamp": [
+          "#130900",
+          "#2F230E",
+          "#4D4029",
+          "#6E5F45",
+          "#908065",
+          "#B3A389",
+          "#D6C7AE",
+          "#FBEDD5"
+        ]
+      },
+      "node-missing": {
+        "role": "tertiary",
+        "displayName": "Missing Recipe Header",
+        "rustConst": "color::node::MISSING",
+        "canonical": "#522426",
+        "oklch": "oklch(32.6% 0.069 19)",
+        "tonalRamp": [
+          "#1C0204",
+          "#3C181A",
+          "#5F3435",
+          "#835252",
+          "#A77273",
+          "#C99696",
+          "#ECBBBB",
+          "#FFE1E1"
+        ]
+      },
+      "node-logistics": {
+        "role": "tertiary",
+        "displayName": "Logistics Header",
+        "rustConst": "color::node::LOGISTICS",
+        "canonical": "#2E3036",
+        "oklch": "oklch(31.0% 0.011 271)",
+        "tonalRamp": [
+          "#0A0B0F",
+          "#23252A",
+          "#404247",
+          "#5F6168",
+          "#808289",
+          "#A3A5AB",
+          "#C7C9CF",
+          "#ECEEF4"
+        ]
+      },
+      "node-workspace": {
+        "role": "tertiary",
+        "displayName": "Workspace Header",
+        "rustConst": "color::node::WORKSPACE",
+        "canonical": "#3A3052",
+        "oklch": "oklch(33.6% 0.060 297)",
+        "tonalRamp": [
+          "#0D061C",
+          "#27203A",
+          "#453C5B",
+          "#645B7E",
+          "#857CA1",
+          "#A89FC3",
+          "#CCC3E6",
+          "#F1E9FF"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "label": {
+        "displayName": "Label",
+        "purpose": "Link labels, captions, node kind lines, status bar.",
+        "rust": "TextStyle::Small, text::SMALL"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Labels, buttons, list rows.",
+        "rust": "TextStyle::Body / Button, text::BODY"
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Numbers in panels and port rates.",
+        "rust": "TextStyle::Monospace, text::MONO"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel titles; heading-sized emphasis.",
+        "rust": "TextStyle::Heading (semibold family), text::HEADING"
+      },
+      "number": {
+        "displayName": "Number",
+        "purpose": "The number a card is about.",
+        "rust": "theme::number(text::NUMBER), theme::number_style()"
+      }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 2px 6px rgba(0,0,0,0.35)",
+        "purpose": "Node cards (theme::node_frame, Shadow offset [0,2] blur 6 black α90)."
+      },
+      {
+        "name": "popover",
+        "value": "0 4px 14px rgba(0,0,0,0.47)",
+        "purpose": "Menus and popups (Visuals::popup_shadow, black α120)."
+      },
+      {
+        "name": "window",
+        "value": "0 8px 24px rgba(0,0,0,0.55)",
+        "purpose": "Windows (Visuals::window_shadow, black α140)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "toolbar-flash",
+        "value": "400ms",
+        "purpose": "A toolbar button lights when its shortcut is pressed (toolbar.rs FLASH)."
+      },
+      {
+        "name": "text-cursor",
+        "value": "no blink",
+        "purpose": "Visuals::text_cursor.blink = false."
+      }
+    ],
+    "breakpoints": [],
+    "strokes": [
+      {
+        "name": "hairline",
+        "value": "1pt",
+        "purpose": "Dividers, outlines, grid, select box."
+      },
+      {
+        "name": "wire",
+        "value": "2pt",
+        "purpose": "Links (SnarlStyle::wire_width)."
+      },
+      {
+        "name": "selected-node",
+        "value": "2pt accent",
+        "purpose": "Selected node outline."
+      },
+      {
+        "name": "selected-link-label",
+        "value": "1.5pt accent",
+        "purpose": "Selected link label outline."
+      },
+      {
+        "name": "text-cursor",
+        "value": "2pt accent",
+        "purpose": "Text cursor."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default egui button: flat control fill, 1pt divider outline; hover lightens and strengthens the outline; pressed takes an accent outline. No size change.",
+      "html": "<button class=\"ds-btn\">Round up</button>",
+      "css": ".ds-btn { font-family: Inter, sans-serif; font-size: 13px; color: #D3D5DA; background: #26282D; border: 1px solid #26272B; border-radius: 4px; padding: 2px 8px; min-height: 20px; } .ds-btn:hover { background: #2E3036; border-color: #44474F; color: #F3F4F6; } .ds-btn:active { background: #36383F; border-color: #6E9BFF; color: #F3F4F6; } .ds-btn:focus-visible { outline: 1px solid #9CBBFF; outline-offset: 0; }"
+    },
+    {
+      "name": "Selected Toggle",
+      "kind": "button",
+      "refersTo": "button-selected",
+      "description": "A selectable button or row in its on state: the selection wash with selection ink.",
+      "html": "<button class=\"ds-btn-selected\">Inspector</button>",
+      "css": ".ds-btn-selected { font-family: Inter, sans-serif; font-size: 13px; color: #9CBBFF; background: #243761; border: 1px solid #26272B; border-radius: 4px; padding: 2px 8px; } .ds-btn-selected:hover { border-color: #44474F; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "Inset well; focus draws the selection-ink outline; unparseable input turns red.",
+      "html": "<input class=\"ds-field\" placeholder=\"Search by name\"> <input class=\"ds-field ds-field-bad\" value=\"1o\">",
+      "css": ".ds-field { font-family: Inter, sans-serif; font-size: 13px; color: #D3D5DA; background: #0F1012; border: 1px solid #26272B; border-radius: 4px; height: 20px; padding: 0 4px; caret-color: #6E9BFF; } .ds-field::placeholder { color: #868991; } .ds-field:hover { border-color: #44474F; } .ds-field:focus-visible { outline: none; border-color: #9CBBFF; } .ds-field-bad { color: #EF6461; }"
+    },
+    {
+      "name": "Node Card",
+      "kind": "card",
+      "refersTo": "node-card",
+      "description": "Fixed 300pt card on the canvas: kind-tinted header, facility image, focal mono number, port rates at the edges. Selected adds a 2pt accent outline.",
+      "html": "<div class=\"ds-node\"><div class=\"ds-node-head\"><div class=\"ds-node-title\">Yazhen</div></div><div class=\"ds-node-body\"><span class=\"ds-rate ds-in\">10.00</span><div class=\"ds-node-mid\"><div class=\"ds-node-fac\">Planting Unit</div><div class=\"ds-node-num\">0.33</div></div><span class=\"ds-rate ds-out\">20.00</span></div></div>",
+      "css": ".ds-node { font-family: Inter, sans-serif; width: 300px; background: #1F2024; border: 1px solid #303238; border-radius: 6px; padding: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.35); color: #D3D5DA; font-size: 13px; } .ds-node:hover { border-color: #303238; } .ds-node:focus-visible, .ds-node.is-selected { outline: 2px solid #6E9BFF; outline-offset: -1px; } .ds-node-head { background: #283349; border-radius: 6px; padding: 4px 6px; } .ds-node-title { font-weight: 600; color: #F3F4F6; } .ds-node-body { display: flex; align-items: center; justify-content: space-between; padding-top: 6px; } .ds-node-mid { text-align: center; } .ds-node-fac { font-size: 12px; color: #A0A3AB; } .ds-node-num { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 18px; color: #F3F4F6; } .ds-rate { font-family: 'JetBrains Mono', monospace; font-size: 13px; } .ds-in { color: #F07AAE; } .ds-out { color: #6CC77E; }"
+    },
+    {
+      "name": "Link Label",
+      "kind": "chip",
+      "refersTo": "link-label",
+      "description": "Rate and belt count at a wire's midpoint; amber over one belt; accent outline when selected.",
+      "html": "<span class=\"ds-link\">10.00 /min · 0.33 belts</span> <span class=\"ds-link ds-link-over\">40.00 /min · 1.33 belts</span>",
+      "css": ".ds-link { font-family: Inter, sans-serif; font-size: 12px; color: #D3D5DA; background: rgba(15,16,18,0.9); border-radius: 3px; padding: 3px; } .ds-link-over { color: #E9A23B; } .ds-link:hover { color: #F3F4F6; } .ds-link:focus-visible, .ds-link.is-selected { outline: 1.5px solid #6E9BFF; }"
+    },
+    {
+      "name": "Popover Menu",
+      "kind": "custom",
+      "refersTo": "popover",
+      "description": "Menus, port menu and picker: raised surface, hairline border, short soft shadow; opens fully formed and focused.",
+      "html": "<div class=\"ds-pop\"><div class=\"ds-pop-title\">Limit</div><button class=\"ds-pop-item\">Clear</button><button class=\"ds-pop-item\">Unlock ratio</button></div>",
+      "css": ".ds-pop { font-family: Inter, sans-serif; display: inline-flex; flex-direction: column; gap: 3px; background: #1F2024; border: 1px solid #303238; border-radius: 6px; padding: 4px; box-shadow: 0 4px 14px rgba(0,0,0,0.47); color: #D3D5DA; font-size: 13px; } .ds-pop-title { font-weight: 600; color: #F3F4F6; padding: 2px 4px; } .ds-pop-item { font: inherit; color: #D3D5DA; background: #26282D; border: 1px solid #26272B; border-radius: 4px; padding: 2px 8px; text-align: left; } .ds-pop-item:hover { background: #2E3036; border-color: #44474F; color: #F3F4F6; } .ds-pop-item:focus-visible { outline: 1px solid #9CBBFF; }"
+    },
+    {
+      "name": "Panel Chrome",
+      "kind": "nav",
+      "refersTo": "",
+      "description": "Side panel with a semibold title and a 1pt divider against the canvas; no shadow.",
+      "html": "<aside class=\"ds-panel\"><div class=\"ds-panel-title\">Inspector</div><div class=\"ds-panel-row\"><span>Rate</span><span class=\"ds-mono\">10.00</span><span class=\"ds-unit\">/min</span></div></aside>",
+      "css": ".ds-panel { font-family: Inter, sans-serif; width: 280px; background: #18191C; border-left: 1px solid #26272B; padding: 8px; color: #D3D5DA; font-size: 13px; } .ds-panel-title { font-size: 15px; font-weight: 600; color: #F3F4F6; margin-bottom: 3px; } .ds-panel-row { display: flex; gap: 8px; } .ds-panel-row:hover { color: #F3F4F6; } .ds-panel-row:focus-visible { outline: 1px solid #9CBBFF; } .ds-mono { font-family: 'JetBrains Mono', monospace; } .ds-unit { color: #A0A3AB; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Workbench",
+    "overview": "The category standard played straight: a dark node editor with quiet neutral chrome, so the graph and\nits numbers are the only loud thing on screen. The craft bar is the Figma and Linear desktop apps\n(neutral chrome, 1px dividers, restrained accent, polished popovers) with Satisfactory Modeler's\nfunction. Dark because the app sits on a second monitor beside the running game.\n\nDensity is high and deliberate: 13pt text, 20pt controls, 3pt row gaps, built for 27\" screens at\n1440p and 4K with keyboard and mouse. Polish means precision (pixel-snapped hairlines, aligned\nnumbers, contrast that holds at 1x), not decoration. No glow, gradients or themed costume.",
+    "keyCharacteristics": [
+      "Cool graphite ramp: canvas, then panels, then cards and popovers, each one step lighter.",
+      "One blue, for selection and focus only. Every other hue is a state.",
+      "Inter for words, JetBrains Mono for numbers that must line up; both embedded, identical on macOS and Windows.",
+      "1pt hairlines, 4/6/8 radii, short soft shadows only on things that float.",
+      "Act, don't ask: no confirm dialogs, no OK/Cancel; undo and autosave are the safety net."
+    ],
+    "rules": [
+      {
+        "name": "The One Blue Rule",
+        "body": "The accent marks selection and focus, nothing else. Hyperlinks are `TEXT_MUTED`; status is never blue.",
+        "section": "colors"
+      },
+      {
+        "name": "The Meaning-Only Hue Rule",
+        "body": "Pink is pulled from the depot, green is sent to it (or a storage filling), amber is a warning, red is an error. A hue used for decoration breaks the reading of every number on screen.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tested Contrast Rule",
+        "body": "Contrast is enforced by unit tests in `theme.rs`: every text and state color is ≥4.5:1 on canvas, panel, raised and inset; `TEXT_STRONG` is ≥7:1 and `TEXT_MUTED` ≥4.5:1 on every header tint; `ACCENT_TEXT` ≥4.5:1 on `ACCENT_FILL`. A new color or tint joins those tests.",
+        "section": "colors"
+      },
+      {
+        "name": "The Real Bold Rule",
+        "body": "egui's `.strong()` only changes color. Emphasis is `theme::strong(text)` (semibold family + `TEXT_STRONG`); a heading-sized emphasis adds `.size(text::HEADING)`.",
+        "section": "typography"
+      },
+      {
+        "name": "The Aligned Numbers Rule",
+        "body": "Any number that sits in a column or updates in place is mono. Words are never mono.",
+        "section": "typography"
+      },
+      {
+        "name": "The 1x-First Rule",
+        "body": "Design at 1x (1440p, Windows 100%), then check 1.5x and 2x. Custom painting snaps to pixels; hairlines are 1pt. `subpixel_binning` is off so text renders the same everywhere.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Chrome Rule",
+        "body": "Panels, bars and controls carry no shadow; a 1pt divider separates them.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** take every color, size and radius from `theme`; a literal `Color32` or font size in a widget is a bug.",
+      "**Do** put every user-facing string through Fluent (`crates/aic-app/i18n/en.ftl`), with terse labels.",
+      "**Do** make one gesture do the thing: right-click opens the picker with search focused, one click places the node, edits apply at once.",
+      "**Do** give every command a keyboard shortcut and light its toolbar button when the key is pressed.",
+      "**Do** rely on undo and background autosave as the safety net; the app reopens the last document.",
+      "**Do** verify through egui_kittest snapshots (1280x800 at 1x). After a token change, delete `crates/aic-app/tests/snapshots/*.png`, then run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app`: kittest only rewrites images past its diff threshold."
+    ],
+    "donts": [
+      "**Don't** add confirm dialogs, OK/Cancel pairs or \"discard changes?\" prompts.",
+      "**Don't** let a panel, dialog or tool cover the work or wait to be dismissed.",
+      "**Don't** use blue for anything but selection and focus, or a state hue for decoration.",
+      "**Don't** use egui's `.strong()` for emphasis; use `theme::strong`.",
+      "**Don't** add hover expansion, glow, gradients or shadows on chrome.",
+      "**Don't** over-explain: no help copy where a label, icon or number does the job."
+    ]
+  }
+}

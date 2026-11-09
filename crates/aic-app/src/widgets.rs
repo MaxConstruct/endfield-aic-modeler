@@ -11,22 +11,7 @@ use crate::names;
 use crate::settings::parse_amount;
 
 /// Colors with a meaning across the app.
-pub mod colors {
-    use eframe::egui::Color32;
-
-    /// An input port pulling from the depot.
-    pub const DEPOT_IN: Color32 = Color32::from_rgb(236, 120, 170);
-    /// An output port sending to the depot.
-    pub const DEPOT_OUT: Color32 = Color32::from_rgb(110, 200, 120);
-    /// A linked port.
-    pub const LINKED: Color32 = Color32::from_rgb(150, 160, 175);
-    /// Throttle markers and hints such as a link over one belt.
-    pub const WARN: Color32 = Color32::from_rgb(240, 170, 60);
-    pub const POSITIVE: Color32 = Color32::from_rgb(110, 200, 120);
-    pub const NEGATIVE: Color32 = Color32::from_rgb(230, 90, 90);
-    /// The box a right-drag draws to select.
-    pub const SELECT_BOX: Color32 = Color32::from_rgb(90, 140, 255);
-}
+pub use crate::theme::color as colors;
 
 /// A field for typing a limit. It shows `current` unless the player is typing in it, and returns
 /// the typed limit (`None` for blank) on the frame the text changes to something that parses. Text
@@ -204,7 +189,7 @@ impl ItemPicture {
     /// A port with no item yet: a grey square with a question mark.
     pub fn unknown() -> Self {
         Self::Badge {
-            fill: Color32::from_gray(90),
+            fill: colors::CONTROL_ACTIVE,
             initials: "?".to_owned(),
         }
     }

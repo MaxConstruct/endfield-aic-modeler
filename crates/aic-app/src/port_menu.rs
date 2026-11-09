@@ -5,10 +5,11 @@ use std::collections::HashMap;
 
 use aic_core::{Graph, LinkId, Port, Side};
 use aic_data::Catalog;
-use eframe::egui::{self, Id, Key, Pos2, RichText};
+use eframe::egui::{self, Id, Key, Pos2};
 
 use crate::i18n::Strings;
 use crate::names;
+use crate::theme;
 use crate::widgets::LimitField;
 
 /// The menu's width in points, so one opened from an input can sit left of its port.
@@ -79,7 +80,7 @@ impl PortMenu {
                     ui.set_width(WIDTH);
                     if has_limit {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(strings.get("port-menu-limit")).strong());
+                            ui.label(theme::strong(strings.get("port-menu-limit")));
                             let field = LimitField {
                                 id: field_id,
                                 buffer: &mut self.buffer,
@@ -135,7 +136,7 @@ impl PortMenu {
     ) -> Option<Outcome> {
         let mut outcome = None;
         let side = self.port.side;
-        ui.label(RichText::new(strings.get("port-menu-ratio")).strong())
+        ui.label(theme::strong(strings.get("port-menu-ratio")))
             .on_hover_text(strings.get("port-menu-ratio-hint"));
         egui::Grid::new("port-menu-ratio")
             .num_columns(2)
