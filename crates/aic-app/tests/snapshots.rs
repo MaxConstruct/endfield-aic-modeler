@@ -28,6 +28,11 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
             App::new(Strings::english(), Ok(catalog), None)
         });
     harness.run();
+    // The inspector starts closed; most tests read or type into it.
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Inspector")
+        .click();
+    harness.run();
     harness
 }
 
@@ -106,6 +111,16 @@ fn type_limit(harness: &mut Harness<'_, App>, limit: &str) {
 
 /// Fits the canvas to the graph, as a double-click on the background does: egui-snarl fits the
 /// view the first time it sees the canvas.
+/// The middle of an output port's rate, left of its pin at `pin`: 24 (half the 48 icon) plus the
+/// 4 gap plus half the 54 rate, scaled by the canvas zoom.
+fn beside_output_pin(
+    harness: &mut Harness<'_, App>,
+    pin: eframe::egui::Pos2,
+) -> eframe::egui::Pos2 {
+    let zoom = editor(harness).canvas_view().map_or(1.0, |view| view.zoom);
+    pin - eframe::egui::vec2(55.0 * zoom, 0.0)
+}
+
 fn fit_view(harness: &mut Harness<'_, App>) {
     harness
         .ctx
@@ -533,7 +548,7 @@ fn going_over_a_raw_resource_shows_a_warning() {
         ws.availability().get(&"tundra".into(), &"iron_ore".into()),
         Some(45.0)
     );
-    harness.get_by_label("Iron Ore: using 60.00 /min, but the region supplies 45.00 /min.");
+    harness.get_by_label("Iron Ore: using 60 /min, but the region supplies 45 /min.");
     harness.snapshot("raw_resource_over_use");
 }
 
@@ -592,7 +607,8 @@ fn double_clicking_a_port_sets_the_limit_as_a_rate() {
     let pin = editor(&mut harness)
         .port_on_screen(plate, Side::Output, "iron_plate")
         .expect("pin is drawn");
-    double_click_at(&mut harness, pin - eframe::egui::vec2(24.0, 0.0));
+    let at = beside_output_pin(&mut harness, pin);
+    double_click_at(&mut harness, at);
     assert!(
         editor(&mut harness).port_menu_is_open(),
         "double-click opens the port menu"
@@ -629,7 +645,8 @@ fn the_port_menu_clears_the_ports_links() {
     let pin = editor(&mut harness)
         .port_on_screen(smelter, Side::Output, "iron_ingot")
         .expect("pin is drawn");
-    double_click_at(&mut harness, pin - eframe::egui::vec2(24.0, 0.0));
+    let at = beside_output_pin(&mut harness, pin);
+    double_click_at(&mut harness, at);
     assert!(
         editor(&mut harness).port_menu_is_open(),
         "double-click opens the port menu"
@@ -637,6 +654,20 @@ fn the_port_menu_clears_the_ports_links() {
     harness.get_by_label("Clear connections").click();
     harness.run();
     assert_eq!(editor(&mut harness).document().graph().links().len(), 0);
+}
+
+#[test]
+fn inspector_starts_closed() {
+    let catalog =
+        aic_data::load(&fixture("tests/fixtures/satisfactory/vtest"), "en").expect("data loads");
+    let mut harness = Harness::builder()
+        .with_size(WINDOW_SIZE)
+        .build_eframe(|cc| {
+            aic_app::theme::install(&cc.egui_ctx);
+            App::new(Strings::english(), Ok(catalog), None)
+        });
+    harness.run();
+    assert!(harness.query_by_label("Totals").is_none());
 }
 
 #[test]
@@ -1038,7 +1069,8 @@ fn a_ratio_lock_is_typed_in_the_port_menu() {
     let pin = editor(&mut harness)
         .port_on_screen(ore, Side::Output, "iron_ore")
         .expect("pin is drawn");
-    double_click_at(&mut harness, pin - vec2(24.0, 0.0));
+    let at = beside_output_pin(&mut harness, pin);
+    double_click_at(&mut harness, at);
     assert!(editor(&mut harness).port_menu_is_open());
 
     type_into(&mut harness, "Share for Sink · Iron Ore", "2");

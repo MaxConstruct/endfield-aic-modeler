@@ -93,7 +93,7 @@ impl Editor {
             limit_edit: String::new(),
             port_menu: None,
             show_browser: true,
-            show_inspector: true,
+            show_inspector: false,
             round_up: false,
             clipboard: None,
             recent_files: Vec::new(),
@@ -258,7 +258,6 @@ impl Editor {
             crate::widgets::forget_icons(ui.ctx());
         }
         egui::Panel::top("top-bar").show(ui, |ui| self.top_bar(ui, strings));
-        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui, strings));
         egui::Panel::bottom("status-bar").show(ui, |ui| self.status_bar(ui, strings));
         let mut show_browser = self.show_browser;
         egui::Panel::left("recipe-browser")
@@ -561,18 +560,21 @@ impl Editor {
             ui.separator();
             ui.toggle_value(&mut self.show_browser, strings.get("toggle-recipes"));
             ui.separator();
-            ui.strong(strings.get("app-title"));
-            ui.separator();
-            ui.label(strings.get("region-label"));
-            self.region_picker(ui, strings);
-            ui.separator();
-            ui.weak(strings.format("data-version", &[("version", self.catalog.version())]));
-            ui.separator();
-            if ui.button(strings.get("settings-button")).clicked() {
-                self.settings.open_on(&self.doc.graph().region().clone());
-            }
+            self.toolbar(ui, strings);
+            // Right to left: the last added sits leftmost.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.toggle_value(&mut self.show_inspector, strings.get("toggle-inspector"));
+                ui.separator();
+                if ui.button(strings.get("settings-button")).clicked() {
+                    self.settings.open_on(&self.doc.graph().region().clone());
+                }
+                ui.toggle_value(&mut self.round_up, strings.get("toggle-round-up"))
+                    .on_hover_text(strings.get("menu-round-up"));
+                ui.separator();
+                ui.weak(strings.format("data-version", &[("version", self.catalog.version())]));
+                ui.separator();
+                self.region_picker(ui, strings);
+                ui.label(strings.get("region-label"));
             });
         });
     }
@@ -683,7 +685,7 @@ impl Editor {
             if let Some(took) = self.last_solve
                 && took > SLOW_SOLVE
             {
-                let ms = format::fixed(Some(took.as_secs_f64() * 1000.0));
+                let ms = format::short(Some(took.as_secs_f64() * 1000.0));
                 ui.label(
                     RichText::new(strings.format("status-slow-solve", &[("ms", &ms)]))
                         .color(colors::WARN),

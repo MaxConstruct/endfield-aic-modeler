@@ -59,8 +59,8 @@ mod tests {
     fn arguments_are_filled_in_without_isolation_marks() {
         let strings = Strings::english();
         assert_eq!(
-            strings.format("link-label", &[("flow", "12.00"), ("belts", "0.4")]),
-            "12.00 /min · 0.4 belts"
+            strings.format("link-label", &[("flow", "12"), ("belts", "0.4")]),
+            "12 /min · 0.4 belts"
         );
     }
 

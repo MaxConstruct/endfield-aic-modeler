@@ -167,7 +167,7 @@ impl Editor {
                     ui.end_row();
                     ui.label(strings.get("inspector-count"));
                     let count = solution.facility_count.get(&node).copied().flatten();
-                    ui.monospace(format::fixed(count));
+                    ui.monospace(format::short(count));
                     ui.end_row();
                     if let Some(rounded) = count.map(RoundUp::of) {
                         ui.label(strings.get("inspector-round-up"));
@@ -192,7 +192,7 @@ impl Editor {
                     ui.monospace(strings.format(
                         "inspector-earns-value",
                         &[
-                            ("rate", &format::fixed(Some(*earned))),
+                            ("rate", &format::short(Some(*earned))),
                             ("coupon", names::item(catalog, coupon.as_str())),
                         ],
                     ));
@@ -421,7 +421,7 @@ impl Editor {
                         ] {
                             ui.label(strings.get(key));
                             let text = strings
-                                .format("totals-power-kw", &[("kw", &format::fixed(Some(kw)))]);
+                                .format("totals-power-kw", &[("kw", &format::short(Some(kw)))]);
                             ui.monospace(text);
                             ui.end_row();
                         }
@@ -439,7 +439,7 @@ impl Editor {
                     .show(ui, |ui| {
                         for (facility, count) in &totals.facilities {
                             ui.label(names::facility(catalog, facility.as_str()));
-                            ui.monospace(format::fixed(Some(*count)));
+                            ui.monospace(format::short(Some(*count)));
                             let rounded = totals.facilities_rounded.get(facility).copied();
                             ui.monospace(strings.format(
                                 "totals-facilities-rounded",
@@ -461,7 +461,7 @@ impl Editor {
                     for (item, used) in &totals.raw_resource_use {
                         widgets::item_icon(ui, catalog, item.as_str(), 16.0);
                         ui.label(names::item(catalog, item.as_str()));
-                        let used_text = format::fixed(Some(*used));
+                        let used_text = format::short(Some(*used));
                         let text = match self.availability.get(region, item) {
                             Some(available) => {
                                 let over = *used > available + 1e-9;
@@ -469,7 +469,7 @@ impl Editor {
                                     "totals-raw-use",
                                     &[
                                         ("used", &used_text),
-                                        ("available", &format::fixed(Some(available))),
+                                        ("available", &format::short(Some(available))),
                                     ],
                                 );
                                 if over {
@@ -508,7 +508,7 @@ impl Editor {
 
 fn per_min(strings: &Strings, value: Option<f64>) -> String {
     match value {
-        Some(_) => strings.format("totals-per-min", &[("rate", &format::fixed(value))]),
+        Some(_) => strings.format("totals-per-min", &[("rate", &format::short(value))]),
         None => String::new(),
     }
 }
@@ -593,8 +593,8 @@ fn warning_text(catalog: &Catalog, strings: &Strings, graph: &Graph, warning: &W
             "warning-resource-over",
             &[
                 ("item", &item(id)),
-                ("used", &format::fixed(Some(*used))),
-                ("available", &format::fixed(Some(*available))),
+                ("used", &format::short(Some(*used))),
+                ("available", &format::short(Some(*available))),
             ],
         ),
         Warning::Issue(issue) => issue_text(catalog, strings, issue),

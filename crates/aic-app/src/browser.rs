@@ -9,7 +9,7 @@ use crate::picker::{self, Matching, Origin};
 use crate::widgets;
 
 /// Size of the icon beside each recipe.
-const ICON: f32 = 20.0;
+const ICON: f32 = 32.0;
 
 #[derive(Default)]
 pub struct Browser {

@@ -138,6 +138,12 @@ impl eframe::App for App {
         }
     }
 
+    /// eframe saves the window size and position with the settings, by default only every 30 s and
+    /// on a clean quit. Save as often as the graph autosaves, so a killed app still reopens as it was.
+    fn auto_save_interval(&self) -> std::time::Duration {
+        files::AUTOSAVE_INTERVAL
+    }
+
     /// eframe calls this every so often and when the app closes: a last save of the graph, and the
     /// settings.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

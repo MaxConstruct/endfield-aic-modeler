@@ -1,4 +1,4 @@
-//! The toolbar under the menus: a button for every keyboard command, and the save indicator in the
+//! The toolbar beside the menus: a button for every editing command, and the save indicator in the
 //! status bar. A key press lights its button for a moment, so the toolbar teaches the keys.
 
 use std::path::Path;
@@ -14,15 +14,10 @@ use crate::widgets::colors;
 
 /// How long a button stays lit after its key is pressed.
 const FLASH: Duration = Duration::from_millis(400);
-const BUTTON: egui::Vec2 = vec2(30.0, 26.0);
+const BUTTON: egui::Vec2 = vec2(28.0, 22.0);
 
-/// The toolbar's buttons in order; `None` is a separator.
-const LAYOUT: [Option<Shortcut>; 17] = [
-    Some(Shortcut::New),
-    Some(Shortcut::Open),
-    Some(Shortcut::Save),
-    Some(Shortcut::SaveAs),
-    None,
+/// The toolbar's buttons in order; `None` is a separator. File commands live in the File menu.
+const LAYOUT: [Option<Shortcut>; 12] = [
     Some(Shortcut::Undo),
     Some(Shortcut::Redo),
     None,
@@ -145,9 +140,6 @@ impl Editor {
                     self.run(shortcut, strings);
                 }
             }
-            ui.separator();
-            ui.toggle_value(&mut self.round_up, strings.get("toggle-round-up"))
-                .on_hover_text(strings.get("menu-round-up"));
         });
     }
 

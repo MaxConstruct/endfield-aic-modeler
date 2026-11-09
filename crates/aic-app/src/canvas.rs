@@ -37,7 +37,7 @@ const PORT_GAP: f32 = 80.0;
 const FACILITY_IMAGE: f32 = 64.0;
 /// Size of a port's item icon. The icon is the port's pin: it sits inside the card against its
 /// edge, and a link is dragged from it.
-const PIN_ICON: f32 = 32.0;
+const PIN_ICON: f32 = 48.0;
 /// Room for a port's rate, like `100.00`.
 const RATE_WIDTH: f32 = 54.0;
 /// Space between a port's icon and its rate.
@@ -953,7 +953,7 @@ impl Viewer<'_> {
             Sense::hover(),
         );
         let rate = Rate {
-            text: format::fixed(flow),
+            text: format::short(flow),
             color,
         };
         let Some(item) = item else {
@@ -1055,7 +1055,7 @@ impl Viewer<'_> {
 
     fn big_number(ui: &mut Ui, value: Option<f64>) {
         // A blank value still takes its line, so the card doesn't jump when it fills in.
-        let text = format::fixed(value);
+        let text = format::short(value);
         ui.label(
             RichText::new(if text.is_empty() { " ".into() } else { text })
                 .font(theme::number(theme::text::NUMBER))
@@ -1229,7 +1229,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     } else {
                         colors::NEGATIVE
                     };
-                    let mut text = format::fixed(Some(balance));
+                    let mut text = format::short(Some(balance));
                     if balance >= 0.0 {
                         text.insert(0, '+');
                     }
@@ -1409,7 +1409,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                         widgets::item_icon(ui, self.catalog, coupon.as_str(), 16.0);
                         let text = self
                             .strings
-                            .format("outpost-earns", &[("rate", &format::fixed(Some(*earned)))]);
+                            .format("outpost-earns", &[("rate", &format::short(Some(*earned)))]);
                         ui.label(RichText::new(text).small());
                     });
                 }
@@ -1422,7 +1422,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 let through = self.solution.storage.get(&id).and_then(|s| s.pass_through);
                 let text = self
                     .strings
-                    .format("storage-pass-through", &[("rate", &format::fixed(through))]);
+                    .format("storage-pass-through", &[("rate", &format::short(through))]);
                 ui.add(egui::Label::new(RichText::new(text).small()).truncate());
             }
             NodeKind::WorkspacePort { .. } => {}
@@ -1762,7 +1762,7 @@ impl LinkLabels<'_> {
                 let text = self.strings.format(
                     key,
                     &[
-                        ("flow", &format::fixed(Some(flow))),
+                        ("flow", &format::short(Some(flow))),
                         ("belts", &format::short(belts)),
                     ],
                 );
