@@ -33,7 +33,8 @@ Tech:
   "Add producer of X" on an input port and "Add consumer of X" on an output port are the only auto-build
   help, and each adds one node.
 - One graph is one region (Valley IV or Wuling). Cross-region flow shows up as depot I/O.
-- Node kinds: recipe, source, sink, splitter, merger, storage, control port, and groups (M7).
+- Node kinds: recipe, source, sink, splitter, merger, storage, control port, and workspaces with their
+  ports (M7, ADR 0007).
 - Power is reported (draw, generation, net). It is never a limit the solver uses.
 - Belt and pipe capacity is a hint on a link, never a limit: every link shows how many belts (or pipes)
   its flow needs, as `flow / capacity` (e.g. `0.4 belts`), and warns when it needs more than one.
@@ -220,7 +221,6 @@ Every value the player types is an **upper limit**:
 | Source node | supply per minute | **required** (an uncapped supply is just an unconnected port) |
 | Sink node | consumption per minute | optional |
 | Control port | flow per minute | required |
-| Copies-mode group (M7) | copies | optional |
 
 Links have no settings. They carry whatever flow the solver gives them.
 
@@ -305,7 +305,7 @@ Warnings:
 
 - `Undetermined { section, reason }`: no driver, or unbounded. Say what to add (a source limit, a
   facility count limit, a sink limit or a control port).
-- `CopiesUndetermined { group }` (M7): nothing inside the group defines one copy.
+- `PortUnlinked { port, outside }` (ADR 0007): a workspace port with an end that has no link.
 - `ResourceOverUse { item, used, available }` (M4): from the resource check, not from `solve` itself.
 - `BeltOverCapacity { link, lanes }`: flow above 30/min (solid) or 120/min (fluid). Shown as a hint, not
   an error.
@@ -404,7 +404,7 @@ pub struct Link { pub from: (NodeId, ItemId), pub to: (NodeId, ItemId) }
   links between the same two ports, solid ↔ fluid links, a second item on a logistics node, and recipes
   or facilities outside the graph's region.
 - Save/load: pretty-printed JSON, extension `.aicm`, with `format_version`, `data_version`, `region`,
-  nodes (with canvas positions), links, and later groups. IDs only, so files survive data updates.
+  nodes (with canvas positions), links, and later workspaces. IDs only, so files survive data updates.
   Unknown recipe IDs on load become `MissingRecipe` nodes rather than an error.
 - **Tests:** round-trip save/load, and validation cases.
 
@@ -597,20 +597,17 @@ Done, except where noted.
   eframe storage. Switching keeps the open graph and its undo steps: recipe nodes are matched against the
   new data by ID (`Graph::rebind`), so a recipe the new data lacks shows as missing until switched back.
   A chosen version that is gone falls back to the newest, a language that is gone to English.
-- **Groups, step 1 (folder):** Cmd/Ctrl+G groups the selection into a collapsed group, Cmd/Ctrl+Shift+G
-  ungroups. Groups live in the `Graph` (`Graph::group`, `Member`), so undo and save files include them. A
-  collapsed group is one card on the canvas whose pins are its ports (`Graph::external_ports`): the ports
-  of its nodes not linked to another node in it. Each pin is the inner node's port, so linking, the port
-  menu and right-click work on it. Expand from the card's menu or button or the inspector; a node in an
-  expanded group offers Collapse. A group left without nodes goes away. Copy and paste leave groups out.
-  The canvas view now holds `Member` (a node or a collapsed group) as egui-snarl's payload.
-- **Groups, step 2 (copies):** "Stands for copies" in the inspector, with an optional copies limit. The
-  solver folds each outermost copies group into a stand-in node (`solve/copies.rs`): one copy is solved on
-  its own with its ports on the depot, and the stand-in runs copies × those port rates. Nodes inside show
-  one copy; `Solution::group_flow` has the ports' flow for all copies and `Solution::node_copies` how many
-  times totals count each node. Nested copies groups multiply. One copy that can't be solved leaves the
-  count undetermined (`Warning::CopiesUndetermined`, `UndeterminedReason::CopiesUndetermined`). Known
-  limit: a group's ports with the same item and side act as one port of the stand-in.
+- **Workspaces** (ADR 0007, replacing groups and their copies mode): a workspace holds nodes and other
+  workspaces (`Graph::workspace_from`, `add_workspace`, `dissolve`, `Member`), shown from outside as one
+  card whose pins are its ports. A double-click, Open in its menu or the inspector shows only what is in
+  it (`Document::set_level`), with Back and the path to the top over the canvas, and + Input / + Output
+  buttons that add ports. Ports (`NodeKind::WorkspacePort`) are pinned to the canvas's left and right
+  edges; a port with an end unlinked carries nothing and warns. Cmd/Ctrl+G makes a workspace from the
+  selection, routing crossing links through new ports; Cmd/Ctrl+Shift+G dissolves one. The canvas picker
+  offers an empty workspace. Cut, copy and paste carry workspaces with their contents; a workspace's menu
+  also pastes into it. Save format 2; version 1 groups open as workspaces.
+- **Right-drag selection:** dragging with the right button on the background draws a box and selects
+  what it touches, as on a desktop; a right click without a drag still opens the picker.
 - **Ratio locks:** each link has a share at each end (`Link::out_share`, `in_share`); links with a share at
   the same port keep their flows in proportion. Typed in the port menu, which lists the port's links when
   it has several; blank links stay free and share the rest evenly. A lock holds even when it costs
@@ -651,7 +648,7 @@ Done, except where noted.
 3. "Do M3. Write the golden tests first, settle the pass-1 objective against them, and make them pass."
 4. "Do the M4 performance spike and report the numbers." Then "Do the rest of M4 using egui-snarl 0.12
    with eframe 0.36." Then M5 and M6, one at a time.
-5. M7 features one per session: groups (folder, then copies) and ratio locks are the big ones.
+5. M7 features one per session: workspaces and ratio locks are the big ones.
 
 Keep each milestone as its own commit or branch, so a bad UI experiment is easy to throw away.
 

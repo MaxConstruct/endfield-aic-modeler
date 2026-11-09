@@ -37,7 +37,7 @@ One player-made plan. It belongs to exactly one region.
 _Avoid_: Factory, blueprint, layout, project
 
 **Node**:
-One placed element on a graph: a recipe, source, sink, splitter, merger, storage or control port node.
+One placed element on a graph: a recipe, source, sink, splitter, merger, storage or control port node, or a workspace's port.
 _Avoid_: Block, building
 
 **Source node**:
@@ -96,13 +96,13 @@ _Avoid_: Unknown, unsolved, empty
 A graph that hasn't been saved to a file of the player's choosing yet. The app keeps it in its own folder and saves it as it changes.
 _Avoid_: Temp file, scratch, unsaved graph
 
-**Group**:
-A named set of nodes, possibly including other groups, that collapses into one node showing its external ports. It can optionally stand for N identical copies of a module.
-_Avoid_: Outpost, blueprint, factory, module
+**Workspace**:
+A named place in a graph that holds nodes and other workspaces. From outside it is one card; opened, it shows only what is in it. What crosses its edge goes through its ports.
+_Avoid_: Group, outpost, blueprint, folder, module
 
-**Copies**:
-How many times a copies-mode group runs, as solved within its limits.
-_Avoid_: Instances, multiplier
+**Port** (of a workspace):
+An input or output the player adds to a workspace, carrying one item across its edge. It has an outside end and an inside end; with either end unlinked, nothing flows through it.
+_Avoid_: Pin, connector, gate
 
 **Limit**:
 An upper bound the player sets on a facility count, sink, source or control port. The solver runs everything as high as limits and supply allow. A recipe node's limit can also be typed as a rate through one of its ports (e.g. 225/min of plates); it is the same limit, kept as a facility count.

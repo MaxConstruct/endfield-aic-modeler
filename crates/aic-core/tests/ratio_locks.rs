@@ -152,7 +152,7 @@ fn shares_must_be_positive_and_survive_copies_and_files() {
     g.set_share(to_goal, Side::Output, Some(70.0)).unwrap();
     assert_eq!(g.link(to_goal).unwrap().share(Side::Output), Some(70.0));
 
-    let copy = g.copy_nodes(&[ore, goal]);
+    let copy = copy_nodes(&g, &[ore, goal]);
     assert_eq!(
         copy.links().values().next().unwrap().share(Side::Output),
         Some(70.0)

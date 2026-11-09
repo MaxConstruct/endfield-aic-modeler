@@ -9,14 +9,11 @@ use aic_data::{Catalog, ItemId};
 use good_lp::{Constraint, Expression, ProblemVariables, Variable, variable};
 
 use crate::graph::{Graph, LinkId, NodeId, NodeKind, Port, Side};
-use crate::solve::copies::Module;
 use crate::solve::sections::Section;
 
 pub(crate) struct Ctx<'a> {
     pub catalog: &'a Catalog,
     pub graph: &'a Graph,
-    /// Stand-in nodes for copies groups (see `copies`).
-    pub modules: &'a HashMap<NodeId, Module>,
 }
 
 pub(crate) struct Model {
@@ -127,10 +124,6 @@ struct Builder<'a, 'b> {
 
 impl Builder<'_, '_> {
     fn node(&mut self, node: NodeId) {
-        if let Some(module) = self.ctx.modules.get(&node) {
-            self.module(node, module);
-            return;
-        }
         match &self.ctx.graph.nodes[node].kind {
             NodeKind::Recipe {
                 recipe,
@@ -151,6 +144,7 @@ impl Builder<'_, '_> {
                 self.pass_through(node);
             }
             NodeKind::Storage { .. } => self.storage(node),
+            NodeKind::WorkspacePort { .. } => self.workspace_port(node),
             NodeKind::MissingRecipe { .. } => {}
         }
     }
@@ -199,25 +193,6 @@ impl Builder<'_, '_> {
         }
     }
 
-    /// A copies group: its activity is the number of copies, each running one copy's port rates.
-    fn module(&mut self, node: NodeId, module: &Module) {
-        let copies = self.activity(node, module.limit);
-        let mut fed_by_links = false;
-        for (item, side, rate) in &module.ports {
-            let linked = self.side(node, item, *side, copies * *rate);
-            fed_by_links |= linked && *side == Side::Input;
-        }
-        if !fed_by_links {
-            let outputs: f64 = module
-                .ports
-                .iter()
-                .filter(|(_, side, _)| *side == Side::Output)
-                .map(|(_, _, rate)| rate)
-                .sum();
-            self.add_throughput(copies * outputs);
-        }
-    }
-
     /// Splitters, mergers and control ports: what comes in goes out. An unconnected side is depot.
     fn pass_through(&mut self, node: NodeId) {
         let kind = &self.ctx.graph.nodes[node].kind;
@@ -234,6 +209,41 @@ impl Builder<'_, '_> {
         if !fed_by_links {
             self.add_throughput(flow.into());
         }
+    }
+
+    /// A workspace port: what comes in goes out, and an end with no links lets nothing through.
+    fn workspace_port(&mut self, node: NodeId) {
+        let Some(item) = self.logistics_item(node) else {
+            return;
+        };
+        let linked = |side| {
+            self.model.linked_ports.contains_key(&Port {
+                node,
+                item: item.clone(),
+                side,
+            })
+        };
+        // A closed end holds the port at 0: a limit like any other, so its section is settled.
+        let closed = !(linked(Side::Input) && linked(Side::Output));
+        let flow = self.activity(node, closed.then_some(0.0));
+        self.closed_side(node, &item, Side::Input, flow.into());
+        self.closed_side(node, &item, Side::Output, flow.into());
+    }
+
+    /// Ties one port to `amount`, as [`Builder::side`] does, except that with no links the port is
+    /// closed rather than on the depot: `amount` must be 0. Returns whether the port has links.
+    fn closed_side(&mut self, node: NodeId, item: &ItemId, side: Side, amount: Expression) -> bool {
+        let port = Port {
+            node,
+            item: item.clone(),
+            side,
+        };
+        if self.model.linked_ports.contains_key(&port) {
+            return self.side(node, item, side, amount);
+        }
+        self.model.ports.push((port, amount.clone()));
+        self.model.constraints.push(amount.eq(0.0));
+        false
     }
 
     /// Storage takes whatever its input links bring and gives whatever its output links take; the

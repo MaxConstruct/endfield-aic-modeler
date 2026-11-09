@@ -41,7 +41,7 @@ fn a_copy_keeps_the_links_inside_it_and_drops_the_rest() {
     )
     .unwrap();
 
-    let copy = g.copy_nodes(&[ingot, plate]);
+    let copy = copy_nodes(&g, &[ingot, plate]);
     assert_eq!(copy.nodes().len(), 2);
     assert_eq!(copy.links().len(), 1, "the source's link stays behind");
     assert_eq!(copy.region(), g.region());
@@ -66,9 +66,9 @@ fn pasting_adds_new_nodes_moved_by_the_offset_and_links_them() {
         PortRef::new(plate, "ingot"),
     )
     .unwrap();
-    let copy = g.copy_nodes(&[ingot, plate]);
+    let copy = copy_nodes(&g, &[ingot, plate]);
 
-    let pasted = g.paste(&catalog, &copy, Pos { x: 40.0, y: 40.0 });
+    let pasted = paste_nodes(&mut g, &catalog, &copy, Pos { x: 40.0, y: 40.0 });
     assert_eq!(pasted.len(), 2);
     assert!(pasted.iter().all(|id| *id != ingot && *id != plate));
     assert_eq!(g.nodes().len(), 4);
@@ -101,8 +101,8 @@ fn a_pasted_logistics_node_keeps_its_item_only_while_linked() {
     .unwrap();
 
     // Copied alone, the splitter loses its only link, so it forgets its item.
-    let copy = g.copy_nodes(&[splitter]);
-    let pasted = g.paste(&catalog, &copy, Pos::default());
+    let copy = copy_nodes(&g, &[splitter]);
+    let pasted = paste_nodes(&mut g, &catalog, &copy, Pos::default());
     assert_eq!(
         g.node(pasted[0]).unwrap().kind,
         NodeKind::Splitter { item: None }

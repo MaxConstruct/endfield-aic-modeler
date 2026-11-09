@@ -43,6 +43,14 @@ pub fn kind_key(kind: &NodeKind) -> &'static str {
         NodeKind::Merger { .. } => "kind-merger",
         NodeKind::Storage { .. } => "kind-storage",
         NodeKind::ControlPort { .. } => "kind-control-port",
+        NodeKind::WorkspacePort {
+            side: aic_core::Side::Input,
+            ..
+        } => "kind-workspace-input",
+        NodeKind::WorkspacePort {
+            side: aic_core::Side::Output,
+            ..
+        } => "kind-workspace-output",
         NodeKind::MissingRecipe { .. } => "kind-missing-recipe",
     }
 }
@@ -74,8 +82,8 @@ pub fn node_title(catalog: &Catalog, strings: &Strings, kind: &NodeKind) -> Stri
 /// "1 node", "3 nodes".
 pub fn node_count(strings: &Strings, count: usize) -> String {
     if count == 1 {
-        strings.get("group-node-count-one")
+        strings.get("workspace-node-count-one")
     } else {
-        strings.format("group-node-count", &[("count", &count.to_string())])
+        strings.format("workspace-node-count", &[("count", &count.to_string())])
     }
 }

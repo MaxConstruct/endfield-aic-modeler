@@ -8,16 +8,16 @@ use eframe::egui::{self, RichText, Ui, vec2};
 
 use crate::canvas::Selection;
 use crate::edit::Shortcut;
+use crate::editor::Editor;
 use crate::i18n::Strings;
 use crate::widgets::colors;
-use crate::workspace::Workspace;
 
 /// How long a button stays lit after its key is pressed.
 const FLASH: Duration = Duration::from_millis(400);
 const BUTTON: egui::Vec2 = vec2(30.0, 26.0);
 
 /// The toolbar's buttons in order; `None` is a separator.
-const LAYOUT: [Option<Shortcut>; 16] = [
+const LAYOUT: [Option<Shortcut>; 17] = [
     Some(Shortcut::New),
     Some(Shortcut::Open),
     Some(Shortcut::Save),
@@ -26,14 +26,15 @@ const LAYOUT: [Option<Shortcut>; 16] = [
     Some(Shortcut::Undo),
     Some(Shortcut::Redo),
     None,
+    Some(Shortcut::Cut),
     Some(Shortcut::Copy),
     Some(Shortcut::Paste),
     Some(Shortcut::Duplicate),
     Some(Shortcut::Delete),
     Some(Shortcut::SelectAll),
     None,
-    Some(Shortcut::Group),
-    Some(Shortcut::Ungroup),
+    Some(Shortcut::MakeWorkspace),
+    Some(Shortcut::Dissolve),
 ];
 
 impl Shortcut {
@@ -47,13 +48,14 @@ impl Shortcut {
             Self::SaveAs => "🖹",
             Self::Undo => "⟲",
             Self::Redo => "⟳",
+            Self::Cut => "✂",
             Self::Copy => "🗐",
             Self::Paste => "🗊",
             Self::Duplicate => "✚",
             Self::Delete => "🗑",
             Self::SelectAll => "⛶",
-            Self::Group => "⊞",
-            Self::Ungroup => "⊟",
+            Self::MakeWorkspace => "⊞",
+            Self::Dissolve => "⊟",
         }
     }
 
@@ -66,30 +68,33 @@ impl Shortcut {
             Self::SaveAs => "menu-save-as",
             Self::Undo => "menu-undo",
             Self::Redo => "menu-redo",
+            Self::Cut => "menu-cut",
             Self::Copy => "menu-copy",
             Self::Paste => "menu-paste",
             Self::Duplicate => "menu-duplicate",
             Self::Delete => "menu-delete",
             Self::SelectAll => "menu-select-all",
-            Self::Group => "menu-group",
-            Self::Ungroup => "menu-ungroup",
+            Self::MakeWorkspace => "menu-make-workspace",
+            Self::Dissolve => "menu-dissolve-workspace",
         }
     }
 }
 
-impl Workspace {
+impl Editor {
     /// Whether a command can do anything right now; the toolbar and the Edit menu grey it out if not.
     pub(crate) fn can_run(&self, shortcut: Shortcut) -> bool {
         match shortcut {
             Shortcut::Undo => self.doc.can_undo(),
             Shortcut::Redo => self.doc.can_redo(),
-            Shortcut::Copy | Shortcut::Duplicate | Shortcut::Group => self.has_selected_nodes(),
+            Shortcut::Cut | Shortcut::Copy | Shortcut::Duplicate | Shortcut::MakeWorkspace => {
+                self.has_selected_nodes()
+            }
             Shortcut::Paste => self.clipboard.is_some(),
             Shortcut::Delete => self.selection.is_some(),
-            Shortcut::Ungroup => self
+            Shortcut::Dissolve => self
                 .selection
                 .as_ref()
-                .and_then(Selection::single_group)
+                .and_then(Selection::single_workspace)
                 .is_some(),
             Shortcut::New
             | Shortcut::Open

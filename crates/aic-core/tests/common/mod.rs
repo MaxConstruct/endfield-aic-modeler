@@ -179,3 +179,26 @@ pub fn link(
         )
         .expect("link is valid")
 }
+
+/// Copies these nodes, at the top of the graph.
+pub fn copy_nodes(graph: &Graph, nodes: &[NodeId]) -> Graph {
+    let members: Vec<aic_core::Member> = nodes.iter().map(|&n| aic_core::Member::Node(n)).collect();
+    graph.copy_members(&members)
+}
+
+/// Pastes `copy` at the top of the graph, returning the new nodes there.
+pub fn paste_nodes(
+    graph: &mut Graph,
+    catalog: &aic_data::Catalog,
+    copy: &Graph,
+    offset: aic_core::Pos,
+) -> Vec<NodeId> {
+    graph
+        .paste_into(catalog, copy, offset, None)
+        .into_iter()
+        .filter_map(|member| match member {
+            aic_core::Member::Node(node) => Some(node),
+            aic_core::Member::Workspace(_) => None,
+        })
+        .collect()
+}

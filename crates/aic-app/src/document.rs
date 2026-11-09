@@ -2,7 +2,9 @@
 //! and its latest [`Solution`].
 //!
 //! Every edit goes through [`Document`], which changes the graph and the view together. The view
-//! holds each node's `NodeId` as its payload and one wire per link.
+//! shows one level of the graph: the top, or the workspace the player opened. Its payload is a
+//! [`Member`] of that level (a node, the level's own ports included, or a workspace inside it),
+//! with one wire per link at that level.
 //!
 //! Undo and redo keep whole `Graph` snapshots: graphs are small, so a clone per step is cheap.
 //! Edits since the last [`Document::checkpoint`] make one step, so a drag or a typed number undoes
@@ -13,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use aic_core::{
-    EditError, Graph, GroupId, GroupMode, LinkError, LinkId, Member, NodeId, NodeKind, Port,
-    PortRef, Pos, Side, Solution, solve,
+    EditError, Graph, LinkError, LinkId, Member, NodeId, NodeKind, Port, PortRef, Pos, Side,
+    Solution, WorkspaceId, solve,
 };
 use aic_data::{Catalog, FacilityId, ItemId, RegionId};
 use eframe::egui::Pos2;
@@ -38,6 +40,8 @@ pub struct Document {
     pub(crate) graph: Graph,
     pub(crate) view: Snarl<Member>,
     view_ids: HashMap<Member, ViewId>,
+    /// The workspace the view shows; `None` for the top of the graph.
+    level: Option<WorkspaceId>,
     pub(crate) anchors: HashMap<NodeId, Anchor>,
     solution: Solution,
     stale: bool,
@@ -76,6 +80,7 @@ impl Document {
             graph,
             view: Snarl::new(),
             view_ids: HashMap::new(),
+            level: None,
             anchors: HashMap::new(),
             solution: Solution::default(),
             stale: true,
@@ -183,32 +188,56 @@ impl Document {
         self.stale = true;
     }
 
-    /// Shows the committed graph again.
+    /// Shows the committed graph again. A workspace that is gone takes the view back up.
     fn restore(&mut self, catalog: &Catalog) {
         self.edits += 1;
         self.graph = self.committed.clone();
+        while let Some(level) = self.level
+            && self.graph.workspace_info(level).is_none()
+        {
+            self.level = None;
+        }
         self.rebuild_view(catalog);
         self.stale = true;
     }
 
-    /// Draws the graph afresh: one view node per node shown on its own and per outermost
-    /// collapsed group, and one wire per link between two of them.
+    /// The workspace the canvas shows; `None` for the top of the graph.
+    pub fn level(&self) -> Option<WorkspaceId> {
+        self.level
+    }
+
+    /// Shows another level of the graph: a workspace, or `None` for the top.
+    pub fn set_level(&mut self, catalog: &Catalog, level: Option<WorkspaceId>) {
+        if level.is_some_and(|id| self.graph.workspace_info(id).is_none()) {
+            return;
+        }
+        self.level = level;
+        self.rebuild_view(catalog);
+    }
+
+    /// The workspaces from the top down to the one shown, outermost first.
+    pub fn level_path(&self) -> Vec<WorkspaceId> {
+        let mut path = Vec::new();
+        let mut current = self.level;
+        while let Some(id) = current {
+            path.push(id);
+            current = self.graph.workspace_info(id).and_then(|w| w.parent);
+        }
+        path.reverse();
+        path
+    }
+
+    /// Draws the level afresh: one view node per member, and one wire per link between two of
+    /// them.
     fn rebuild_view(&mut self, catalog: &Catalog) {
         self.view = Snarl::new();
         self.view_ids.clear();
         self.anchors.clear();
-        let mut items: Vec<(Member, Pos)> = Vec::new();
-        for (id, node) in self.graph.nodes() {
-            match self.graph.shown_as(id) {
-                None => items.push((Member::Node(id), node.pos)),
-                Some(group) => {
-                    if !items.iter().any(|(m, _)| *m == Member::Group(group)) {
-                        items.push((Member::Group(group), self.graph.groups()[group].pos));
-                    }
-                }
-            }
-        }
-        for (member, pos) in items {
+        for member in self.graph.members_of(self.level) {
+            let pos = match member {
+                Member::Node(id) => self.graph.nodes()[id].pos,
+                Member::Workspace(id) => self.graph.workspaces()[id].pos,
+            };
             let view_id = self.view.insert_node(Pos2::new(pos.x, pos.y), member);
             self.view_ids.insert(member, view_id);
         }
@@ -258,14 +287,15 @@ impl Document {
         &self.view
     }
 
-    /// The view node drawing a node or collapsed group, if it is drawn.
+    /// The view node drawing a node or workspace, if it is drawn.
     pub fn view_id(&self, member: Member) -> Option<ViewId> {
         self.view_ids.get(&member).copied()
     }
 
-    /// What draws `node` on the canvas: the node itself, or the collapsed group it is in.
-    pub fn shown(&self, node: NodeId) -> Member {
-        shown(&self.graph, node)
+    /// What draws `node` at the level shown: the node itself, or the workspace it is in. `None`
+    /// when it is outside the level.
+    pub fn shown(&self, node: NodeId) -> Option<Member> {
+        shown(&self.graph, self.level, node)
     }
 
     /// Moves an empty graph to another region (see [`Graph::set_region`]).
@@ -275,8 +305,12 @@ impl Document {
         Ok(())
     }
 
+    /// Adds a node to the level shown.
     pub fn add_node(&mut self, kind: NodeKind, pos: Pos2) -> NodeId {
-        let id = self.graph.add_node(kind, Pos { x: pos.x, y: pos.y });
+        let id = self
+            .graph
+            .add_node_in(kind, Pos { x: pos.x, y: pos.y }, self.level)
+            .expect("the level shown exists");
         let view_id = self.view.insert_node(pos, Member::Node(id));
         self.view_ids.insert(Member::Node(id), view_id);
         self.changed();
@@ -290,37 +324,49 @@ impl Document {
         id
     }
 
-    /// Adds copies of `other`'s nodes and links, moved by `offset` (see [`Graph::paste`]).
-    pub fn paste(&mut self, catalog: &Catalog, other: &Graph, offset: Pos) -> Vec<NodeId> {
-        let pasted = self.graph.paste(catalog, other, offset);
-        for &id in &pasted {
-            let pos = self.graph.node(id).map(|n| n.pos).unwrap_or_default();
-            let view_id = self
-                .view
-                .insert_node(Pos2::new(pos.x, pos.y), Member::Node(id));
-            self.view_ids.insert(Member::Node(id), view_id);
-        }
-        let links: Vec<LinkId> = self
-            .graph
-            .links()
-            .iter()
-            .filter(|(_, link)| pasted.contains(&link.from))
-            .map(|(id, _)| id)
-            .collect();
-        for link in links {
-            if let Some((out_pin, in_pin)) = self.wire(catalog, link) {
-                self.view.connect(out_pin, in_pin);
-            }
-        }
+    /// Pastes `other` into `into` (the level shown, or a workspace in it), moved by `offset`
+    /// (see [`Graph::paste_into`]).
+    pub fn paste(
+        &mut self,
+        catalog: &Catalog,
+        other: &Graph,
+        offset: Pos,
+        into: Option<WorkspaceId>,
+    ) -> Vec<Member> {
+        let pasted = self.graph.paste_into(catalog, other, offset, into);
+        self.rebuild_view(catalog);
         self.changed();
         pasted
     }
 
+    /// Adds a port to the workspace shown. Ports belong to a workspace, so at the top there is
+    /// none to add.
+    pub fn add_port(&mut self, catalog: &Catalog, side: Side) -> Option<NodeId> {
+        let port = self.graph.add_port(self.level?, side).ok()?;
+        self.rebuild_view(catalog);
+        self.changed();
+        Some(port)
+    }
+
+    /// Adds an empty workspace to the level shown.
+    pub fn add_workspace(&mut self, catalog: &Catalog, name: &str, pos: Pos2) -> WorkspaceId {
+        let id = self
+            .graph
+            .add_workspace(name, self.level, Pos { x: pos.x, y: pos.y })
+            .expect("the level shown exists");
+        self.rebuild_view(catalog);
+        self.changed();
+        id
+    }
+
     pub fn remove_node(&mut self, catalog: &Catalog, id: NodeId) {
-        let hidden = self.graph.shown_as(id).is_some();
+        let is_port = self
+            .graph
+            .node(id)
+            .is_some_and(|n| matches!(n.kind, NodeKind::WorkspacePort { .. }));
         if self.graph.remove_node(id).is_some() {
-            if hidden {
-                // The collapsed group around it loses ports, or the group itself.
+            if is_port {
+                // A workspace card shown here loses a pin.
                 self.rebuild_view(catalog);
             } else if let Some(view_id) = self.view_ids.remove(&Member::Node(id)) {
                 self.view.remove_node(view_id);
@@ -330,55 +376,36 @@ impl Document {
         self.changed();
     }
 
-    /// Removes a group with everything in it.
-    pub fn remove_group(&mut self, catalog: &Catalog, id: GroupId) {
-        self.graph.remove_group(id);
+    /// Removes a workspace with everything in it.
+    pub fn remove_workspace(&mut self, catalog: &Catalog, id: WorkspaceId) {
+        self.graph.remove_workspace(id);
         self.rebuild_view(catalog);
         self.changed();
     }
 
-    /// Puts `members` in a new group (see [`Graph::group`]).
-    pub fn group(
+    /// Puts `members` in a new workspace (see [`Graph::workspace_from`]).
+    pub fn workspace_from(
         &mut self,
         catalog: &Catalog,
         members: &[Member],
         name: &str,
-    ) -> Result<GroupId, EditError> {
-        let group = self.graph.group(members, name)?;
+    ) -> Result<WorkspaceId, EditError> {
+        let workspace = self.graph.workspace_from(members, name)?;
         self.rebuild_view(catalog);
         self.changed();
-        Ok(group)
+        Ok(workspace)
     }
 
-    pub fn ungroup(&mut self, catalog: &Catalog, id: GroupId) -> Result<(), EditError> {
-        self.graph.ungroup(id)?;
-        self.rebuild_view(catalog);
-        self.changed();
-        Ok(())
-    }
-
-    /// Collapses a group into one card, or expands it back into its members.
-    pub fn set_group_collapsed(
-        &mut self,
-        catalog: &Catalog,
-        id: GroupId,
-        collapsed: bool,
-    ) -> Result<(), EditError> {
-        self.graph.set_group_collapsed(id, collapsed)?;
+    /// Takes a workspace apart (see [`Graph::dissolve`]).
+    pub fn dissolve(&mut self, catalog: &Catalog, id: WorkspaceId) -> Result<(), EditError> {
+        self.graph.dissolve(id)?;
         self.rebuild_view(catalog);
         self.changed();
         Ok(())
     }
 
-    /// Makes a group a folder or a stand-in for copies (see [`Graph::set_group_mode`]).
-    pub fn set_group_mode(&mut self, id: GroupId, mode: GroupMode) -> Result<(), EditError> {
-        self.graph.set_group_mode(id, mode)?;
-        self.changed();
-        Ok(())
-    }
-
-    pub fn rename_group(&mut self, id: GroupId, name: &str) -> Result<(), EditError> {
-        self.graph.rename_group(id, name)?;
+    pub fn rename_workspace(&mut self, id: WorkspaceId, name: &str) -> Result<(), EditError> {
+        self.graph.rename_workspace(id, name)?;
         self.changed();
         Ok(())
     }
@@ -390,21 +417,17 @@ impl Document {
         to: PortRef,
     ) -> Result<LinkId, LinkError> {
         let link = self.graph.connect(catalog, from, to)?;
-        self.redraw_link(catalog, link);
+        if let Some((out_pin, in_pin)) = self.wire(catalog, link) {
+            self.view.connect(out_pin, in_pin);
+        }
         self.changed();
         Ok(link)
     }
 
     pub fn remove_link(&mut self, catalog: &Catalog, id: LinkId) {
         let wire = self.wire(catalog, id);
-        let ends = self.graph.link(id).map(|l| (l.from, l.to));
         self.graph.remove_link(id);
-        let in_group = ends.is_some_and(|(from, to)| {
-            self.graph.shown_as(from).is_some() || self.graph.shown_as(to).is_some()
-        });
-        if in_group {
-            self.rebuild_view(catalog);
-        } else if let Some((out_pin, in_pin)) = wire {
+        if let Some((out_pin, in_pin)) = wire {
             // Another link between the same two ports may still need the wire.
             let still_drawn = self
                 .graph
@@ -416,19 +439,6 @@ impl Document {
             }
         }
         self.changed();
-    }
-
-    /// Draws a new link. A link touching a collapsed group changes the group's ports, so the view
-    /// is redrawn.
-    fn redraw_link(&mut self, catalog: &Catalog, link: LinkId) {
-        let in_group = self.graph.link(link).is_some_and(|l| {
-            self.graph.shown_as(l.from).is_some() || self.graph.shown_as(l.to).is_some()
-        });
-        if in_group {
-            self.rebuild_view(catalog);
-        } else if let Some((out_pin, in_pin)) = self.wire(catalog, link) {
-            self.view.connect(out_pin, in_pin);
-        }
     }
 
     pub fn set_limit(&mut self, id: NodeId, limit: Option<f64>) -> Result<(), EditError> {
@@ -489,19 +499,16 @@ impl Document {
     }
 
     /// The wire that draws `link`: from the pin of its port on what shows its source to the pin on
-    /// what shows its target. A link inside one collapsed group has no wire.
+    /// what shows its target. Only a link at the level shown has one.
     pub fn wire(&self, catalog: &Catalog, link: LinkId) -> Option<(OutPinId, InPinId)> {
         let link = self.graph.link(link)?;
         let pin_of = |node: NodeId, side: Side| -> Option<(ViewId, usize)> {
-            let member = self.shown(node);
+            let member = self.shown(node)?;
             let index = pin_targets(&self.graph, catalog, member, side)
                 .iter()
                 .position(|target| target.is(node, &link.item))?;
             Some((self.view_id(member)?, index))
         };
-        if self.shown(link.from) == self.shown(link.to) {
-            return None;
-        }
         let (from, output) = pin_of(link.from, Side::Output)?;
         let (to, input) = pin_of(link.to, Side::Input)?;
         Some((OutPinId { node: from, output }, InPinId { node: to, input }))
@@ -515,6 +522,8 @@ impl Document {
             let new = Pos { x: pos.x, y: pos.y };
             // Position doesn't affect the solve, so a move doesn't make the solution stale.
             match member {
+                // The level's own ports stay on the canvas's edges; their order is their own.
+                Member::Node(id) if is_port(&self.graph, id) => {}
                 Member::Node(id) => {
                     if self.graph.node(id).is_some_and(|node| node.pos != new) {
                         let _ = self.graph.set_pos(id, new);
@@ -522,9 +531,9 @@ impl Document {
                         self.edits += 1;
                     }
                 }
-                Member::Group(id) => {
-                    if self.graph.group_info(id).is_some_and(|g| g.pos != new) {
-                        let _ = self.graph.set_group_pos(id, new);
+                Member::Workspace(id) => {
+                    if self.graph.workspace_info(id).is_some_and(|w| w.pos != new) {
+                        let _ = self.graph.set_workspace_pos(id, new);
                         self.pending = true;
                         self.edits += 1;
                     }
@@ -559,8 +568,9 @@ impl Document {
     }
 }
 
-/// What one pin on the canvas stands for: a port of `node`. On a collapsed group's card it is the
-/// port of a node inside the group. `item` is `None` on a logistics node with no item yet.
+/// What one pin on the canvas stands for: a port of `node`. On a workspace's card it is the
+/// outside end of one of the workspace's ports. `item` is `None` on a logistics node or port with
+/// no item yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinTarget {
     pub node: NodeId,
@@ -574,34 +584,67 @@ impl PinTarget {
     }
 }
 
-/// What draws `node` on the canvas: the node itself, or the outermost collapsed group it is in.
-pub fn shown(graph: &Graph, node: NodeId) -> Member {
+/// Whether `node` is a workspace port.
+pub fn is_port(graph: &Graph, node: NodeId) -> bool {
     graph
-        .shown_as(node)
-        .map_or(Member::Node(node), Member::Group)
+        .node(node)
+        .is_some_and(|n| matches!(n.kind, NodeKind::WorkspacePort { .. }))
 }
 
-/// The pins of a node or collapsed group on one side, in order. A group's pins are its ports
-/// (see [`Graph::external_ports`]).
+/// What draws `node` at `level`: the node itself, or the workspace in `level` that holds it.
+/// `None` when the node is outside `level`.
+pub fn shown(graph: &Graph, level: Option<WorkspaceId>, node: NodeId) -> Option<Member> {
+    let mut current = graph.node(node)?.workspace;
+    if current == level {
+        return Some(Member::Node(node));
+    }
+    while let Some(id) = current {
+        let parent = graph.workspace_info(id)?.parent;
+        if parent == level {
+            return Some(Member::Workspace(id));
+        }
+        current = parent;
+    }
+    None
+}
+
+/// The pins of a node or workspace card on one side, in order. A workspace's pins are its ports'
+/// outside ends; a port shown on its own (on the edge of the workspace it belongs to) has only its
+/// inside end.
 pub fn pin_targets(graph: &Graph, catalog: &Catalog, member: Member, side: Side) -> Vec<PinTarget> {
     match member {
-        Member::Node(node) => graph
-            .node(node)
-            .map(|n| {
-                n.kind
-                    .port_items(catalog, side)
-                    .into_iter()
-                    .map(|item| PinTarget { node, item })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        Member::Group(group) => graph
-            .external_ports(catalog, group)
+        Member::Node(node) => {
+            let Some(found) = graph.node(node) else {
+                return Vec::new();
+            };
+            if let NodeKind::WorkspacePort {
+                side: port_side,
+                item,
+            } = &found.kind
+            {
+                // An input port feeds in from its output side, and the other way round.
+                return if *port_side == side {
+                    Vec::new()
+                } else {
+                    vec![PinTarget {
+                        node,
+                        item: item.clone(),
+                    }]
+                };
+            }
+            found
+                .kind
+                .port_items(catalog, side)
+                .into_iter()
+                .map(|item| PinTarget { node, item })
+                .collect()
+        }
+        Member::Workspace(workspace) => graph
+            .ports_of(workspace, side)
             .into_iter()
-            .filter(|port| port.side == side)
             .map(|port| PinTarget {
-                node: port.node,
-                item: Some(port.item),
+                node: port,
+                item: graph.node(port).and_then(|n| n.kind.item().cloned()),
             })
             .collect(),
     }

@@ -60,10 +60,10 @@ impl eframe::App for PerfApp {
             return;
         };
         if phase == Phase::LiveValues
-            && let (Some(node), Some(workspace)) = (self.live, self.app.workspace_mut())
+            && let (Some(node), Some(editor)) = (self.live, self.app.editor_mut())
         {
             let limit = 30.0 + (self.frame % 60) as f64;
-            let _ = workspace.document_mut().set_limit(node, Some(limit));
+            let _ = editor.document_mut().set_limit(node, Some(limit));
         }
         let started = Instant::now();
         eframe::App::ui(&mut self.app, ui, frame);
@@ -138,9 +138,9 @@ impl PerfApp {
 /// inputs, linked, every recipe node limited to one facility so the whole graph solves. Returns a
 /// node whose limit the live phase changes.
 fn build(app: &mut App, target: usize) -> Option<NodeId> {
-    let workspace = app.workspace_mut()?;
-    let catalog: Catalog = workspace.catalog().clone();
-    let region = workspace.document().graph().region().clone();
+    let editor = app.editor_mut()?;
+    let catalog: Catalog = editor.catalog().clone();
+    let region = editor.document().graph().region().clone();
     let recipes: Vec<RecipeId> = catalog
         .recipes()
         .values()
@@ -175,7 +175,7 @@ fn build(app: &mut App, target: usize) -> Option<NodeId> {
         }
     }
 
-    let doc = workspace.document_mut();
+    let doc = editor.document_mut();
     let mut nodes = Vec::new();
     for (index, recipe) in planned.iter().enumerate() {
         let facility = catalog.recipe(recipe.as_str())?.facilities.first()?.clone();

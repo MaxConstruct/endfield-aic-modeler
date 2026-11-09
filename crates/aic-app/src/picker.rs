@@ -48,6 +48,8 @@ const LOGISTICS: [Builtin; 4] = [
 pub enum Choice {
     Recipe(RecipeId),
     Builtin(Builtin),
+    /// An empty workspace, offered from the canvas.
+    Workspace,
 }
 
 /// Which parts of a recipe the search text is matched against.
@@ -303,6 +305,13 @@ impl Picker {
                     .min_size(Vec2::new(LEFT_WIDTH, ROW_HEIGHT));
                     if ui.add(button).clicked() {
                         chosen = Some(Choice::Builtin(builtin));
+                    }
+                }
+                if self.origin == Origin::Canvas {
+                    let button = egui::Button::new(strings.get("kind-workspace"))
+                        .min_size(Vec2::new(LEFT_WIDTH, ROW_HEIGHT));
+                    if ui.add(button).clicked() {
+                        chosen = Some(Choice::Workspace);
                     }
                 }
             });

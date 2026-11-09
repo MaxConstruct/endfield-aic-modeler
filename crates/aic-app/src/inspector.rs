@@ -1,8 +1,8 @@
 //! The right panel: the selected node or link, the graph's totals and its warnings.
 
 use aic_core::{
-    Graph, GroupId, GroupMode, Issue, LinkId, NodeId, NodeKind, Port, RoundUp, Side,
-    UndeterminedReason, Warning, check_resources,
+    Graph, Issue, LinkId, NodeId, NodeKind, Port, RoundUp, Side, UndeterminedReason, Warning,
+    WorkspaceId, check_resources,
 };
 use aic_data::{Catalog, ItemId};
 use eframe::egui::{self, RichText, Ui};
@@ -10,14 +10,14 @@ use indexmap::IndexMap;
 
 use crate::canvas::Selection;
 use crate::document::pins;
+use crate::editor::{Editor, link_error};
 use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::settings::parse_amount;
 use crate::widgets::{self, LimitField, colors};
-use crate::workspace::{Workspace, link_error};
 
-impl Workspace {
+impl Editor {
     pub(crate) fn inspector(&mut self, ui: &mut Ui, strings: &Strings) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(strings.get("inspector-title"));
@@ -25,12 +25,14 @@ impl Workspace {
                 Some(Selection::Link(link)) if self.doc.graph().link(link).is_some() => {
                     self.link_details(ui, strings, link);
                 }
-                Some(selection) => match (selection.single_node(), selection.single_group()) {
+                Some(selection) => match (selection.single_node(), selection.single_workspace()) {
                     (Some(node), _) if self.doc.graph().node(node).is_some() => {
                         self.node_details(ui, strings, node);
                     }
-                    (_, Some(group)) if self.doc.graph().group_info(group).is_some() => {
-                        self.group_details(ui, strings, group);
+                    (_, Some(workspace))
+                        if self.doc.graph().workspace_info(workspace).is_some() =>
+                    {
+                        self.workspace_details(ui, strings, workspace);
                     }
                     _ => self.many_nodes(ui, strings, selection.items().len()),
                 },
@@ -45,97 +47,66 @@ impl Workspace {
         });
     }
 
-    fn group_details(&mut self, ui: &mut Ui, strings: &Strings, group: GroupId) {
+    fn workspace_details(&mut self, ui: &mut Ui, strings: &Strings, workspace: WorkspaceId) {
         let catalog = &self.catalog;
         let graph = self.doc.graph();
-        let info = graph.group_info(group).expect("checked by caller").clone();
-        ui.label(RichText::new(strings.get("kind-group")).small().weak());
+        let info = graph
+            .workspace_info(workspace)
+            .expect("checked by caller")
+            .clone();
+        ui.label(RichText::new(strings.get("kind-workspace")).small().weak());
         let mut name = info.name.clone();
         let response = ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY));
-        let label = strings.get("inspector-group-name");
+        let label = strings.get("inspector-workspace-name");
         ui.ctx()
             .accesskit_node_builder(response.id, |node| node.set_label(label));
-        let count = graph.nodes_in_group(group).len();
+        let count = graph
+            .nodes_in_workspace(workspace)
+            .into_iter()
+            .filter(|&node| !matches!(graph.nodes()[node].kind, NodeKind::WorkspacePort { .. }))
+            .count();
         ui.label(names::node_count(strings, count));
         let solution = self.doc.solution();
-        let mut is_copies = matches!(info.mode, GroupMode::Copies { .. });
-        let mut new_mode = None;
-        if ui
-            .checkbox(&mut is_copies, strings.get("group-copies-mode"))
-            .on_hover_text(strings.get("group-copies-hint"))
-            .changed()
-        {
-            new_mode = Some(if is_copies {
-                GroupMode::Copies { limit: None }
-            } else {
-                GroupMode::Folder
-            });
-        }
-        if let GroupMode::Copies { limit } = info.mode {
-            egui::Grid::new("group-copies")
-                .num_columns(2)
-                .spacing([12.0, 4.0])
-                .show(ui, |ui| {
-                    ui.label(strings.get("group-copies-label"));
-                    let copies = solution.copies.get(&group).copied().flatten();
-                    ui.monospace(format::fixed(copies));
-                    ui.end_row();
-                    ui.label(strings.get("inspector-limit"));
-                    let field = LimitField {
-                        id: egui::Id::new("group-copies-limit"),
-                        buffer: &mut self.limit_edit,
-                        current: limit,
-                        width: 90.0,
-                        hint: strings.get("inspector-limit-hint"),
-                        label: strings.get("group-copies-limit"),
-                    };
-                    if let (_, Some(typed)) = field.show(ui) {
-                        new_mode = Some(GroupMode::Copies { limit: typed });
-                    }
-                    ui.end_row();
-                });
-        }
-        let ports = graph.external_ports(catalog, group);
-        let is_copies = matches!(info.mode, GroupMode::Copies { .. });
         ui.add_space(4.0);
         ui.label(RichText::new(strings.get("inspector-ports")).strong());
-        egui::Grid::new("group-ports")
+        egui::Grid::new("workspace-ports")
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                for port in &ports {
-                    let key = match port.side {
-                        Side::Input => "inspector-port-in",
-                        Side::Output => "inspector-port-out",
-                    };
-                    let item = names::item(catalog, port.item.as_str());
-                    ui.label(strings.format(key, &[("item", item)]));
-                    let flow = if is_copies {
-                        solution.group_flow.get(port)
-                    } else {
-                        solution.port_flow.get(port)
-                    };
-                    ui.monospace(per_min(strings, flow.copied().flatten()));
-                    ui.end_row();
+                for side in [Side::Input, Side::Output] {
+                    for port in graph.ports_of(workspace, side) {
+                        let key = match side {
+                            Side::Input => "inspector-port-in",
+                            Side::Output => "inspector-port-out",
+                        };
+                        let item = graph.nodes()[port].kind.item();
+                        let name = names::maybe_item(catalog, strings, item);
+                        ui.label(strings.format(key, &[("item", &name)]));
+                        ui.monospace(per_min(
+                            strings,
+                            solution.rate.get(&port).copied().flatten(),
+                        ));
+                        ui.end_row();
+                    }
                 }
             });
-        let mut expand = false;
-        let mut ungroup = false;
+        let mut open = false;
+        let mut dissolve = false;
         ui.horizontal(|ui| {
-            expand = ui.button(strings.get("group-expand")).clicked();
-            ungroup = ui.button(strings.get("group-ungroup")).clicked();
+            open = ui.button(strings.get("workspace-open")).clicked();
+            dissolve = ui.button(strings.get("workspace-dissolve")).clicked();
         });
-        if let Some(mode) = new_mode {
-            let _ = self.doc.set_group_mode(group, mode);
-        }
+        let remove = ui.button(strings.get("workspace-remove")).clicked();
         if response.changed() && !name.trim().is_empty() {
-            let _ = self.doc.rename_group(group, name.trim());
+            let _ = self.doc.rename_workspace(workspace, name.trim());
         }
-        if expand {
-            let _ = self.doc.set_group_collapsed(&self.catalog, group, false);
+        if open {
+            self.show_level(Some(workspace));
+        } else if dissolve {
+            self.dissolve_selection();
+        } else if remove {
+            self.doc.remove_workspace(&self.catalog, workspace);
             self.select(None);
-        } else if ungroup {
-            self.ungroup_selection();
         }
     }
 
@@ -237,33 +208,6 @@ impl Workspace {
             let _ = self.doc.set_facility(node, facility);
         }
 
-        let graph = self.doc.graph();
-        if let Some(group) = graph.node(node).and_then(|n| n.group) {
-            let name = graph
-                .group_info(group)
-                .map(|g| g.name.clone())
-                .unwrap_or_default();
-            let mut collapse = false;
-            ui.horizontal(|ui| {
-                ui.label(strings.format("inspector-in-group", &[("group", &name)]));
-                collapse = ui.small_button(strings.get("group-collapse")).clicked();
-            });
-            if let Some(&copies) = self.doc.solution().node_copies.get(&node) {
-                ui.label(
-                    RichText::new(strings.format(
-                        "inspector-one-copy",
-                        &[("copies", &format::fixed(Some(copies)))],
-                    ))
-                    .weak()
-                    .small(),
-                );
-            }
-            if collapse {
-                let _ = self.doc.set_group_collapsed(&self.catalog, group, true);
-                self.select(Some(Selection::Items(vec![aic_core::Member::Group(group)])));
-                return;
-            }
-        }
         self.limit_field(ui, strings, node, &kind);
         self.throttle_reason(ui, strings, node);
         self.port_list(ui, strings, node, &kind);
@@ -596,14 +540,29 @@ fn warning_text(catalog: &Catalog, strings: &Strings, graph: &Graph, warning: &W
         Warning::Undetermined { reason, .. } => strings.get(match reason {
             UndeterminedReason::NoLimit => "warning-undetermined-no-limit",
             UndeterminedReason::Unbounded => "warning-undetermined-unbounded",
-            UndeterminedReason::CopiesUndetermined => "warning-copies-undetermined",
         }),
-        Warning::CopiesUndetermined { group } => {
-            let name = graph
-                .group_info(*group)
-                .map(|g| g.name.clone())
+        Warning::PortUnlinked { port, outside } => {
+            let node = graph.node(*port);
+            let workspace = node
+                .and_then(|n| n.workspace)
+                .and_then(|w| graph.workspace_info(w))
+                .map(|w| w.name.clone())
                 .unwrap_or_default();
-            strings.format("warning-copies-undetermined-group", &[("group", &name)])
+            let item = names::maybe_item(catalog, strings, node.and_then(|n| n.kind.item()));
+            let input = matches!(
+                node.map(|n| &n.kind),
+                Some(NodeKind::WorkspacePort {
+                    side: Side::Input,
+                    ..
+                })
+            );
+            let key = match (input, outside) {
+                (true, true) => "warning-port-in-unlinked-outside",
+                (true, false) => "warning-port-in-unlinked-inside",
+                (false, true) => "warning-port-out-unlinked-outside",
+                (false, false) => "warning-port-out-unlinked-inside",
+            };
+            strings.format(key, &[("workspace", &workspace), ("item", &item)])
         }
         Warning::Failed { message, .. } => {
             strings.format("warning-failed", &[("message", message)])

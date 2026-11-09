@@ -6,6 +6,7 @@ pub mod canvas;
 pub mod data;
 pub mod document;
 pub mod edit;
+pub mod editor;
 mod export;
 pub mod files;
 pub mod format;
@@ -18,7 +19,6 @@ pub mod settings;
 mod throttle;
 mod toolbar;
 mod widgets;
-pub mod workspace;
 
 use std::path::{Path, PathBuf};
 
@@ -26,9 +26,9 @@ use aic_data::{Catalog, LoadError};
 use eframe::egui::{self, RichText};
 
 use crate::data::{DataChoice, DataFolder};
+use crate::editor::Editor;
 use crate::i18n::Strings;
 use crate::settings::Availability;
-use crate::workspace::Workspace;
 
 /// Initial window size in points.
 pub const WINDOW_SIZE: [f32; 2] = [1280.0, 800.0];
@@ -39,7 +39,7 @@ pub struct App {
 }
 
 enum State {
-    Ready(Box<Workspace>),
+    Ready(Box<Editor>),
     /// Game data didn't load; the window explains why.
     Failed(String),
 }
@@ -60,9 +60,9 @@ impl App {
             .unwrap_or_default();
         let state = match catalog {
             Ok(catalog) => {
-                let mut workspace = Workspace::new(catalog, availability);
-                workspace.set_recent_files(recent);
-                State::Ready(Box::new(workspace))
+                let mut editor = Editor::new(catalog, availability);
+                editor.set_recent_files(recent);
+                State::Ready(Box::new(editor))
             }
             Err(message) => State::Failed(message),
         };
@@ -92,26 +92,26 @@ impl App {
         let mut app = Self::new(strings, catalog, storage);
         let app_name = app.strings.get("app-title");
         let Self { strings, state } = &mut app;
-        if let State::Ready(workspace) = state {
-            workspace.set_data_folder(folder, choice);
-            workspace.set_drafts_dir(eframe::storage_dir(&app_name).map(|dir| dir.join("drafts")));
+        if let State::Ready(editor) = state {
+            editor.set_data_folder(folder, choice);
+            editor.set_drafts_dir(eframe::storage_dir(&app_name).map(|dir| dir.join("drafts")));
             if let Some(last) = last {
-                workspace.reopen(&last, strings);
+                editor.reopen(&last, strings);
             }
         }
         app
     }
 
-    pub fn workspace(&self) -> Option<&Workspace> {
+    pub fn editor(&self) -> Option<&Editor> {
         match &self.state {
-            State::Ready(workspace) => Some(workspace),
+            State::Ready(editor) => Some(editor),
             State::Failed(_) => None,
         }
     }
 
-    pub fn workspace_mut(&mut self) -> Option<&mut Workspace> {
+    pub fn editor_mut(&mut self) -> Option<&mut Editor> {
         match &mut self.state {
-            State::Ready(workspace) => Some(workspace),
+            State::Ready(editor) => Some(editor),
             State::Failed(_) => None,
         }
     }
@@ -126,7 +126,7 @@ pub fn load_catalog(flag: Option<&Path>) -> Result<Catalog, LoadError> {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         match &mut self.state {
-            State::Ready(workspace) => workspace.ui(ui, &self.strings),
+            State::Ready(editor) => editor.ui(ui, &self.strings),
             State::Failed(message) => {
                 egui::CentralPanel::default().show(ui, |ui| {
                     ui.heading(self.strings.get("load-failed-title"));
@@ -140,14 +140,14 @@ impl eframe::App for App {
     /// eframe calls this every so often and when the app closes: a last save of the graph, and the
     /// settings.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        if let State::Ready(workspace) = &mut self.state {
-            workspace.save_now(&self.strings);
-            if let Some(last) = workspace.last_document() {
+        if let State::Ready(editor) = &mut self.state {
+            editor.save_now(&self.strings);
+            if let Some(last) = editor.last_document() {
                 eframe::set_value(storage, files::LAST_KEY, &last.to_path_buf());
             }
-            eframe::set_value(storage, settings::STORAGE_KEY, workspace.availability());
-            eframe::set_value(storage, files::RECENT_KEY, &workspace.recent_files());
-            if let Some(choice) = workspace.data_choice() {
+            eframe::set_value(storage, settings::STORAGE_KEY, editor.availability());
+            eframe::set_value(storage, files::RECENT_KEY, &editor.recent_files());
+            if let Some(choice) = editor.data_choice() {
                 eframe::set_value(storage, data::STORAGE_KEY, choice);
             }
         }

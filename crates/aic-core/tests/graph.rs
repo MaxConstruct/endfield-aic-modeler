@@ -368,7 +368,7 @@ fn save_file_uses_ids_and_a_format_version() {
     let catalog = catalog();
     let value: serde_json::Value =
         serde_json::from_str(&sample(&catalog).to_json("v1.5.3")).unwrap();
-    assert_eq!(value["format_version"], 1);
+    assert_eq!(value["format_version"], aic_core::FORMAT_VERSION);
     assert_eq!(value["data_version"], "v1.5.3");
     assert_eq!(value["region"], TUNDRA);
     let recipe = value["nodes"]
@@ -413,7 +413,7 @@ fn newer_format_versions_are_refused() {
     let catalog = catalog();
     let json = sample(&catalog)
         .to_json("v1.5.3")
-        .replace("\"format_version\": 1", "\"format_version\": 99");
+        .replace("\"format_version\": 2", "\"format_version\": 99");
     assert!(matches!(
         Graph::from_json(&catalog, &json),
         Err(FileError::UnsupportedFormat { found: 99, .. })

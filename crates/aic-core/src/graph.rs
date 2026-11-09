@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use thiserror::Error;
 
-use crate::group::Group;
+use crate::workspace::Workspace;
 
 new_key_type! {
     pub struct NodeId;
     pub struct LinkId;
-    pub struct GroupId;
+    pub struct WorkspaceId;
 }
 
 /// One player-made plan. It belongs to exactly one region.
@@ -23,7 +23,7 @@ pub struct Graph {
     pub(crate) region: RegionId,
     pub(crate) nodes: SlotMap<NodeId, Node>,
     pub(crate) links: SlotMap<LinkId, Link>,
-    pub(crate) groups: SlotMap<GroupId, Group>,
+    pub(crate) workspaces: SlotMap<WorkspaceId, Workspace>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,8 +31,8 @@ pub struct Node {
     pub kind: NodeKind,
     /// Position on the canvas. The solver ignores it.
     pub pos: Pos,
-    /// The group the node is directly in, if any.
-    pub group: Option<GroupId>,
+    /// The workspace the node is directly in; `None` at the top of the graph.
+    pub workspace: Option<WorkspaceId>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -69,6 +69,9 @@ pub enum NodeKind {
     Storage { item: Option<ItemId> },
     /// Caps the flow of one item passing through it, per minute.
     ControlPort { item: Option<ItemId>, limit: f64 },
+    /// A port of the workspace the node is in: an `Input` port brings `item` in from outside the
+    /// workspace, an `Output` port sends it out. `None` until its first link.
+    WorkspacePort { side: Side, item: Option<ItemId> },
     /// A recipe node loaded from a save whose recipe or facility no longer exists. Kept so the
     /// file survives a data update; the solver leaves it out.
     MissingRecipe {
@@ -103,7 +106,8 @@ impl NodeKind {
                 Self::Splitter { item }
                 | Self::Merger { item }
                 | Self::Storage { item }
-                | Self::ControlPort { item, .. },
+                | Self::ControlPort { item, .. }
+                | Self::WorkspacePort { item, .. },
                 _,
             ) => vec![item.clone()],
             (Self::MissingRecipe { .. }, _) => vec![],
@@ -135,7 +139,8 @@ impl NodeKind {
             Self::Splitter { item }
             | Self::Merger { item }
             | Self::Storage { item }
-            | Self::ControlPort { item, .. } => item.as_ref(),
+            | Self::ControlPort { item, .. }
+            | Self::WorkspacePort { item, .. } => item.as_ref(),
             Self::Recipe { .. } | Self::MissingRecipe { .. } => None,
         }
     }
@@ -148,11 +153,15 @@ impl NodeKind {
             | Self::OutpostOrder { limit, .. }
             | Self::MissingRecipe { limit, .. } => *limit,
             Self::Source { limit, .. } | Self::ControlPort { limit, .. } => Some(*limit),
-            Self::Splitter { .. } | Self::Merger { .. } | Self::Storage { .. } => None,
+            Self::Splitter { .. }
+            | Self::Merger { .. }
+            | Self::Storage { .. }
+            | Self::WorkspacePort { .. } => None,
         }
     }
 
-    /// Splitters, mergers, storage and control ports: one item, any number of links per side.
+    /// Splitters, mergers, storage, control ports and workspace ports: one item, any number of
+    /// links per side.
     pub fn is_logistics(&self) -> bool {
         matches!(
             self,
@@ -160,6 +169,7 @@ impl NodeKind {
                 | Self::Merger { .. }
                 | Self::Storage { .. }
                 | Self::ControlPort { .. }
+                | Self::WorkspacePort { .. }
         )
     }
 
@@ -168,7 +178,8 @@ impl NodeKind {
             Self::Splitter { item }
             | Self::Merger { item }
             | Self::Storage { item }
-            | Self::ControlPort { item, .. } => Some(item),
+            | Self::ControlPort { item, .. }
+            | Self::WorkspacePort { item, .. } => Some(item),
             _ => None,
         }
     }
@@ -265,6 +276,8 @@ pub enum LinkError {
     SelfLink,
     #[error("these two ports are already linked")]
     Duplicate,
+    #[error("a link can't cross a workspace's edge except through one of its ports")]
+    AcrossWorkspaces,
 }
 
 /// Why a node edit was refused.
@@ -286,14 +299,16 @@ pub enum EditError {
     UnknownLink(LinkId),
     #[error("a share must be a finite number above 0, not {0}")]
     InvalidShare(f64),
-    #[error("group {0:?} does not exist")]
-    UnknownGroup(GroupId),
+    #[error("workspace {0:?} does not exist")]
+    UnknownWorkspace(WorkspaceId),
     #[error("only an empty graph can change region")]
     NotEmpty,
-    #[error("a group needs at least one member")]
-    EmptyGroup,
-    #[error("only nodes and groups in the same group can be grouped together")]
-    MixedGroups,
+    #[error("a workspace made from a selection needs at least one member")]
+    EmptyWorkspace,
+    #[error("only nodes and workspaces in the same workspace can go in a new workspace together")]
+    MixedWorkspaces,
+    #[error("a workspace's ports stay on its edge")]
+    PortOutsideWorkspace,
 }
 
 impl Graph {
@@ -302,7 +317,7 @@ impl Graph {
             region,
             nodes: SlotMap::with_key(),
             links: SlotMap::with_key(),
-            groups: SlotMap::with_key(),
+            workspaces: SlotMap::with_key(),
         }
     }
 
@@ -348,8 +363,25 @@ impl Graph {
         self.nodes.insert(Node {
             kind,
             pos,
-            group: None,
+            workspace: None,
         })
+    }
+
+    /// Adds a node inside `workspace` (`None`: the top of the graph).
+    pub fn add_node_in(
+        &mut self,
+        kind: NodeKind,
+        pos: Pos,
+        workspace: Option<WorkspaceId>,
+    ) -> Result<NodeId, EditError> {
+        match workspace {
+            Some(id) if !self.workspaces.contains_key(id) => Err(EditError::UnknownWorkspace(id)),
+            _ => Ok(self.nodes.insert(Node {
+                kind,
+                pos,
+                workspace,
+            })),
+        }
     }
 
     /// Removes a node and every link touching it.
@@ -363,11 +395,7 @@ impl Graph {
         for link in touching {
             self.remove_link(link);
         }
-        let node = self.nodes.remove(id)?;
-        if let Some(group) = node.group {
-            self.drop_if_empty(group);
-        }
-        Some(node)
+        self.nodes.remove(id)
     }
 
     /// Links an output port to an input port. A logistics node without an item takes the link's item.
@@ -460,7 +488,10 @@ impl Graph {
             NodeKind::Source { limit: slot, .. } | NodeKind::ControlPort { limit: slot, .. } => {
                 *slot = limit.ok_or(EditError::LimitRequired)?;
             }
-            NodeKind::Splitter { .. } | NodeKind::Merger { .. } | NodeKind::Storage { .. } => {
+            NodeKind::Splitter { .. }
+            | NodeKind::Merger { .. }
+            | NodeKind::Storage { .. }
+            | NodeKind::WorkspacePort { .. } => {
                 return Err(EditError::NoLimit);
             }
         }
@@ -538,9 +569,10 @@ impl Graph {
             {
                 Ok(1.0)
             }
-            NodeKind::Splitter { .. } | NodeKind::Merger { .. } | NodeKind::Storage { .. } => {
-                Err(EditError::NoLimit)
-            }
+            NodeKind::Splitter { .. }
+            | NodeKind::Merger { .. }
+            | NodeKind::Storage { .. }
+            | NodeKind::WorkspacePort { .. } => Err(EditError::NoLimit),
             _ => Err(EditError::NoSuchPort),
         }
     }
@@ -581,67 +613,18 @@ impl Graph {
         }
     }
 
-    /// A new graph in the same region with copies of `nodes` and the links between them. A
-    /// logistics node left without links forgets its item, as it would after unlinking.
-    pub fn copy_nodes(&self, nodes: &[NodeId]) -> Graph {
-        let mut copy = Graph::new(self.region.clone());
-        let mut ids = std::collections::HashMap::new();
-        for &id in nodes {
-            if let Some(node) = self.nodes.get(id)
-                && !ids.contains_key(&id)
-            {
-                ids.insert(id, copy.nodes.insert(node.clone()));
-            }
-        }
-        for link in self.links.values() {
-            if let (Some(&from), Some(&to)) = (ids.get(&link.from), ids.get(&link.to)) {
-                copy.links.insert(Link {
-                    from,
-                    to,
-                    ..link.clone()
-                });
-            }
-        }
-        let unlinked: Vec<NodeId> = copy
+    /// A logistics node or port without links forgets its item, as it would after unlinking.
+    pub(crate) fn forget_unlinked_items(&mut self) {
+        let unlinked: Vec<NodeId> = self
             .nodes
             .keys()
-            .filter(|&id| !copy.links.values().any(|l| l.from == id || l.to == id))
+            .filter(|&id| !self.links.values().any(|l| l.from == id || l.to == id))
             .collect();
         for id in unlinked {
-            if let Some(slot) = copy.nodes[id].kind.logistics_item_mut() {
+            if let Some(slot) = self.nodes[id].kind.logistics_item_mut() {
                 *slot = None;
             }
         }
-        copy
-    }
-
-    /// Adds every node of `other`, moved by `offset`, and links them as they are linked there.
-    /// Returns the new nodes in `other`'s order. A link this graph refuses is left out.
-    pub fn paste(&mut self, catalog: &Catalog, other: &Graph, offset: Pos) -> Vec<NodeId> {
-        let mut ids = std::collections::HashMap::new();
-        let mut pasted = Vec::with_capacity(other.nodes.len());
-        for (id, node) in &other.nodes {
-            let pos = Pos {
-                x: node.pos.x + offset.x,
-                y: node.pos.y + offset.y,
-            };
-            let new = self.add_node(node.kind.clone(), pos);
-            ids.insert(id, new);
-            pasted.push(new);
-        }
-        for link in other.links.values() {
-            let (from, to) = (ids[&link.from], ids[&link.to]);
-            let linked = self.connect(
-                catalog,
-                PortRef::new(from, link.item.clone()),
-                PortRef::new(to, link.item.clone()),
-            );
-            if let Ok(id) = linked {
-                self.links[id].out_share = link.out_share;
-                self.links[id].in_share = link.in_share;
-            }
-        }
-        pasted
     }
 
     /// Picks which facility a recipe node runs on. [`Graph::validate`] reports one that can't run
@@ -670,6 +653,15 @@ impl Graph {
     ) -> Result<ItemId, LinkError> {
         if from.node == to.node {
             return Err(LinkError::SelfLink);
+        }
+        let from_level = self
+            .end_level(from.node, Side::Output)
+            .ok_or(LinkError::UnknownNode(from.node))?;
+        let to_level = self
+            .end_level(to.node, Side::Input)
+            .ok_or(LinkError::UnknownNode(to.node))?;
+        if from_level != to_level {
+            return Err(LinkError::AcrossWorkspaces);
         }
         let from_item = self.port_item(catalog, from, Side::Output)?;
         let to_item = self.port_item(catalog, to, Side::Input)?;
@@ -737,7 +729,10 @@ impl Graph {
             NodeKind::Splitter { item }
             | NodeKind::Merger { item }
             | NodeKind::Storage { item }
-            | NodeKind::ControlPort { item, .. } => Ok(item.clone().or_else(|| port.item.clone())),
+            | NodeKind::ControlPort { item, .. }
+            | NodeKind::WorkspacePort { item, .. } => {
+                Ok(item.clone().or_else(|| port.item.clone()))
+            }
             NodeKind::MissingRecipe { .. } => Err(no_port()),
         }
     }

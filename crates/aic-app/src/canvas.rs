@@ -1,7 +1,7 @@
 //! The node canvas: egui-snarl drawing the [`Document`]'s graph with the solver's numbers.
 //!
 //! The viewer only reads the graph. Everything the player does on the canvas comes back as
-//! [`CanvasEvent`]s, which the workspace applies to the document after the frame's canvas is drawn,
+//! [`CanvasEvent`]s, which the editor applies to the document after the frame's canvas is drawn,
 //! so the graph and its view always change together.
 
 use std::cell::RefCell;
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use aic_core::{
-    Graph, GroupId, LinkId, Member, NodeId, NodeKind, Port, PortRef, RoundUp, Side, Solution,
+    Graph, LinkId, Member, NodeId, NodeKind, Port, PortRef, RoundUp, Side, Solution, WorkspaceId,
 };
 use aic_data::{Catalog, FacilityId, ImageKind, ItemId};
 use eframe::egui::{
@@ -22,7 +22,7 @@ use egui_snarl::ui::{
 };
 use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 
-use crate::document::{Anchor, Document, PinTarget, ViewId, pin_targets, port_ref};
+use crate::document::{Anchor, Document, PinTarget, ViewId, is_port, pin_targets, port_ref};
 use crate::format;
 use crate::i18n::Strings;
 use crate::names;
@@ -47,8 +47,19 @@ const NODE_MARGIN: i8 = 6;
 const CARD_WIDTH: f32 = 300.0;
 /// How far a port column reaches into the card, from inside its margin.
 const PORT_COLUMN: f32 = PIN_ICON - NODE_MARGIN as f32 + RATE_GAP + RATE_WIDTH;
+/// Room left at the top of a workspace's canvas for the back button and the add-port buttons.
+const EDGE_TOP: f32 = 48.0;
+/// Space between a workspace's port tiles and the canvas edge, and between two tiles.
+const EDGE_GAP: f32 = 8.0;
+/// How far the pointer moves with the right button down before it draws a selection box.
+const BOX_THRESHOLD: f32 = 4.0;
 
-/// What the player has selected: nodes and collapsed groups as drawn on the canvas, or one link.
+/// egui-snarl's id for the canvas of one level. Each level keeps its own camera and selection.
+fn snarl_id(level: Option<WorkspaceId>) -> Id {
+    Id::new((CANVAS_ID, level))
+}
+
+/// What the player has selected: nodes and workspaces as drawn on the canvas, or one link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Selection {
     /// Never empty.
@@ -78,13 +89,13 @@ impl Selection {
         }
     }
 
-    /// The selected nodes, leaving out groups.
+    /// The selected nodes, leaving out workspaces.
     pub fn nodes(&self) -> Vec<NodeId> {
         self.items()
             .iter()
             .filter_map(|m| match m {
                 Member::Node(id) => Some(*id),
-                Member::Group(_) => None,
+                Member::Workspace(_) => None,
             })
             .collect()
     }
@@ -105,10 +116,10 @@ impl Selection {
         }
     }
 
-    /// The group, when exactly one item is selected and it is a collapsed group.
-    pub fn single_group(&self) -> Option<GroupId> {
+    /// The workspace, when exactly one item is selected and it is a workspace.
+    pub fn single_workspace(&self) -> Option<WorkspaceId> {
         match self.items() {
-            [Member::Group(one)] => Some(*one),
+            [Member::Workspace(one)] => Some(*one),
             _ => None,
         }
     }
@@ -128,13 +139,20 @@ pub enum CanvasEvent {
         graph_pos: Pos2,
     },
     Select(Option<Selection>),
-    /// Shift+click on a node or group: add it to the selection, or take it out.
+    /// Shift+click on a node or workspace: add it to the selection, or take it out.
     Toggle(Member),
-    /// Remove a node, or a group with everything in it.
+    /// Remove a node, or a workspace with everything in it.
     Remove(Member),
-    /// Collapse a group into one card, or expand it.
-    SetCollapsed(GroupId, bool),
-    Ungroup(GroupId),
+    /// Show another level: a workspace (a double-click on its card), or `None` for the top.
+    ShowLevel(Option<WorkspaceId>),
+    /// Add a port to the workspace shown.
+    AddPort(Side),
+    Rename(WorkspaceId, String),
+    Dissolve(WorkspaceId),
+    Cut(Member),
+    Copy(Member),
+    /// Paste what was copied into this workspace.
+    PasteInto(WorkspaceId),
     SetFacility(NodeId, FacilityId),
     SetLimit(NodeId, Option<f64>),
     /// Open the port menu (a double-click on a port). `graph_pos` is the port's pin: the menu opens
@@ -164,7 +182,7 @@ pub struct Canvas {
     pub to_global: TSTransform,
     /// The canvas area on screen, as of the last frame.
     pub rect: Rect,
-    /// Where each node and collapsed group was drawn last frame, in graph space.
+    /// Where each node and workspace card was drawn last frame, in graph space.
     node_rects: HashMap<Member, Rect>,
     /// egui-snarl's own node selection as of the last frame. It changes on a box selection
     /// (Shift+drag on the background), which then becomes the player's selection.
@@ -173,6 +191,16 @@ pub struct Canvas {
     grabbed: Option<Member>,
     /// A view to show from the next frame, set when a file opens.
     pending_view: Option<aic_core::CanvasView>,
+    /// The level shown last frame.
+    level: Option<WorkspaceId>,
+    /// Where the top of the graph was looked at last, kept while a workspace is open so a save
+    /// still records it.
+    top_view: Option<aic_core::CanvasView>,
+    /// Where a right-button press on the background began, on screen, and the camera then. The
+    /// camera holds still until the button is up: egui-snarl would pan with the drag.
+    right_press: Option<(Pos2, TSTransform)>,
+    /// The workspace name being typed in a card's menu.
+    title_edit: String,
 }
 
 impl Default for Canvas {
@@ -203,6 +231,10 @@ impl Default for Canvas {
             snarl_selection: Vec::new(),
             grabbed: None,
             pending_view: None,
+            level: None,
+            top_view: None,
+            right_press: None,
+            title_edit: String::new(),
         }
     }
 }
@@ -222,6 +254,15 @@ impl Canvas {
         })
     }
 
+    /// Where the top of the graph is looked at, even while a workspace is open. Saved with the file.
+    pub fn top_view(&self) -> Option<aic_core::CanvasView> {
+        if self.level.is_none() {
+            self.view()
+        } else {
+            self.top_view
+        }
+    }
+
     /// Looks at `view` from the next frame on, as when a file is opened.
     pub fn show_view(&mut self, view: aic_core::CanvasView) {
         self.pending_view = Some(view);
@@ -236,7 +277,7 @@ impl Canvas {
         self.to_global * graph_pos
     }
 
-    /// Where a node or collapsed group was drawn last frame, on screen.
+    /// Where a node or workspace card was drawn last frame, on screen.
     pub fn item_on_screen(&self, member: Member) -> Option<Rect> {
         let rect = self.node_rects.get(&member)?;
         Some(Rect::from_min_max(
@@ -254,7 +295,7 @@ impl Canvas {
         side: Side,
         item: &ItemId,
     ) -> Option<Pos2> {
-        let member = doc.shown(node);
+        let member = doc.shown(node)?;
         let view_id = doc.view_id(member)?;
         let index = pin_targets(doc.graph(), catalog, member, side)
             .iter()
@@ -284,12 +325,23 @@ impl Canvas {
     ) -> Vec<CanvasEvent> {
         // The snarl response spans everything; the panel's own rect is what's on screen.
         self.rect = ui.max_rect();
+        let level = doc.level();
+        if level != self.level {
+            if self.level.is_none() {
+                self.top_view = self.view();
+            }
+            self.level = level;
+            self.node_rects.clear();
+            self.snarl_selection.clear();
+        }
+        let path = doc.level_path();
         let (graph, view, anchors, solution) = doc.parts();
+        self.pin_ports_to_edges(ui.ctx(), graph, view, level);
         let before: HashMap<ViewId, Pos2> = view
             .nodes_pos_ids()
             .filter(|(_, _, member)| match member {
-                Member::Node(id) => !anchors.contains_key(id),
-                Member::Group(_) => true,
+                Member::Node(id) => !anchors.contains_key(id) && !is_port(graph, *id),
+                Member::Workspace(_) => true,
             })
             .map(|(view_id, pos, _)| (view_id, pos))
             .collect();
@@ -304,18 +356,23 @@ impl Canvas {
             limit_edits: &mut self.limit_edits,
             pins: &self.pins,
             to_global: &mut self.to_global,
-            pending_view: self.pending_view.take().map(|view| {
-                // Screen = zoom × graph + translation, with the view's corner at the canvas corner.
-                let corner = Pos2::new(view.x, view.y).to_vec2() * view.zoom;
-                TSTransform::new(self.rect.min.to_vec2() - corner, view.zoom)
-            }),
+            hold: self.right_press.map(|(_, camera)| camera),
+            pending_view: self
+                .pending_view
+                .take()
+                .filter(|_| level.is_none())
+                .map(|view| {
+                    // Screen = zoom × graph + translation, with the view's corner at the canvas corner.
+                    let corner = Pos2::new(view.x, view.y).to_vec2() * view.zoom;
+                    TSTransform::new(self.rect.min.to_vec2() - corner, view.zoom)
+                }),
             node_rects: &mut self.node_rects,
             pin_cache: HashMap::new(),
-            on_group: false,
+            title_edit: &mut self.title_edit,
             events: Vec::new(),
         };
         let response = SnarlWidget::new()
-            .id(Id::new(CANVAS_ID))
+            .id(snarl_id(level))
             .style(self.style)
             .show(view, &mut viewer, ui);
         let mut events = viewer.events;
@@ -327,16 +384,17 @@ impl Canvas {
             events.push(event);
         }
 
+        let pins = self.pins.borrow().clone();
         let labels = LinkLabels {
             catalog,
             strings,
             graph,
             solution,
             view,
-            pins: &self.pins.borrow(),
+            pins: &pins,
             selection,
         };
-        let layer = LayerId::new(ui.layer_id().order, Id::new(CANVAS_ID));
+        let layer = LayerId::new(ui.layer_id().order, snarl_id(level));
         let clicked_label = labels.paint(ui, layer, self.to_global, self.rect);
         let selected = events.iter().any(|e| matches!(e, CanvasEvent::Select(_)));
         let modifiers = ui.input(|i| i.modifiers);
@@ -345,10 +403,15 @@ impl Canvas {
         } else if response.clicked() && !selected && !modifiers.shift && !modifiers.command {
             events.push(CanvasEvent::Select(None));
         }
+        let boxed = self.right_drag_selection(ui, view);
+        let right_dragged = boxed.is_some();
+        events.extend(boxed);
+        self.level_bar(ui, graph, &path, strings, &mut events);
         // Only a real right click: egui-snarl opens its dropped-link menu by marking the canvas
         // long-touched, which also counts as a secondary click. The response is on the canvas's
         // zoomed and panned layer, so the click's position comes from the input, on screen.
         if response.clicked_by(egui::PointerButton::Secondary)
+            && !right_dragged
             && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
         {
             events.push(CanvasEvent::OpenPicker {
@@ -361,6 +424,176 @@ impl Canvas {
 }
 
 impl Canvas {
+    /// Puts the shown workspace's own ports on the canvas's edges, whatever the camera: inputs
+    /// down the left, outputs down the right, below the buttons at the top.
+    fn pin_ports_to_edges(
+        &self,
+        ctx: &egui::Context,
+        graph: &Graph,
+        view: &mut Snarl<Member>,
+        level: Option<WorkspaceId>,
+    ) {
+        let Some(workspace) = level else {
+            return;
+        };
+        let from_screen = self.to_global.inverse();
+        let ids: Vec<(ViewId, Member)> = view.nodes_pos_ids().map(|(v, _, m)| (v, *m)).collect();
+        for side in [Side::Input, Side::Output] {
+            let mut top = self.rect.top() + EDGE_TOP;
+            for port in graph.ports_of(workspace, side) {
+                let member = Member::Node(port);
+                let Some(&(view_id, _)) = ids.iter().find(|(_, m)| *m == member) else {
+                    continue;
+                };
+                // Last frame's size; a new tile starts with a guess.
+                let size = self
+                    .node_rects
+                    .get(&member)
+                    .map_or(vec2(80.0, 64.0), |r| r.size() * self.to_global.scaling);
+                let left = match side {
+                    Side::Input => self.rect.left() + EDGE_GAP,
+                    Side::Output => self.rect.right() - EDGE_GAP - size.x,
+                };
+                if let Some(info) = view.get_node_info_mut(view_id) {
+                    let pos = from_screen * Pos2::new(left, top);
+                    // A tile that moves changes size as it settles; draw again until it stops.
+                    if (info.pos - pos).length() > 0.5 {
+                        ctx.request_repaint();
+                    }
+                    info.pos = pos;
+                }
+                top += size.y + EDGE_GAP;
+            }
+        }
+    }
+
+    /// The back button and the way down from the top, and the buttons that add ports, over the
+    /// canvas of a workspace.
+    fn level_bar(
+        &self,
+        ui: &Ui,
+        graph: &Graph,
+        path: &[WorkspaceId],
+        strings: &Strings,
+        events: &mut Vec<CanvasEvent>,
+    ) {
+        let Some(&shown) = path.last() else {
+            return;
+        };
+        let name = |id: WorkspaceId| {
+            graph
+                .workspace_info(id)
+                .map(|w| w.name.clone())
+                .unwrap_or_default()
+        };
+        egui::Area::new(Id::new("level-bar"))
+            .fixed_pos(self.rect.left_top() + vec2(EDGE_GAP, EDGE_GAP))
+            .show(ui.ctx(), |ui| {
+                ui.horizontal(|ui| {
+                    let parent = path.len().checked_sub(2).map(|i| path[i]);
+                    if ui
+                        .button(strings.get("workspace-back"))
+                        .on_hover_text(strings.get("workspace-back-hint"))
+                        .clicked()
+                    {
+                        events.push(CanvasEvent::ShowLevel(parent));
+                    }
+                    if ui.link(strings.get("workspace-top")).clicked() {
+                        events.push(CanvasEvent::ShowLevel(None));
+                    }
+                    for &id in path {
+                        ui.label("›");
+                        if id == shown {
+                            ui.label(RichText::new(name(id)).strong());
+                        } else if ui.link(name(id)).clicked() {
+                            events.push(CanvasEvent::ShowLevel(Some(id)));
+                        }
+                    }
+                    if ui
+                        .button(strings.get("workspace-add-input"))
+                        .on_hover_text(strings.get("workspace-add-input-hint"))
+                        .clicked()
+                    {
+                        events.push(CanvasEvent::AddPort(Side::Input));
+                    }
+                });
+            });
+        egui::Area::new(Id::new("level-bar-outputs"))
+            .pivot(egui::Align2::RIGHT_TOP)
+            .fixed_pos(self.rect.right_top() + vec2(-EDGE_GAP, EDGE_GAP))
+            .show(ui.ctx(), |ui| {
+                if ui
+                    .button(strings.get("workspace-add-output"))
+                    .on_hover_text(strings.get("workspace-add-output-hint"))
+                    .clicked()
+                {
+                    events.push(CanvasEvent::AddPort(Side::Output));
+                }
+            });
+    }
+
+    /// A box drawn by dragging with the right button on the background, as on a desktop: what it
+    /// touches becomes the selection. A right click without a drag still opens the picker.
+    fn right_drag_selection(&mut self, ui: &Ui, view: &Snarl<Member>) -> Option<CanvasEvent> {
+        let (pressed, down, pos) = ui.input(|i| {
+            (
+                i.pointer.button_pressed(egui::PointerButton::Secondary),
+                i.pointer.button_down(egui::PointerButton::Secondary),
+                i.pointer.interact_pos(),
+            )
+        });
+        let from_screen = self.to_global.inverse();
+        if pressed
+            && let Some(pos) = pos
+            && self.rect.contains(pos)
+            && !self
+                .node_rects
+                .values()
+                .any(|rect| rect.contains(from_screen * pos))
+            && ui
+                .ctx()
+                .layer_id_at(pos)
+                .is_none_or(|layer| layer.order == ui.layer_id().order)
+        {
+            self.right_press = Some((pos, self.to_global));
+        }
+        let (start, _) = self.right_press?;
+        let end = pos.unwrap_or(start);
+        let dragged = (end - start).length() > BOX_THRESHOLD;
+        if down {
+            if dragged {
+                let rect = Rect::from_two_pos(start, end);
+                let painter = ui.ctx().layer_painter(LayerId::new(
+                    egui::Order::Foreground,
+                    Id::new("right-drag-box"),
+                ));
+                painter.rect(
+                    rect,
+                    0.0,
+                    colors::SELECT_BOX.gamma_multiply(0.15),
+                    Stroke::new(1.0, colors::SELECT_BOX),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            return None;
+        }
+        self.right_press = None;
+        if !dragged {
+            return None;
+        }
+        let area = Rect::from_two_pos(from_screen * start, from_screen * end);
+        let items: Vec<Member> = view
+            .nodes()
+            .copied()
+            .filter(|member| {
+                self.node_rects
+                    .get(member)
+                    .is_some_and(|rect| rect.intersects(area))
+            })
+            .collect();
+        Some(CanvasEvent::Select(Selection::of_items(items)))
+    }
+
     /// egui-snarl drags its own selection together, which can differ from the player's. Whatever
     /// snarl moved, move the player's selection with the grabbed node instead, or the grabbed node
     /// alone when it isn't selected.
@@ -436,7 +669,7 @@ impl Canvas {
         selection: Option<&Selection>,
         node_clicked: bool,
     ) -> Option<CanvasEvent> {
-        let now = egui_snarl::ui::get_selected_nodes(Id::new(CANVAS_ID), ui.ctx());
+        let now = egui_snarl::ui::get_selected_nodes(snarl_id(self.level), ui.ctx());
         let last = std::mem::replace(&mut self.snarl_selection, now.clone());
         if now == last || node_clicked {
             return None;
@@ -562,11 +795,13 @@ struct Viewer<'a> {
     to_global: &'a mut TSTransform,
     /// A view to switch to this frame.
     pending_view: Option<TSTransform>,
+    /// A camera to keep, whatever snarl's pan and zoom did this frame.
+    hold: Option<TSTransform>,
     node_rects: &'a mut HashMap<Member, Rect>,
-    /// Each drawn item's pins this frame; a group's take a walk over the graph to find.
+    /// Each drawn item's pins this frame; a workspace's take a walk over the graph to find.
     pin_cache: HashMap<(Member, Side), Vec<PinTarget>>,
-    /// Whether the pin being drawn is on a collapsed group's card.
-    on_group: bool,
+    /// The workspace name being typed in a card's menu.
+    title_edit: &'a mut String,
     events: Vec<CanvasEvent>,
 }
 
@@ -639,16 +874,7 @@ impl Viewer<'_> {
                 item: item.clone(),
                 side,
             };
-            // A copies group's card shows the flow of all its copies.
-            let group_flow = self
-                .solution
-                .group_flow
-                .get(&port)
-                .filter(|_| self.on_group);
-            group_flow
-                .or_else(|| self.solution.port_flow.get(&port))
-                .copied()
-                .flatten()
+            self.solution.port_flow.get(&port).copied().flatten()
         });
         let color = match (linked, side) {
             (true, _) => ui.visuals().text_color(),
@@ -746,7 +972,11 @@ impl Viewer<'_> {
         throttled: bool,
     ) -> RecordingPin {
         RecordingPin {
-            picture: item.map(|item| ItemPicture::of(ui.ctx(), self.catalog, item.as_str())),
+            picture: match item {
+                Some(item) => Some(ItemPicture::of(ui.ctx(), self.catalog, item.as_str())),
+                // A port without an item yet asks for one.
+                None => Some(ItemPicture::unknown()),
+            },
             side,
             linked,
             throttled,
@@ -774,17 +1004,22 @@ impl Viewer<'_> {
         }
     }
 
-    /// A collapsed group's card: how many nodes it holds, and a button to open it up.
-    fn group_body(&mut self, ui: &mut Ui, group: GroupId) {
-        let count = self.graph.nodes_in_group(group).len();
+    /// A workspace's card: how many nodes it holds, and a button to open it.
+    fn workspace_body(&mut self, ui: &mut Ui, workspace: WorkspaceId) {
+        let count = self
+            .graph
+            .nodes_in_workspace(workspace)
+            .into_iter()
+            .filter(|&node| !is_port(self.graph, node))
+            .count();
         ui.vertical_centered(|ui| {
-            if let Some(&copies) = self.solution.copies.get(&group) {
-                Self::big_number(ui, copies);
-                ui.label(RichText::new(self.strings.get("group-copies")).small());
-            }
+            ui.label(RichText::new("🏭").size(FACILITY_IMAGE * 0.6));
             ui.label(RichText::new(crate::names::node_count(self.strings, count)).small());
-            if ui.small_button(self.strings.get("group-expand")).clicked() {
-                self.events.push(CanvasEvent::SetCollapsed(group, false));
+            if ui
+                .small_button(self.strings.get("workspace-open"))
+                .clicked()
+            {
+                self.events.push(CanvasEvent::ShowLevel(Some(workspace)));
             }
         });
     }
@@ -825,10 +1060,10 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 .kind(id)
                 .map(|kind| names::node_title(self.catalog, self.strings, kind))
                 .unwrap_or_default(),
-            Member::Group(id) => self
+            Member::Workspace(id) => self
                 .graph
-                .group_info(id)
-                .map(|g| g.name.clone())
+                .workspace_info(id)
+                .map(|w| w.name.clone())
                 .unwrap_or_default(),
         }
     }
@@ -893,7 +1128,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
     ) -> egui::Frame {
         let kind = match snarl[node] {
             Member::Node(id) => self.kind(id),
-            Member::Group(_) => {
+            Member::Workspace(_) => {
                 return default
                     .fill(Color32::from_rgb(70, 55, 90))
                     .corner_radius(CornerRadius::same(6));
@@ -920,10 +1155,14 @@ impl SnarlViewer<Member> for Viewer<'_> {
     ) {
         let id = match snarl[node] {
             Member::Node(id) => id,
-            Member::Group(group) => {
-                let name = self.title(&Member::Group(group));
+            Member::Workspace(workspace) => {
+                let name = self.title(&Member::Workspace(workspace));
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(self.strings.get("kind-group")).small().weak());
+                    ui.label(
+                        RichText::new(self.strings.get("kind-workspace"))
+                            .small()
+                            .weak(),
+                    );
                     title_label(ui, RichText::new(name).strong());
                 });
                 return;
@@ -932,6 +1171,14 @@ impl SnarlViewer<Member> for Viewer<'_> {
         let Some(kind) = self.kind(id) else {
             return;
         };
+        if let NodeKind::WorkspacePort { side, .. } = kind {
+            let key = match side {
+                Side::Input => "kind-workspace-input",
+                Side::Output => "kind-workspace-output",
+            };
+            ui.label(RichText::new(self.strings.get(key)).small().weak());
+            return;
+        }
         ui.vertical(|ui| {
             if !matches!(kind, NodeKind::Recipe { .. }) {
                 ui.label(
@@ -971,7 +1218,6 @@ impl SnarlViewer<Member> for Viewer<'_> {
     fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<Member>) -> RecordingPin {
         let linked = !pin.remotes.is_empty();
         let key = PinKey::In(pin.id);
-        self.on_group = matches!(snarl[pin.id.node], Member::Group(_));
         let target = self.target(snarl[pin.id.node], Side::Input, pin.id.input);
         let item = target.as_ref().and_then(|t| t.item.clone());
         let throttled = target.is_some_and(|target| {
@@ -996,7 +1242,6 @@ impl SnarlViewer<Member> for Viewer<'_> {
     ) -> RecordingPin {
         let linked = !pin.remotes.is_empty();
         let key = PinKey::Out(pin.id);
-        self.on_group = matches!(snarl[pin.id.node], Member::Group(_));
         let target = self.target(snarl[pin.id.node], Side::Output, pin.id.output);
         let item = target.as_ref().and_then(|t| t.item.clone());
         let throttled = target.is_some_and(|target| {
@@ -1026,15 +1271,20 @@ impl SnarlViewer<Member> for Viewer<'_> {
     ) {
         let id = match snarl[node] {
             Member::Node(id) => id,
-            Member::Group(group) => {
+            Member::Workspace(workspace) => {
                 ui.set_width(body_width(ui, inputs, outputs));
-                self.group_body(ui, group);
+                self.workspace_body(ui, workspace);
                 return;
             }
         };
         let Some(kind) = self.kind(id).cloned() else {
             return;
         };
+        // A port tile is its pin and rate alone; this keeps the rate inside the tile.
+        if let NodeKind::WorkspacePort { .. } = kind {
+            ui.set_min_width(PIN_ICON * 0.5);
+            return;
+        }
         let rate = self.solution.rate.get(&id).copied().flatten();
         let width = body_width(ui, inputs, outputs);
         ui.set_width(width);
@@ -1143,6 +1393,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     .format("storage-pass-through", &[("rate", &format::fixed(through))]);
                 ui.add(egui::Label::new(RichText::new(text).small()).truncate());
             }
+            NodeKind::WorkspacePort { .. } => {}
             NodeKind::MissingRecipe { .. } => {
                 ui.label(
                     RichText::new(self.strings.get("kind-missing-recipe")).color(colors::NEGATIVE),
@@ -1175,14 +1426,26 @@ impl SnarlViewer<Member> for Viewer<'_> {
             }
         }
         self.node_rects.insert(member, rect);
-        let (clicked_at, modifiers) = ui.input(|i| {
+        let (clicked_at, double, modifiers) = ui.input(|i| {
             let at = i
                 .pointer
                 .primary_clicked()
                 .then(|| i.pointer.interact_pos())
                 .flatten();
-            (at, i.modifiers)
+            let double = i
+                .pointer
+                .button_double_clicked(egui::PointerButton::Primary)
+                .then(|| i.pointer.interact_pos())
+                .flatten();
+            (at, double, i.modifiers)
         });
+        // A double-click on a workspace's card opens it.
+        if let Member::Workspace(workspace) = member
+            && let Some(pos) = double
+            && rect.contains(self.to_global.inverse() * pos)
+        {
+            self.events.push(CanvasEvent::ShowLevel(Some(workspace)));
+        }
         if let Some(pos) = clicked_at
             && rect.contains(self.to_global.inverse() * pos)
         {
@@ -1207,34 +1470,59 @@ impl SnarlViewer<Member> for Viewer<'_> {
         snarl: &mut Snarl<Member>,
     ) {
         let member = snarl[node];
-        match member {
-            Member::Node(id) => {
-                if let Some(group) = self.graph.node(id).and_then(|n| n.group)
-                    && ui.button(self.strings.get("group-collapse")).clicked()
-                {
-                    self.events.push(CanvasEvent::SetCollapsed(group, true));
-                    ui.close();
-                }
+        let strings = self.strings;
+        let mut pick = |ui: &mut Ui, key: &str, event: CanvasEvent| {
+            if ui.button(strings.get(key)).clicked() {
+                self.events.push(event);
+                ui.close();
             }
-            Member::Group(group) => {
-                if ui.button(self.strings.get("group-expand")).clicked() {
-                    self.events.push(CanvasEvent::SetCollapsed(group, false));
-                    ui.close();
+        };
+        if let Member::Workspace(workspace) = member {
+            pick(
+                ui,
+                "workspace-open",
+                CanvasEvent::ShowLevel(Some(workspace)),
+            );
+            ui.horizontal(|ui| {
+                ui.label(strings.get("workspace-title"));
+                let name = self
+                    .graph
+                    .workspace_info(workspace)
+                    .map(|w| w.name.clone())
+                    .unwrap_or_default();
+                let id = Id::new(("workspace-title", workspace));
+                if !ui.memory(|m| m.has_focus(id)) {
+                    *self.title_edit = name.clone();
                 }
-                if ui.button(self.strings.get("group-ungroup")).clicked() {
-                    self.events.push(CanvasEvent::Ungroup(group));
-                    ui.close();
+                let field = ui.add(egui::TextEdit::singleline(self.title_edit).id(id));
+                let typed = self.title_edit.trim();
+                if field.changed() && !typed.is_empty() && typed != name {
+                    self.events
+                        .push(CanvasEvent::Rename(workspace, typed.to_owned()));
                 }
+            });
+        }
+        let mut pick = |ui: &mut Ui, key: &str, event: CanvasEvent| {
+            if ui.button(strings.get(key)).clicked() {
+                self.events.push(event);
+                ui.close();
             }
+        };
+        pick(ui, "menu-cut", CanvasEvent::Cut(member));
+        pick(ui, "menu-copy", CanvasEvent::Copy(member));
+        if let Member::Workspace(workspace) = member {
+            pick(
+                ui,
+                "workspace-paste-into",
+                CanvasEvent::PasteInto(workspace),
+            );
+            pick(ui, "workspace-dissolve", CanvasEvent::Dissolve(workspace));
         }
         let remove = match member {
             Member::Node(_) => "node-remove",
-            Member::Group(_) => "group-remove",
+            Member::Workspace(_) => "workspace-remove",
         };
-        if ui.button(self.strings.get(remove)).clicked() {
-            self.events.push(CanvasEvent::Remove(member));
-            ui.close();
-        }
+        pick(ui, remove, CanvasEvent::Remove(member));
     }
 
     fn has_dropped_wire_menu(&mut self, _src_pins: AnyPins, _snarl: &mut Snarl<Member>) -> bool {
@@ -1348,6 +1636,9 @@ impl SnarlViewer<Member> for Viewer<'_> {
         }
         if let Some(view) = self.pending_view.take() {
             *to_global = view;
+        }
+        if let Some(camera) = self.hold {
+            *to_global = camera;
         }
         *self.to_global = *to_global;
     }

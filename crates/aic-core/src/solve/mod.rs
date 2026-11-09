@@ -1,6 +1,5 @@
 //! The solver: runs every node as high as its limits and supply allow (ADR 0003, ADR 0004).
 
-mod copies;
 mod model;
 mod passes;
 mod sections;
@@ -11,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use aic_data::{Catalog, FacilityId, ItemId};
 use indexmap::IndexMap;
 
-use crate::graph::{Graph, GroupId, LinkId, NodeId, NodeKind, Port, Side};
+use crate::graph::{Graph, LinkId, NodeId, NodeKind, Port, Side};
 use crate::validate::Issue;
 use model::Ctx;
 use passes::{Outcome, Values};
@@ -39,14 +38,6 @@ pub struct Solution {
     pub coupons: HashMap<NodeId, Vec<(ItemId, f64)>>,
     /// Nodes running below their limit, and why.
     pub throttle: HashMap<NodeId, ThrottleReason>,
-    /// How many copies each copies group runs; `None` when one copy can't be solved on its own.
-    pub copies: HashMap<GroupId, Option<f64>>,
-    /// Flow through each port of a copies group for all its copies, per minute. `port_flow` has
-    /// one copy's flow, as do the other values of the nodes inside.
-    pub group_flow: HashMap<Port, Option<f64>>,
-    /// For each node inside a copies group, how many copies of it run in all: the product of the
-    /// counts of the copies groups around it. The totals count it that many times.
-    pub node_copies: HashMap<NodeId, f64>,
     pub totals: Totals,
     pub warnings: Vec<Warning>,
 }
@@ -73,8 +64,6 @@ pub enum UndeterminedReason {
     NoLimit,
     /// The section has limits, but some part of it can still grow without end.
     Unbounded,
-    /// A copies group in it can't solve one copy on its own, so its count can't be settled.
-    CopiesUndetermined,
 }
 
 /// Flows of a storage node, per minute.
@@ -144,9 +133,11 @@ pub enum Warning {
         used: f64,
         available: f64,
     },
-    /// One copy of a copies group can't be solved on its own: add a limit inside it.
-    CopiesUndetermined {
-        group: GroupId,
+    /// A workspace port has no link at one end, so nothing flows through it. `outside`: the end
+    /// facing the workspace's parent; otherwise the end facing inside.
+    PortUnlinked {
+        port: NodeId,
+        outside: bool,
     },
     /// A problem with the graph itself. The nodes and links involved are left out of the solve.
     Issue(Issue),
@@ -171,9 +162,7 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
             _ => {}
         }
     }
-    let folded = copies::fold(catalog, graph);
-    let flat = &folded.graph;
-    let nodes: Vec<NodeId> = flat
+    let nodes: Vec<NodeId> = graph
         .nodes()
         .iter()
         .filter(|(id, node)| {
@@ -182,7 +171,7 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
         .map(|(id, _)| id)
         .collect();
     let usable: HashSet<NodeId> = nodes.iter().copied().collect();
-    let links: Vec<LinkId> = flat
+    let links: Vec<LinkId> = graph
         .links()
         .iter()
         .filter(|(id, link)| {
@@ -191,30 +180,17 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
         .map(|(id, _)| id)
         .collect();
 
-    let ctx = Ctx {
-        catalog,
-        graph: flat,
-        modules: &folded.modules,
-    };
+    let ctx = Ctx { catalog, graph };
     let mut solution = Solution {
         warnings: issues.into_iter().map(Warning::Issue).collect(),
         ..Solution::default()
     };
-    for (index, section) in sections::split(flat, &nodes, &links)
+    solution.warnings.extend(unlinked_ports(graph));
+    for (index, section) in sections::split(graph, &nodes, &links)
         .into_iter()
         .enumerate()
     {
-        let blocked = section.nodes.iter().any(|node| {
-            folded
-                .modules
-                .get(node)
-                .is_some_and(|module| !module.is_determined())
-        });
-        let outcome = if blocked {
-            Outcome::Undetermined(UndeterminedReason::CopiesUndetermined)
-        } else {
-            passes::solve_section(&ctx, &section)
-        };
+        let outcome = passes::solve_section(&ctx, &section);
         let status = match &outcome {
             Outcome::Solved(values) => {
                 solution
@@ -223,13 +199,10 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
                 SectionStatus::Solved
             }
             Outcome::Undetermined(reason) => {
-                // A copies group says why itself.
-                if *reason != UndeterminedReason::CopiesUndetermined {
-                    solution.warnings.push(Warning::Undetermined {
-                        section: index,
-                        reason: *reason,
-                    });
-                }
+                solution.warnings.push(Warning::Undetermined {
+                    section: index,
+                    reason: *reason,
+                });
                 SectionStatus::Undetermined(*reason)
             }
             Outcome::Failed(message) => {
@@ -251,12 +224,42 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
             status,
         });
     }
-    record_storage(flat, &nodes, &mut solution);
-    record_coupons(catalog, flat, &mut solution);
-    count_belts(catalog, flat, &mut solution);
-    solution.node_copies = copies::unfold(&folded, &mut solution);
+    record_storage(graph, &nodes, &mut solution);
+    record_coupons(catalog, graph, &mut solution);
+    count_belts(catalog, graph, &mut solution);
     solution.totals = totals(catalog, graph, &solution);
     solution
+}
+
+/// A warning for each workspace port with an end that has no links: its outside end first.
+fn unlinked_ports(graph: &Graph) -> Vec<Warning> {
+    graph
+        .nodes()
+        .iter()
+        .filter_map(|(id, node)| {
+            let NodeKind::WorkspacePort { side, .. } = node.kind else {
+                return None;
+            };
+            let inside = match side {
+                Side::Input => Side::Output,
+                Side::Output => Side::Input,
+            };
+            let unlinked = |end: Side| graph.links_at(id, end).next().is_none();
+            if unlinked(side) {
+                Some(Warning::PortUnlinked {
+                    port: id,
+                    outside: true,
+                })
+            } else if unlinked(inside) {
+                Some(Warning::PortUnlinked {
+                    port: id,
+                    outside: false,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Copies one section's values into the solution, or `None` everywhere if it has none.
@@ -384,14 +387,11 @@ fn count_belts(catalog: &Catalog, graph: &Graph, solution: &mut Solution) {
 }
 
 fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
-    // A node inside a copies group counts once per copy.
-    let times = |node: NodeId| solution.node_copies.get(&node).copied().unwrap_or(1.0);
     let mut totals = Totals {
         complete: solution
             .sections
             .iter()
-            .all(|s| s.status == SectionStatus::Solved)
-            && solution.copies.values().all(Option::is_some),
+            .all(|s| s.status == SectionStatus::Solved),
         ..Totals::default()
     };
     let mut depot: Vec<(&Port, f64)> = solution
@@ -414,16 +414,15 @@ fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
         match &node.kind {
             NodeKind::Storage { item: Some(item) } => {
                 if let Some(balance) = solution.storage.get(&id).and_then(|s| s.balance) {
-                    *totals.storage_balance.entry(item.clone()).or_default() += balance * times(id);
+                    *totals.storage_balance.entry(item.clone()).or_default() += balance;
                 }
             }
             NodeKind::Recipe {
                 recipe, facility, ..
             } => {
-                let Some(&Some(per_copy)) = solution.facility_count.get(&id) else {
+                let Some(&Some(count)) = solution.facility_count.get(&id) else {
                     continue;
                 };
-                let count = &(per_copy * times(id));
                 let (Some(recipe), Some(found)) = (
                     catalog.recipe(recipe.as_str()),
                     catalog.facility(facility.as_str()),
@@ -437,16 +436,14 @@ fn totals(catalog: &Catalog, graph: &Graph, solution: &Solution) -> Totals {
                     totals.power_generation_kw -= power;
                 }
                 *totals.facilities.entry(facility.clone()).or_default() += count;
-                // Each copy builds its own facilities: round one copy up, then count the copies.
-                let whole = f64::from(RoundUp::of(per_copy).facilities) * times(id);
                 *totals
                     .facilities_rounded
                     .entry(facility.clone())
-                    .or_default() += whole.ceil() as u32;
+                    .or_default() += RoundUp::of(count).facilities;
             }
             NodeKind::OutpostOrder { .. } => {
                 for (coupon, earned) in solution.coupons.get(&id).into_iter().flatten() {
-                    *totals.coupons.entry(coupon.clone()).or_default() += earned * times(id);
+                    *totals.coupons.entry(coupon.clone()).or_default() += earned;
                 }
             }
             _ => {}
@@ -471,9 +468,7 @@ fn raw_resource_use(
             *used.entry(raw_item).or_default() += amount;
         }
     };
-    let times = |node: NodeId| solution.node_copies.get(&node).copied().unwrap_or(1.0);
     for (port, flow) in &solution.port_flow {
-        let flow = &flow.map(|f| f * times(port.node));
         let mined = port.side == Side::Output
             && matches!(
                 &graph.nodes()[port.node].kind,
@@ -492,7 +487,7 @@ fn raw_resource_use(
     for (id, node) in graph.nodes() {
         if let NodeKind::Source { item, .. } = &node.kind {
             let rate = solution.rate.get(&id).copied().flatten();
-            add(item, rate.map(|r| r * times(id)));
+            add(item, rate);
         }
     }
     raw.into_iter()

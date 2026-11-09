@@ -5,14 +5,14 @@ use std::sync::Arc;
 
 use eframe::egui::{self, ColorImage, Rect};
 
+use crate::editor::Editor;
 use crate::i18n::Strings;
-use crate::workspace::Workspace;
 
 /// Tags our screenshot request, so a reply meant for someone else is left alone.
 #[derive(Debug, Clone)]
 struct CanvasExport(PathBuf);
 
-impl Workspace {
+impl Editor {
     /// Asks where to save, then takes a screenshot of the window; the next frames crop and save it.
     pub fn export_png(&mut self, strings: &Strings) {
         let picked = rfd::FileDialog::new()

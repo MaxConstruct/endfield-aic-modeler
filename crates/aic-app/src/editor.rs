@@ -4,7 +4,9 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use aic_core::{CanvasView, Graph, GroupId, LinkError, Member, NodeId, NodeKind, PortRef, Side};
+use aic_core::{
+    CanvasView, Graph, LinkError, Member, NodeId, NodeKind, PortRef, Side, WorkspaceId,
+};
 use aic_data::{Catalog, RecipeId, RegionId};
 use eframe::egui::{self, Pos2, RichText, Ui, vec2};
 
@@ -27,7 +29,7 @@ const SLOW_SOLVE: Duration = Duration::from_millis(16);
 /// Space between a port's pin and the menu it opens.
 const PORT_MENU_GAP: f32 = 12.0;
 
-pub struct Workspace {
+pub struct Editor {
     pub(crate) catalog: Catalog,
     pub(crate) doc: Document,
     pub(crate) canvas: Canvas,
@@ -71,7 +73,7 @@ pub struct Workspace {
     pub(crate) last_title: String,
 }
 
-impl Workspace {
+impl Editor {
     pub fn new(catalog: Catalog, availability: Availability) -> Self {
         let region = catalog
             .regions()
@@ -223,9 +225,21 @@ impl Workspace {
         self.canvas.item_on_screen(Member::Node(node))
     }
 
-    /// Where a collapsed group was drawn last frame, on screen.
-    pub fn group_on_screen(&self, group: GroupId) -> Option<eframe::egui::Rect> {
-        self.canvas.item_on_screen(Member::Group(group))
+    /// Where a workspace's card was drawn last frame, on screen.
+    pub fn workspace_on_screen(&self, workspace: WorkspaceId) -> Option<eframe::egui::Rect> {
+        self.canvas.item_on_screen(Member::Workspace(workspace))
+    }
+
+    /// Shows another level of the graph: a workspace, or `None` for the top. The selection and
+    /// any open menu belong to the level left behind.
+    pub fn show_level(&mut self, level: Option<WorkspaceId>) {
+        if level == self.doc.level() {
+            return;
+        }
+        self.doc.set_level(&self.catalog, level);
+        self.select(None);
+        self.picker = None;
+        self.port_menu = None;
     }
 
     /// Where the canvas is looking (see [`crate::canvas::Canvas::view`]).
@@ -344,20 +358,32 @@ impl Workspace {
                 self.select(Selection::of_items(items));
             }
             CanvasEvent::Remove(Member::Node(node)) => self.remove_node(node),
-            CanvasEvent::Remove(Member::Group(group)) => {
-                self.doc.remove_group(&self.catalog, group);
+            CanvasEvent::Remove(Member::Workspace(workspace)) => {
+                self.doc.remove_workspace(&self.catalog, workspace);
                 self.select(None);
             }
-            CanvasEvent::SetCollapsed(group, collapsed) => {
-                let _ = self
-                    .doc
-                    .set_group_collapsed(&self.catalog, group, collapsed);
-                self.select(None);
+            CanvasEvent::ShowLevel(level) => self.show_level(level),
+            CanvasEvent::AddPort(side) => {
+                if let Some(port) = self.doc.add_port(&self.catalog, side) {
+                    self.select(Some(Selection::node(port)));
+                }
             }
-            CanvasEvent::Ungroup(group) => {
-                self.select(Selection::of_items(vec![Member::Group(group)]));
-                self.ungroup_selection();
+            CanvasEvent::Rename(workspace, name) => {
+                let _ = self.doc.rename_workspace(workspace, &name);
             }
+            CanvasEvent::Dissolve(workspace) => {
+                self.select(Selection::of_items(vec![Member::Workspace(workspace)]));
+                self.dissolve_selection();
+            }
+            CanvasEvent::Cut(member) => {
+                self.select(Selection::of_items(vec![member]));
+                self.run(Shortcut::Cut, strings);
+            }
+            CanvasEvent::Copy(member) => {
+                self.select(Selection::of_items(vec![member]));
+                self.copy();
+            }
+            CanvasEvent::PasteInto(workspace) => self.paste_into(Some(workspace)),
             CanvasEvent::SetFacility(node, facility) => {
                 let _ = self.doc.set_facility(node, facility);
             }
@@ -416,6 +442,7 @@ impl Workspace {
         let kind = match choice {
             Choice::Recipe(recipe) => recipe_node(&self.catalog, recipe)?,
             Choice::Builtin(builtin) => picker::builtin_kind(&self.catalog, builtin, item),
+            Choice::Workspace => return None,
         };
         // Roughly line the new node's first port up with the point.
         let pos = graph_pos - vec2(0.0, 40.0);
@@ -467,6 +494,14 @@ impl Workspace {
         match picker.show(ctx, &self.catalog, strings, &region) {
             picker::Outcome::Open => {}
             picker::Outcome::Close => self.picker = None,
+            picker::Outcome::Chosen(Choice::Workspace) => {
+                let picker = self.picker.take().expect("picker is open");
+                let name = self.new_workspace_name(strings);
+                let workspace = self
+                    .doc
+                    .add_workspace(&self.catalog, &name, picker.graph_pos);
+                self.select(Selection::of_items(vec![Member::Workspace(workspace)]));
+            }
             picker::Outcome::Chosen(choice) => {
                 let picker = self.picker.take().expect("picker is open");
                 self.add_from_picker(&picker.origin, picker.graph_pos, choice);
@@ -615,13 +650,14 @@ impl Workspace {
         let entries = [
             Shortcut::Undo,
             Shortcut::Redo,
+            Shortcut::Cut,
             Shortcut::Copy,
             Shortcut::Paste,
             Shortcut::Duplicate,
             Shortcut::Delete,
             Shortcut::SelectAll,
-            Shortcut::Group,
-            Shortcut::Ungroup,
+            Shortcut::MakeWorkspace,
+            Shortcut::Dissolve,
         ];
         for shortcut in entries {
             let button = egui::Button::new(strings.get(shortcut.name_key()))
@@ -702,6 +738,7 @@ pub(crate) fn link_error(catalog: &Catalog, strings: &Strings, error: &LinkError
         LinkError::NoItem => strings.get("link-error-no-item"),
         LinkError::SelfLink => strings.get("link-error-self"),
         LinkError::Duplicate => strings.get("link-error-duplicate"),
+        LinkError::AcrossWorkspaces => strings.get("link-error-across-workspaces"),
         LinkError::UnknownNode(_) | LinkError::NoSuchPort { .. } => strings.get("link-error-other"),
     }
 }

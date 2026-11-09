@@ -5,18 +5,18 @@
 
 mod file;
 mod graph;
-mod group;
 mod solve;
 mod validate;
+mod workspace;
 
 pub use file::{CanvasView, FORMAT_VERSION, FileError, LoadedGraph};
 pub use graph::{
-    EditError, Graph, GroupId, Link, LinkError, LinkId, Node, NodeId, NodeKind, Port, PortRef, Pos,
-    Side,
+    EditError, Graph, Link, LinkError, LinkId, Node, NodeId, NodeKind, Port, PortRef, Pos, Side,
+    WorkspaceId,
 };
-pub use group::{Group, GroupMode, Member};
 pub use solve::{
     RoundUp, SectionResult, SectionStatus, Solution, StorageFlow, ThrottleReason, Totals,
     UndeterminedReason, Warning, check_resources, solve,
 };
 pub use validate::Issue;
+pub use workspace::{Member, Workspace};

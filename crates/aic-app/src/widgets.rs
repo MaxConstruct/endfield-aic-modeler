@@ -24,6 +24,8 @@ pub mod colors {
     pub const WARN: Color32 = Color32::from_rgb(240, 170, 60);
     pub const POSITIVE: Color32 = Color32::from_rgb(110, 200, 120);
     pub const NEGATIVE: Color32 = Color32::from_rgb(230, 90, 90);
+    /// The box a right-drag draws to select.
+    pub const SELECT_BOX: Color32 = Color32::from_rgb(90, 140, 255);
 }
 
 /// A field for typing a limit. It shows `current` unless the player is typing in it, and returns
@@ -196,6 +198,14 @@ impl ItemPicture {
                 fill: item_color(catalog, item),
                 initials: initials(names::item(catalog, item)),
             },
+        }
+    }
+
+    /// A port with no item yet: a grey square with a question mark.
+    pub fn unknown() -> Self {
+        Self::Badge {
+            fill: Color32::from_gray(90),
+            initials: "?".to_owned(),
         }
     }
 

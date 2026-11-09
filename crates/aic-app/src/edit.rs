@@ -1,13 +1,13 @@
-//! The Edit menu and keyboard shortcuts: undo and redo, copy and paste within the app, duplicate,
-//! delete and select all.
+//! The Edit menu and keyboard shortcuts: undo and redo, cut, copy and paste within the app,
+//! duplicate, delete, select all, and making or dissolving a workspace.
 
-use aic_core::{Member, NodeId, Pos};
+use aic_core::{Member, Pos, WorkspaceId};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 
 use crate::canvas::Selection;
+use crate::editor::Editor;
 use crate::files::Pending;
 use crate::i18n::Strings;
-use crate::workspace::Workspace;
 
 /// How far each paste lands from the copied nodes, in graph units.
 const PASTE_OFFSET: f32 = 40.0;
@@ -21,26 +21,28 @@ pub enum Shortcut {
     SaveAs,
     Undo,
     Redo,
+    Cut,
     Copy,
     Paste,
     Duplicate,
     Delete,
     SelectAll,
-    Group,
-    Ungroup,
+    MakeWorkspace,
+    Dissolve,
 }
 
 impl Shortcut {
     /// Checked in this order, so Cmd+Shift+S is Save As and not Save.
-    const ALL: [Self; 13] = [
-        Self::Ungroup,
-        Self::Group,
+    const ALL: [Self; 14] = [
+        Self::Dissolve,
+        Self::MakeWorkspace,
         Self::SaveAs,
         Self::Save,
         Self::New,
         Self::Open,
         Self::Redo,
         Self::Undo,
+        Self::Cut,
         Self::Copy,
         Self::Paste,
         Self::Duplicate,
@@ -58,13 +60,14 @@ impl Shortcut {
             Self::SaveAs => KeyboardShortcut::new(shift_command, Key::S),
             Self::Undo => KeyboardShortcut::new(command, Key::Z),
             Self::Redo => KeyboardShortcut::new(shift_command, Key::Z),
+            Self::Cut => KeyboardShortcut::new(command, Key::X),
             Self::Copy => KeyboardShortcut::new(command, Key::C),
             Self::Paste => KeyboardShortcut::new(command, Key::V),
             Self::Duplicate => KeyboardShortcut::new(command, Key::D),
             Self::Delete => KeyboardShortcut::new(Modifiers::NONE, Key::Delete),
             Self::SelectAll => KeyboardShortcut::new(command, Key::A),
-            Self::Group => KeyboardShortcut::new(command, Key::G),
-            Self::Ungroup => KeyboardShortcut::new(shift_command, Key::G),
+            Self::MakeWorkspace => KeyboardShortcut::new(command, Key::G),
+            Self::Dissolve => KeyboardShortcut::new(shift_command, Key::G),
         }
     }
 
@@ -75,7 +78,7 @@ impl Shortcut {
     }
 }
 
-impl Workspace {
+impl Editor {
     pub(crate) fn keyboard(&mut self, ctx: &egui::Context, strings: &Strings) {
         let typing = ctx.memory(|m| m.focused().is_some());
         let overlay = self.picker.is_some() || self.port_menu.is_some();
@@ -113,7 +116,7 @@ impl Workspace {
             (copy, cut, pasted)
         });
         if copy || cut {
-            self.flash(Shortcut::Copy);
+            self.flash(if cut { Shortcut::Cut } else { Shortcut::Copy });
             self.copy();
             if let Some((graph, _)) = &self.clipboard {
                 ctx.copy_text(graph.to_json(self.catalog.version()));
@@ -154,6 +157,10 @@ impl Workspace {
             Shortcut::SaveAs => self.save_as(strings),
             Shortcut::Undo => self.undo(),
             Shortcut::Redo => self.redo(),
+            Shortcut::Cut => {
+                self.copy();
+                self.delete_selection();
+            }
             Shortcut::Copy => self.copy(),
             Shortcut::Paste => self.paste(),
             Shortcut::Duplicate => self.duplicate(),
@@ -162,8 +169,8 @@ impl Workspace {
                 let all = self.doc.view.nodes().copied().collect();
                 self.select(Selection::of_items(all));
             }
-            Shortcut::Group => self.group_selection(strings),
-            Shortcut::Ungroup => self.ungroup_selection(),
+            Shortcut::MakeWorkspace => self.make_workspace(strings),
+            Shortcut::Dissolve => self.dissolve_selection(),
         }
     }
 
@@ -210,28 +217,32 @@ impl Workspace {
         self.picker = None;
     }
 
-    /// The selected nodes, with every node inside a selected group.
-    fn selected_nodes(&self) -> Vec<NodeId> {
-        let graph = self.doc.graph();
-        let mut nodes = Vec::new();
-        for item in self.selection.iter().flat_map(|s| s.items()) {
-            match *item {
-                Member::Node(id) => nodes.push(id),
-                Member::Group(id) => nodes.extend(graph.nodes_in_group(id)),
-            }
-        }
-        nodes
+    /// The selected nodes and workspaces.
+    fn selected_items(&self) -> Vec<Member> {
+        self.selection
+            .iter()
+            .flat_map(|s| s.items())
+            .copied()
+            .collect()
     }
 
+    /// Copies the selection: nodes, and workspaces with everything in them.
     pub fn copy(&mut self) {
-        let nodes = self.selected_nodes();
-        if !nodes.is_empty() {
-            self.clipboard = Some((self.doc.graph().copy_nodes(&nodes), 0));
+        let items = self.selected_items();
+        if !items.is_empty() {
+            self.clipboard = Some((self.doc.graph().copy_members(&items), 0));
         }
     }
 
-    /// Pastes the copied nodes, each paste a step further from the originals, and selects them.
+    /// Pastes what was copied into the level shown, each paste a step further from the originals,
+    /// and selects it.
     pub fn paste(&mut self) {
+        let level = self.doc.level();
+        self.paste_into(level);
+    }
+
+    /// Pastes what was copied into `into`: the level shown, or a workspace in it.
+    pub fn paste_into(&mut self, into: Option<WorkspaceId>) {
         let Some((copied, times)) = &mut self.clipboard else {
             return;
         };
@@ -239,16 +250,19 @@ impl Workspace {
         let shift = PASTE_OFFSET * *times as f32;
         let pasted = self
             .doc
-            .paste(&self.catalog, copied, Pos { x: shift, y: shift });
-        self.select(Selection::of_nodes(pasted));
+            .paste(&self.catalog, copied, Pos { x: shift, y: shift }, into);
+        if into == self.doc.level() {
+            self.select(Selection::of_items(pasted));
+        }
     }
 
     pub fn duplicate(&mut self) {
-        let nodes = self.selected_nodes();
-        if nodes.is_empty() {
+        let items = self.selected_items();
+        if items.is_empty() {
             return;
         }
-        let copy = self.doc.graph().copy_nodes(&nodes);
+        let copy = self.doc.graph().copy_members(&items);
+        let level = self.doc.level();
         let pasted = self.doc.paste(
             &self.catalog,
             &copy,
@@ -256,8 +270,9 @@ impl Workspace {
                 x: PASTE_OFFSET,
                 y: PASTE_OFFSET,
             },
+            level,
         );
-        self.select(Selection::of_nodes(pasted));
+        self.select(Selection::of_items(pasted));
     }
 
     pub fn delete_selection(&mut self) {
@@ -266,7 +281,7 @@ impl Workspace {
                 for item in items {
                     match item {
                         Member::Node(id) => self.doc.remove_node(&self.catalog, id),
-                        Member::Group(id) => self.doc.remove_group(&self.catalog, id),
+                        Member::Workspace(id) => self.doc.remove_workspace(&self.catalog, id),
                     }
                 }
             }
@@ -275,49 +290,40 @@ impl Workspace {
         }
     }
 
-    /// Puts the selected nodes and groups in a new, collapsed group.
-    pub fn group_selection(&mut self, strings: &Strings) {
-        let items = self
-            .selection
-            .as_ref()
-            .map(|s| s.items().to_vec())
-            .unwrap_or_default();
+    /// Puts the selected nodes and workspaces in a new workspace, and selects it.
+    pub fn make_workspace(&mut self, strings: &Strings) {
+        let items = self.selected_items();
         if items.is_empty() {
             return;
         }
-        let number = self.doc.graph().groups().len() + 1;
-        let name = strings.format("group-default-name", &[("number", &number.to_string())]);
-        match self.doc.group(&self.catalog, &items, &name) {
-            Ok(group) => {
-                let _ = self.doc.set_group_collapsed(&self.catalog, group, true);
-                self.select(Selection::of_items(vec![Member::Group(group)]));
+        let name = self.new_workspace_name(strings);
+        match self.doc.workspace_from(&self.catalog, &items, &name) {
+            Ok(workspace) => {
+                self.select(Selection::of_items(vec![Member::Workspace(workspace)]));
                 self.status = None;
             }
-            Err(_) => self.status = Some(strings.get("group-refused")),
+            Err(_) => self.status = Some(strings.get("workspace-refused")),
         }
     }
 
-    /// Dissolves the selected group, selecting what was in it.
-    pub fn ungroup_selection(&mut self) {
-        let Some(group) = self.selection.as_ref().and_then(Selection::single_group) else {
+    /// "Workspace 3", numbered past the workspaces there are.
+    pub(crate) fn new_workspace_name(&self, strings: &Strings) -> String {
+        let number = self.doc.graph().workspaces().len() + 1;
+        strings.format("workspace-default-name", &[("number", &number.to_string())])
+    }
+
+    /// Takes the selected workspace apart, selecting what was in it.
+    pub fn dissolve_selection(&mut self) {
+        let Some(workspace) = self
+            .selection
+            .as_ref()
+            .and_then(Selection::single_workspace)
+        else {
             return;
         };
-        let graph = self.doc.graph();
-        let members: Vec<Member> = graph
-            .nodes()
-            .iter()
-            .filter(|(_, n)| n.group == Some(group))
-            .map(|(id, _)| Member::Node(id))
-            .chain(
-                graph
-                    .groups()
-                    .iter()
-                    .filter(|(_, g)| g.parent == Some(group))
-                    .map(|(id, _)| Member::Group(id)),
-            )
-            .collect();
-        if self.doc.ungroup(&self.catalog, group).is_ok() {
-            let shown: Vec<Member> = members
+        let inside: Vec<Member> = self.doc.graph().members_of(Some(workspace));
+        if self.doc.dissolve(&self.catalog, workspace).is_ok() {
+            let shown: Vec<Member> = inside
                 .into_iter()
                 .filter(|m| self.doc.view_id(*m).is_some())
                 .collect();

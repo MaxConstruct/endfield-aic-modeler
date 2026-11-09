@@ -7,11 +7,15 @@ use aic_data::{Catalog, FacilityId, ItemId, RecipeId, RegionId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::graph::{Graph, GroupId, Link, Node, NodeId, NodeKind, Pos};
-use crate::group::{Group, GroupMode};
+use crate::graph::{Graph, Link, Node, NodeId, NodeKind, Pos, Side, WorkspaceId};
+use crate::workspace::Workspace;
 
 /// The save file format this build writes and the newest it reads.
-pub const FORMAT_VERSION: u32 = 1;
+///
+/// Version 1 had groups: a link could join nodes in different groups. Version 2 has workspaces,
+/// whose links cross their edge only through ports; reading a version 1 file sends its crossing
+/// links through new ports.
+pub const FORMAT_VERSION: u32 = 2;
 
 /// A graph read from a file, with the data version it was made with. If that isn't the active data
 /// version, the UI shows a banner; the graph is still loaded by ID.
@@ -46,10 +50,10 @@ pub enum FileError {
     DuplicateNode { id: u32 },
     #[error("link {index} refers to node {id}, which isn't in the file")]
     UnknownNode { index: usize, id: u32 },
-    #[error("group {id} is used but isn't in the file, or two groups have that id")]
-    UnknownGroup { id: u32 },
-    #[error("group {id} is inside itself")]
-    GroupCycle { id: u32 },
+    #[error("workspace {id} is used but isn't in the file, or two workspaces have that id")]
+    UnknownWorkspace { id: u32 },
+    #[error("workspace {id} is inside itself")]
+    WorkspaceCycle { id: u32 },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -59,8 +63,8 @@ struct FileGraph {
     region: RegionId,
     nodes: Vec<FileNode>,
     links: Vec<FileLink>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    groups: Vec<FileGroup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "groups")]
+    workspaces: Vec<FileWorkspace>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     view: Option<CanvasView>,
 }
@@ -69,30 +73,20 @@ struct FileGraph {
 struct FileNode {
     id: u32,
     pos: Pos,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    group: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "group")]
+    workspace: Option<u32>,
     #[serde(flatten)]
     kind: FileNodeKind,
 }
 
+/// A version 1 group also had `collapsed` and `copies`; they are ignored.
 #[derive(Serialize, Deserialize)]
-struct FileGroup {
+struct FileWorkspace {
     id: u32,
     name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     parent: Option<u32>,
-    #[serde(default)]
-    collapsed: bool,
     pos: Pos,
-    /// Present for a copies group; its value is the copies limit, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    copies: Option<FileCopies>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct FileCopies {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    limit: Option<f64>,
 }
 
 /// `MissingRecipe` is written back as the recipe it was, so it isn't a kind of its own here.
@@ -133,6 +127,17 @@ enum FileNodeKind {
         item: Option<ItemId>,
         limit: f64,
     },
+    WorkspacePort {
+        side: FileSide,
+        item: Option<ItemId>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum FileSide {
+    Input,
+    Output,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -155,7 +160,7 @@ impl Graph {
     /// The graph as a save file, with where the canvas was looking.
     pub fn to_json_with_view(&self, data_version: &str, view: Option<CanvasView>) -> String {
         let ids: HashMap<NodeId, u32> = self.nodes.keys().zip(0..).collect();
-        let group_ids: HashMap<GroupId, u32> = self.groups.keys().zip(0..).collect();
+        let workspace_ids: HashMap<WorkspaceId, u32> = self.workspaces.keys().zip(0..).collect();
         let file = FileGraph {
             format_version: FORMAT_VERSION,
             data_version: data_version.to_owned(),
@@ -166,23 +171,18 @@ impl Graph {
                 .map(|(id, node)| FileNode {
                     id: ids[&id],
                     pos: node.pos,
-                    group: node.group.map(|g| group_ids[&g]),
+                    workspace: node.workspace.map(|w| workspace_ids[&w]),
                     kind: FileNodeKind::from(&node.kind),
                 })
                 .collect(),
-            groups: self
-                .groups
+            workspaces: self
+                .workspaces
                 .iter()
-                .map(|(id, group)| FileGroup {
-                    id: group_ids[&id],
-                    name: group.name.clone(),
-                    parent: group.parent.map(|p| group_ids[&p]),
-                    collapsed: group.collapsed,
-                    pos: group.pos,
-                    copies: match group.mode {
-                        GroupMode::Folder => None,
-                        GroupMode::Copies { limit } => Some(FileCopies { limit }),
-                    },
+                .map(|(id, workspace)| FileWorkspace {
+                    id: workspace_ids[&id],
+                    name: workspace.name.clone(),
+                    parent: workspace.parent.map(|p| workspace_ids[&p]),
+                    pos: workspace.pos,
                 })
                 .collect(),
             links: self
@@ -218,45 +218,41 @@ impl Graph {
         }
 
         let mut graph = Graph::new(file.region);
-        let mut group_ids = HashMap::new();
-        for group in &file.groups {
-            let id = graph.groups.insert(Group {
-                name: group.name.clone(),
+        let mut workspace_ids = HashMap::new();
+        for workspace in &file.workspaces {
+            let id = graph.workspaces.insert(Workspace {
+                name: workspace.name.clone(),
                 parent: None,
-                collapsed: group.collapsed,
-                pos: group.pos,
-                mode: match &group.copies {
-                    None => GroupMode::Folder,
-                    Some(copies) => GroupMode::Copies {
-                        limit: copies.limit,
-                    },
-                },
+                pos: workspace.pos,
             });
-            if group_ids.insert(group.id, id).is_some() {
-                return Err(FileError::UnknownGroup { id: group.id });
+            if workspace_ids.insert(workspace.id, id).is_some() {
+                return Err(FileError::UnknownWorkspace { id: workspace.id });
             }
         }
-        let group = |id: Option<u32>| -> Result<Option<GroupId>, FileError> {
+        let workspace = |id: Option<u32>| -> Result<Option<WorkspaceId>, FileError> {
             id.map(|id| {
-                group_ids
+                workspace_ids
                     .get(&id)
                     .copied()
-                    .ok_or(FileError::UnknownGroup { id })
+                    .ok_or(FileError::UnknownWorkspace { id })
             })
             .transpose()
         };
-        for file_group in &file.groups {
-            let parent = group(file_group.parent)?;
-            graph.groups[group_ids[&file_group.id]].parent = parent;
+        for file_workspace in &file.workspaces {
+            let parent = workspace(file_workspace.parent)?;
+            graph.workspaces[workspace_ids[&file_workspace.id]].parent = parent;
         }
-        // Walking up from any group must end, or every lookup of what is inside what would loop.
-        for file_group in &file.groups {
-            let mut current = graph.groups[group_ids[&file_group.id]].parent;
-            for _ in 0..=file.groups.len() {
-                current = current.and_then(|g| graph.groups[g].parent);
+        // Walking up from any workspace must end, or every lookup of what is inside what would
+        // loop.
+        for file_workspace in &file.workspaces {
+            let mut current = graph.workspaces[workspace_ids[&file_workspace.id]].parent;
+            for _ in 0..=file.workspaces.len() {
+                current = current.and_then(|w| graph.workspaces[w].parent);
             }
             if current.is_some() {
-                return Err(FileError::GroupCycle { id: file_group.id });
+                return Err(FileError::WorkspaceCycle {
+                    id: file_workspace.id,
+                });
             }
         }
         let mut ids = HashMap::new();
@@ -264,7 +260,7 @@ impl Graph {
             let id = graph.nodes.insert(Node {
                 kind: node.kind.into_node_kind(catalog),
                 pos: node.pos,
-                group: group(node.group)?,
+                workspace: workspace(node.workspace)?,
             });
             if ids.insert(node.id, id).is_some() {
                 return Err(FileError::DuplicateNode { id: node.id });
@@ -284,6 +280,9 @@ impl Graph {
                 out_share: link.out_share.filter(|s| s.is_finite() && *s > 0.0),
                 in_share: link.in_share.filter(|s| s.is_finite() && *s > 0.0),
             });
+        }
+        if file.format_version < 2 {
+            graph.route_crossing_links();
         }
         // A view that isn't finite or has no zoom is dropped rather than shown.
         let view = file
@@ -329,6 +328,13 @@ impl From<&NodeKind> for FileNodeKind {
             NodeKind::Merger { item } => Self::Merger { item },
             NodeKind::Storage { item } => Self::Storage { item },
             NodeKind::ControlPort { item, limit } => Self::ControlPort { item, limit },
+            NodeKind::WorkspacePort { side, item } => Self::WorkspacePort {
+                side: match side {
+                    Side::Input => FileSide::Input,
+                    Side::Output => FileSide::Output,
+                },
+                item,
+            },
         }
     }
 }
@@ -372,6 +378,13 @@ impl FileNodeKind {
             Self::Merger { item } => NodeKind::Merger { item },
             Self::Storage { item } => NodeKind::Storage { item },
             Self::ControlPort { item, limit } => NodeKind::ControlPort { item, limit },
+            Self::WorkspacePort { side, item } => NodeKind::WorkspacePort {
+                side: match side {
+                    FileSide::Input => Side::Input,
+                    FileSide::Output => Side::Output,
+                },
+                item,
+            },
         }
     }
 }

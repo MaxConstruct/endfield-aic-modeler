@@ -28,19 +28,16 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
     harness
 }
 
-fn workspace<'a>(harness: &'a mut Harness<'_, App>) -> &'a mut aic_app::workspace::Workspace {
-    harness.state_mut().workspace_mut().expect("data loaded")
+fn editor<'a>(harness: &'a mut Harness<'_, App>) -> &'a mut aic_app::editor::Editor {
+    harness.state_mut().editor_mut().expect("data loaded")
 }
 
 fn selected(harness: &mut Harness<'_, App>) -> NodeId {
-    match workspace(harness)
-        .selection()
-        .and_then(Selection::single_node)
-    {
+    match editor(harness).selection().and_then(Selection::single_node) {
         Some(node) => node,
         None => panic!(
             "expected one selected node, got {:?}",
-            workspace(harness).selection()
+            editor(harness).selection()
         ),
     }
 }
@@ -55,7 +52,7 @@ fn pick(
     offset: (f32, f32),
     label: &str,
 ) -> NodeId {
-    let ws = workspace(harness);
+    let ws = editor(harness);
     let pos = ws.document().graph().node(node).expect("node exists").pos;
     let at = eframe::egui::pos2(pos.x + offset.0, pos.y + offset.1);
     ws.open_picker(
@@ -75,7 +72,7 @@ fn pick(
         .click();
     harness.run();
     assert!(
-        !workspace(harness).picker_is_open(),
+        !editor(harness).picker_is_open(),
         "one click closes the picker"
     );
     selected(harness)
@@ -83,7 +80,7 @@ fn pick(
 
 /// Stands in for dragging a link between two existing nodes.
 fn link(harness: &mut Harness<'_, App>, from: NodeId, to: NodeId, item: &str) {
-    let ws = workspace(harness);
+    let ws = editor(harness);
     let catalog = ws.catalog().clone();
     ws.document_mut()
         .connect(&catalog, PortRef::new(from, item), PortRef::new(to, item))
@@ -167,7 +164,7 @@ fn empty_graph() {
 #[test]
 fn canvas_picker_lists_logistics_and_recipes() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
-    workspace(&mut harness).open_picker(Origin::Canvas, eframe::egui::pos2(0.0, 0.0));
+    editor(&mut harness).open_picker(Origin::Canvas, eframe::egui::pos2(0.0, 0.0));
     harness.run();
     harness.get_by_label("Splitter");
     harness.snapshot("picker_canvas");
@@ -235,7 +232,7 @@ fn rebuild_golden_07_through_the_picker() {
     // A new source starts at one belt (30/min); the player types 60.
     type_limit(&mut harness, "60");
 
-    let ws = workspace(&mut harness);
+    let ws = editor(&mut harness);
     let graph = ws.document().graph();
     assert_eq!(graph.nodes().len(), 7);
     assert_eq!(graph.links().len(), 8);
@@ -266,7 +263,7 @@ fn rebuild_golden_07_through_the_picker() {
 #[test]
 fn rebuild_golden_05_through_the_picker() {
     let mut harness = harness(&fixture("../../data/v1.5.3"));
-    workspace(&mut harness).new_graph("jinlong".into());
+    editor(&mut harness).new_graph("jinlong".into());
     harness.run();
     // The browser lists recipes in data order; the planting recipe is called Yazhen.
     harness
@@ -304,7 +301,7 @@ fn rebuild_golden_05_through_the_picker() {
     type_limit(&mut harness, "10");
     link(&mut harness, planting, picking, "plant_grass_2");
 
-    let ws = workspace(&mut harness);
+    let ws = editor(&mut harness);
     let s = ws.document().solution();
     assert_near(count(s, planting), 1.0 / 3.0);
     assert_near(count(s, picking), 1.0 / 3.0);
@@ -339,30 +336,24 @@ fn add_from_browser(harness: &mut Harness<'_, App>, label: &str) -> NodeId {
 #[test]
 fn right_click_on_canvas_opens_the_picker() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
-    let center = workspace(&mut harness).canvas_center_on_screen();
+    let center = editor(&mut harness).canvas_center_on_screen();
     secondary_click_at(&mut harness, center);
-    assert_eq!(
-        workspace(&mut harness).picker_origin(),
-        Some(&Origin::Canvas)
-    );
+    assert_eq!(editor(&mut harness).picker_origin(), Some(&Origin::Canvas));
     harness.key_press(eframe::egui::Key::Escape);
     harness.run();
-    assert!(
-        !workspace(&mut harness).picker_is_open(),
-        "Escape closes it"
-    );
+    assert!(!editor(&mut harness).picker_is_open(), "Escape closes it");
 }
 
 #[test]
 fn right_click_on_an_open_port_adds_a_producer_of_its_item() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     let plate = add_from_browser(&mut harness, "Iron Plate");
-    let pin = workspace(&mut harness)
+    let pin = editor(&mut harness)
         .port_on_screen(plate, Side::Input, "iron_ingot")
         .expect("pin is drawn");
     secondary_click_at(&mut harness, pin);
     assert_eq!(
-        workspace(&mut harness).picker_origin(),
+        editor(&mut harness).picker_origin(),
         Some(&Origin::Port {
             node: plate,
             side: Side::Input,
@@ -375,7 +366,7 @@ fn right_click_on_an_open_port_adds_a_producer_of_its_item() {
 fn dragging_a_link_onto_empty_canvas_picks_and_links_in_one_click() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     let plate = add_from_browser(&mut harness, "Iron Plate");
-    let pin = workspace(&mut harness)
+    let pin = editor(&mut harness)
         .port_on_screen(plate, Side::Input, "iron_ingot")
         .expect("pin is drawn");
     let drop = pin - eframe::egui::vec2(160.0, 0.0);
@@ -391,7 +382,7 @@ fn dragging_a_link_onto_empty_canvas_picks_and_links_in_one_click() {
     harness.run();
     assert!(
         matches!(
-            workspace(&mut harness).picker_origin(),
+            editor(&mut harness).picker_origin(),
             Some(Origin::Port {
                 side: Side::Input,
                 ..
@@ -408,7 +399,7 @@ fn dragging_a_link_onto_empty_canvas_picks_and_links_in_one_click() {
         .click();
     harness.run();
     let smelter = selected(&mut harness);
-    let ws = workspace(&mut harness);
+    let ws = editor(&mut harness);
     let graph = ws.document().graph();
     let (_, link) = graph.links().iter().next().expect("linked");
     assert_eq!((link.from, link.to), (smelter, plate));
@@ -426,13 +417,13 @@ fn dragging_a_link_onto_empty_canvas_picks_and_links_in_one_click() {
 }
 
 fn add(harness: &mut Harness<'_, App>, kind: NodeKind, x: f32, y: f32) -> NodeId {
-    workspace(harness)
+    editor(harness)
         .document_mut()
         .add_node(kind, eframe::egui::pos2(x, y))
 }
 
 fn link_any(harness: &mut Harness<'_, App>, from: PortRef, to: PortRef) {
-    let ws = workspace(harness);
+    let ws = editor(harness);
     let catalog = ws.catalog().clone();
     ws.document_mut()
         .connect(&catalog, from, to)
@@ -500,7 +491,7 @@ fn logistics_nodes_and_a_throttled_node() {
     );
     harness.run();
 
-    let s = workspace(&mut harness).document().solution().clone();
+    let s = editor(&mut harness).document().solution().clone();
     assert_near(count(&s, smelter), 1.0);
     assert_eq!(
         s.throttle[&smelter].side,
@@ -536,7 +527,7 @@ fn going_over_a_raw_resource_shows_a_warning() {
         .type_text("45");
     harness.run();
 
-    let ws = workspace(&mut harness);
+    let ws = editor(&mut harness);
     assert_eq!(
         ws.availability().get(&"tundra".into(), &"iron_ore".into()),
         Some(45.0)
@@ -546,7 +537,7 @@ fn going_over_a_raw_resource_shows_a_warning() {
 }
 
 fn limit_of(harness: &mut Harness<'_, App>, node: NodeId) -> Option<f64> {
-    let ws = workspace(harness);
+    let ws = editor(harness);
     ws.document()
         .graph()
         .node(node)
@@ -587,7 +578,7 @@ fn the_facility_count_limit_is_typed_on_the_card() {
     let frame = add_from_browser(&mut harness, "Modular Frame");
     type_into(&mut harness, "Node limit", "1.25");
     assert_eq!(limit_of(&mut harness, frame), Some(1.25));
-    let s = workspace(&mut harness).document().solution().clone();
+    let s = editor(&mut harness).document().solution().clone();
     assert_near(count(&s, frame), 1.25);
     snapshot_graph(&mut harness, "limit_on_card");
 }
@@ -597,12 +588,12 @@ fn double_clicking_a_port_sets_the_limit_as_a_rate() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     // Iron Plate: 20 plate per minute per facility.
     let plate = add_from_browser(&mut harness, "Iron Plate");
-    let pin = workspace(&mut harness)
+    let pin = editor(&mut harness)
         .port_on_screen(plate, Side::Output, "iron_plate")
         .expect("pin is drawn");
     double_click_at(&mut harness, pin - eframe::egui::vec2(24.0, 0.0));
     assert!(
-        workspace(&mut harness).port_menu_is_open(),
+        editor(&mut harness).port_menu_is_open(),
         "double-click opens the port menu"
     );
     type_into(&mut harness, "Port limit", "60");
@@ -633,18 +624,18 @@ fn the_port_menu_clears_the_ports_links() {
         (-80.0, 0.0),
         "Iron Ingot",
     );
-    assert_eq!(workspace(&mut harness).document().graph().links().len(), 1);
-    let pin = workspace(&mut harness)
+    assert_eq!(editor(&mut harness).document().graph().links().len(), 1);
+    let pin = editor(&mut harness)
         .port_on_screen(smelter, Side::Output, "iron_ingot")
         .expect("pin is drawn");
     double_click_at(&mut harness, pin - eframe::egui::vec2(24.0, 0.0));
     assert!(
-        workspace(&mut harness).port_menu_is_open(),
+        editor(&mut harness).port_menu_is_open(),
         "double-click opens the port menu"
     );
     harness.get_by_label("Clear connections").click();
     harness.run();
-    assert_eq!(workspace(&mut harness).document().graph().links().len(), 0);
+    assert_eq!(editor(&mut harness).document().graph().links().len(), 0);
 }
 
 #[test]
@@ -674,11 +665,11 @@ fn side_panels_collapse() {
 #[test]
 fn icons_from_the_data_folder() {
     let mut harness = harness(&fixture("../../data/v1.5.3"));
-    workspace(&mut harness).new_graph("jinlong".into());
+    editor(&mut harness).new_graph("jinlong".into());
     harness.run();
     let planting = add_from_browser(&mut harness, "Yazhen");
     let at = {
-        let pos = workspace(&mut harness)
+        let pos = editor(&mut harness)
             .document()
             .graph()
             .node(planting)
@@ -686,7 +677,7 @@ fn icons_from_the_data_folder() {
             .pos;
         eframe::egui::pos2(pos.x - 80.0, pos.y)
     };
-    workspace(&mut harness).open_picker(
+    editor(&mut harness).open_picker(
         Origin::Port {
             node: planting,
             side: Side::Input,
@@ -716,11 +707,11 @@ fn smelter(harness: &mut Harness<'_, App>, x: f32, y: f32) -> NodeId {
 }
 
 fn node_count(harness: &mut Harness<'_, App>) -> usize {
-    workspace(harness).document().graph().nodes().len()
+    editor(harness).document().graph().nodes().len()
 }
 
 fn node_pos(harness: &mut Harness<'_, App>, node: NodeId) -> Pos2 {
-    let pos = workspace(harness)
+    let pos = editor(harness)
         .document()
         .graph()
         .node(node)
@@ -730,7 +721,7 @@ fn node_pos(harness: &mut Harness<'_, App>, node: NodeId) -> Pos2 {
 }
 
 fn selected_nodes(harness: &mut Harness<'_, App>) -> Vec<NodeId> {
-    let mut nodes = workspace(harness)
+    let mut nodes = editor(harness)
         .selection()
         .map(|s| s.nodes().to_vec())
         .unwrap_or_default();
@@ -763,9 +754,7 @@ fn drag(harness: &mut Harness<'_, App>, from: Pos2, to: Pos2, modifiers: Modifie
 }
 
 fn node_rect(harness: &mut Harness<'_, App>, node: NodeId) -> eframe::egui::Rect {
-    workspace(harness)
-        .node_on_screen(node)
-        .expect("node is drawn")
+    editor(harness).node_on_screen(node).expect("node is drawn")
 }
 
 #[test]
@@ -820,7 +809,7 @@ fn dragging_a_selected_node_moves_the_whole_selection() {
     let alone = smelter(&mut harness, 0.0, 300.0);
     harness.run();
     fit_view(&mut harness);
-    workspace(&mut harness).select_nodes(vec![a, b]);
+    editor(&mut harness).select_nodes(vec![a, b]);
     harness.run();
     let (a0, b0, alone0) = (
         node_pos(&mut harness, a),
@@ -866,7 +855,7 @@ fn copy_and_paste_keep_links_inside_the_copy() {
         0.0,
     );
     link(&mut harness, ingot, plate, "iron_ingot");
-    workspace(&mut harness).select_nodes(vec![ingot, plate]);
+    editor(&mut harness).select_nodes(vec![ingot, plate]);
     harness.run();
 
     // The window sends clipboard events rather than Cmd+C and Cmd+V key presses.
@@ -875,7 +864,7 @@ fn copy_and_paste_keep_links_inside_the_copy() {
     harness.event(Event::Paste("some text".into()));
     harness.run();
     assert_eq!(node_count(&mut harness), 4);
-    assert_eq!(workspace(&mut harness).document().graph().links().len(), 2);
+    assert_eq!(editor(&mut harness).document().graph().links().len(), 2);
     assert_eq!(
         selected_nodes(&mut harness).len(),
         2,
@@ -894,29 +883,26 @@ fn save_then_open_the_file_again() {
     let path = std::env::temp_dir().join(format!("aic-save-{}.aicm", std::process::id()));
     smelter(&mut harness, 0.0, 0.0);
     harness.run();
-    assert!(workspace(&mut harness).document().is_modified());
-    assert!(workspace(&mut harness).title().starts_with("Untitled •"));
+    assert!(editor(&mut harness).document().is_modified());
+    assert!(editor(&mut harness).title().starts_with("Untitled •"));
 
-    workspace(&mut harness).save_to(&path, &strings);
+    editor(&mut harness).save_to(&path, &strings);
     harness.run();
-    assert!(!workspace(&mut harness).document().is_modified());
+    assert!(!editor(&mut harness).document().is_modified());
     let name = path.file_name().unwrap().to_string_lossy().into_owned();
-    assert!(workspace(&mut harness).title().starts_with(&name));
+    assert!(editor(&mut harness).title().starts_with(&name));
     assert_eq!(
-        workspace(&mut harness).recent_files(),
+        editor(&mut harness).recent_files(),
         std::slice::from_ref(&path)
     );
 
-    workspace(&mut harness).new_graph("tundra".into());
+    editor(&mut harness).new_graph("tundra".into());
     harness.run();
     assert_eq!(node_count(&mut harness), 0);
-    workspace(&mut harness).open_file(&path, &strings);
+    editor(&mut harness).open_file(&path, &strings);
     harness.run();
     assert_eq!(node_count(&mut harness), 1);
-    assert_eq!(
-        workspace(&mut harness).document().path(),
-        Some(path.as_path())
-    );
+    assert_eq!(editor(&mut harness).document().path(), Some(path.as_path()));
     let _ = std::fs::remove_file(&path);
 }
 
@@ -925,7 +911,7 @@ fn round_up_shows_whole_facilities_and_how_busy_they_are() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     let frame = add_from_browser(&mut harness, "Modular Frame");
     type_into(&mut harness, "Node limit", "1.25");
-    workspace(&mut harness).set_round_up(true);
+    editor(&mut harness).set_round_up(true);
     harness.run();
     harness.get_by_label("2");
     harness.get_by_label("62.5% busy");
@@ -948,7 +934,7 @@ fn data_folder_app() -> Harness<'static, App> {
 #[test]
 fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
     let mut harness = data_folder_app();
-    assert_eq!(workspace(&mut harness).catalog().version(), "v1.10.0");
+    assert_eq!(editor(&mut harness).catalog().version(), "v1.10.0");
     let nugget = add(
         &mut harness,
         NodeKind::Recipe {
@@ -960,7 +946,7 @@ fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
         0.0,
     );
     harness.run();
-    workspace(&mut harness)
+    editor(&mut harness)
         .settings_mut()
         .open_on(&"jinlong".into());
     harness.run();
@@ -970,9 +956,9 @@ fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
         version: Some("v1.9.0".into()),
         language: None,
     };
-    workspace(&mut harness).switch_data(choice.clone(), &Strings::english());
+    editor(&mut harness).switch_data(choice.clone(), &Strings::english());
     harness.run();
-    let ws = workspace(&mut harness);
+    let ws = editor(&mut harness);
     assert_eq!(ws.catalog().version(), "v1.9.0");
     assert_eq!(ws.data_choice(), Some(&choice));
     assert!(matches!(
@@ -994,7 +980,7 @@ fn an_outpost_order_from_an_output_port_earns_coupons() {
         (400.0, 0.0),
         "Coupon (Iron Plate)",
     );
-    let ws = workspace(&mut harness);
+    let ws = editor(&mut harness);
     assert!(matches!(
         ws.document().graph().node(order).map(|n| &n.kind),
         Some(NodeKind::OutpostOrder { .. })
@@ -1045,33 +1031,32 @@ fn a_ratio_lock_is_typed_in_the_port_menu() {
     );
     harness.run();
     fit_view(&mut harness);
-    let pin = workspace(&mut harness)
+    let pin = editor(&mut harness)
         .port_on_screen(ore, Side::Output, "iron_ore")
         .expect("pin is drawn");
     double_click_at(&mut harness, pin - vec2(24.0, 0.0));
-    assert!(workspace(&mut harness).port_menu_is_open());
+    assert!(editor(&mut harness).port_menu_is_open());
 
     type_into(&mut harness, "Share for Sink · Iron Ore", "2");
     type_into(&mut harness, "Share for Iron Ingot", "1");
-    let s = workspace(&mut harness).document().solution().clone();
+    let s = editor(&mut harness).document().solution().clone();
     assert_near(flow(&s, goal, "iron_ore", Side::Input), 40.0);
     assert_near(flow(&s, smelter, "iron_ore", Side::Input), 20.0);
     snapshot_graph(&mut harness, "ratio_lock");
 
     harness.get_by_label("Unlock: split evenly").click();
     harness.run();
-    let graph = workspace(&mut harness).document().graph().clone();
+    let graph = editor(&mut harness).document().graph().clone();
     assert!(graph.links().values().all(|l| l.out_share.is_none()));
     // Unlocked, the sink takes everything: a sink's intake counts as throughput (ADR 0004).
-    let s = workspace(&mut harness).document().solution().clone();
+    let s = editor(&mut harness).document().solution().clone();
     assert_near(flow(&s, goal, "iron_ore", Side::Input), 60.0);
 }
 
-#[test]
-fn grouping_collapses_nodes_into_one_card_with_their_outside_ports() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+/// ore source → smelter → constructor → plate sink, at the top of the graph.
+fn plate_chain(harness: &mut Harness<'_, App>) -> [NodeId; 4] {
     let ore = add(
-        &mut harness,
+        harness,
         NodeKind::Source {
             item: "iron_ore".into(),
             limit: 60.0,
@@ -1079,9 +1064,9 @@ fn grouping_collapses_nodes_into_one_card_with_their_outside_ports() {
         0.0,
         0.0,
     );
-    let ingot = smelter(&mut harness, 400.0, 0.0);
+    let ingot = smelter(harness, 400.0, 0.0);
     let plate = add(
-        &mut harness,
+        harness,
         NodeKind::Recipe {
             recipe: "iron_plate".into(),
             facility: "constructor".into(),
@@ -1091,7 +1076,7 @@ fn grouping_collapses_nodes_into_one_card_with_their_outside_ports() {
         0.0,
     );
     let goal = add(
-        &mut harness,
+        harness,
         NodeKind::Sink {
             item: "iron_plate".into(),
             limit: None,
@@ -1099,126 +1084,168 @@ fn grouping_collapses_nodes_into_one_card_with_their_outside_ports() {
         1250.0,
         0.0,
     );
+    link_any(harness, PortRef::any(ore), PortRef::new(ingot, "iron_ore"));
+    link(harness, ingot, plate, "iron_ingot");
     link_any(
-        &mut harness,
-        PortRef::any(ore),
-        PortRef::new(ingot, "iron_ore"),
-    );
-    link(&mut harness, ingot, plate, "iron_ingot");
-    link_any(
-        &mut harness,
+        harness,
         PortRef::new(plate, "iron_plate"),
         PortRef::any(goal),
     );
-    let before = workspace(&mut harness).document().solution().clone();
-    workspace(&mut harness).select_nodes(vec![ingot, plate]);
+    [ore, ingot, plate, goal]
+}
+
+#[test]
+fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let [_, ingot, plate, _] = plate_chain(&mut harness);
+    let before = editor(&mut harness).document().solution().clone();
+    editor(&mut harness).select_nodes(vec![ingot, plate]);
     harness.run();
 
     harness.key_press_modifiers(Modifiers::COMMAND, Key::G);
     harness.run();
-    let ws = workspace(&mut harness);
-    let group = ws
+    let ed = editor(&mut harness);
+    let workspace = ed
         .selection()
-        .and_then(Selection::single_group)
-        .expect("the new group is selected");
+        .and_then(Selection::single_workspace)
+        .expect("the new workspace is selected");
     assert_eq!(
-        ws.document().view().nodes().count(),
+        ed.document().view().nodes().count(),
         3,
         "two nodes became one card"
     );
-    assert_eq!(ws.document().view().wires().count(), 2);
-    // A group is a view only: the numbers don't change.
-    let after = ws.document().solution().clone();
+    assert_eq!(ed.document().view().wires().count(), 2);
+    // A workspace changes nothing for the solver.
+    let after = ed.document().solution().clone();
     for node in [ingot, plate] {
         assert_near(count(&after, node), count(&before, node).unwrap());
     }
+    let port_out = ed.document().graph().ports_of(workspace, Side::Output)[0];
     fit_view(&mut harness);
-    harness.get_by_label("Group 1");
-    snapshot_graph(&mut harness, "group_collapsed");
-
-    // The card's ports are the inside nodes' ports: the port menu works on them.
-    let pin = workspace(&mut harness)
-        .port_on_screen(plate, Side::Output, "iron_plate")
-        .expect("the group shows the plate port");
-    assert!(workspace(&mut harness).group_on_screen(group).is_some());
-    double_click_at(&mut harness, pin - vec2(24.0, 0.0));
-    assert!(workspace(&mut harness).port_menu_is_open());
-    harness.key_press(Key::Escape);
-    harness.run();
+    harness.get_by_label("Workspace 1");
+    snapshot_graph(&mut harness, "workspace_card");
+    assert!(
+        editor(&mut harness)
+            .workspace_on_screen(workspace)
+            .is_some()
+    );
+    assert!(
+        editor(&mut harness)
+            .port_on_screen(port_out, Side::Output, "iron_plate")
+            .is_some(),
+        "the card shows the workspace's port"
+    );
 
     // The inspector's button; kittest can't click inside the zoomed canvas layer.
-    assert!(
-        workspace(&mut harness)
-            .selection()
-            .is_some_and(|s| s.single_group() == Some(group))
-    );
     harness
-        .get_all_by_label("Expand group")
+        .get_all_by_label("Open")
         .find(|node| node.rect().left() > 980.0)
         .expect("the inspector offers it")
         .click();
     harness.run();
-    assert_eq!(workspace(&mut harness).document().view().nodes().count(), 4);
+    let ed = editor(&mut harness);
+    assert_eq!(ed.document().level(), Some(workspace));
+    assert_eq!(
+        ed.document().view().nodes().count(),
+        4,
+        "the two nodes and the two ports"
+    );
+    assert_eq!(ed.document().view().wires().count(), 3);
+    fit_view(&mut harness);
+    snapshot_graph(&mut harness, "workspace_inside");
+
+    harness.get_by_label("‹ Back").click();
+    harness.run();
+    assert_eq!(editor(&mut harness).document().level(), None);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     harness.run();
     assert_eq!(
-        workspace(&mut harness).document().view().nodes().count(),
-        3,
-        "undo collapses it again"
+        editor(&mut harness).document().view().nodes().count(),
+        4,
+        "undo takes the workspace apart again"
     );
 }
 
 #[test]
-fn a_copies_group_runs_as_many_copies_as_the_graph_allows() {
+fn a_new_port_starts_without_an_item_and_an_unlinked_port_warns() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
-    let ore = add(
-        &mut harness,
-        NodeKind::Source {
-            item: "iron_ore".into(),
-            limit: 90.0,
-        },
-        0.0,
-        0.0,
-    );
-    let ingot = smelter(&mut harness, 420.0, 0.0);
-    let goal = add(
-        &mut harness,
-        NodeKind::Sink {
-            item: "iron_ingot".into(),
-            limit: None,
-        },
-        840.0,
-        0.0,
-    );
-    link_any(
-        &mut harness,
-        PortRef::any(ore),
-        PortRef::new(ingot, "iron_ore"),
-    );
-    link_any(
-        &mut harness,
-        PortRef::new(ingot, "iron_ingot"),
-        PortRef::any(goal),
-    );
-    workspace(&mut harness).select_nodes(vec![ingot]);
+    let [ore, ingot, plate, _] = plate_chain(&mut harness);
+    editor(&mut harness).select_nodes(vec![ingot, plate]);
     harness.run();
     harness.key_press_modifiers(Modifiers::COMMAND, Key::G);
     harness.run();
-    harness.get_by_label("Stands for copies").click();
+    let workspace = editor(&mut harness)
+        .selection()
+        .and_then(Selection::single_workspace)
+        .unwrap();
+    let catalog = editor(&mut harness).catalog().clone();
+    editor(&mut harness)
+        .document_mut()
+        .remove_node(&catalog, ore);
+    editor(&mut harness).show_level(Some(workspace));
     harness.run();
-
-    let ws = workspace(&mut harness);
-    let group = ws.selection().and_then(Selection::single_group).unwrap();
-    let s = ws.document().solution().clone();
-    assert_near(s.copies.get(&group).copied().flatten(), 3.0);
-    assert_near(s.rate.get(&goal).copied().flatten(), 90.0);
-    assert_near(count(&s, ingot), 1.0);
+    harness.get_by_label("+ Input").click();
+    harness.run();
+    let ed = editor(&mut harness);
+    let ports = ed.document().graph().ports_of(workspace, Side::Input);
+    assert_eq!(ports.len(), 2);
     assert_eq!(
-        s.totals.facilities[&aic_data::FacilityId::from("smelter")],
-        3.0
+        ed.document().graph().node(ports[1]).unwrap().kind.item(),
+        None
     );
+    let warnings = &ed.document().solution().warnings;
+    for port in &ports {
+        assert!(
+            warnings.contains(&aic_core::Warning::PortUnlinked {
+                port: *port,
+                outside: true
+            }),
+            "{warnings:?}"
+        );
+    }
     fit_view(&mut harness);
-    snapshot_graph(&mut harness, "group_copies");
+    snapshot_graph(&mut harness, "workspace_new_port");
+}
+
+#[test]
+fn dragging_with_the_right_button_selects_a_box_of_nodes() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let left = smelter(&mut harness, 0.0, 0.0);
+    let middle = smelter(&mut harness, 400.0, 0.0);
+    let right = smelter(&mut harness, 800.0, 0.0);
+    fit_view(&mut harness);
+    let a = node_rect(&mut harness, left);
+    let b = node_rect(&mut harness, middle);
+    let from = a.left_top() - vec2(10.0, 10.0);
+    let to = b.center();
+    harness.hover_at(from);
+    harness.run();
+    harness.event(Event::PointerButton {
+        pos: from,
+        button: PointerButton::Secondary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    for step in 1..=4 {
+        harness.event(Event::PointerMoved(from.lerp(to, step as f32 / 4.0)));
+    }
+    harness.event(Event::PointerButton {
+        pos: to,
+        button: PointerButton::Secondary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run();
+    let mut selected = selected_nodes(&mut harness);
+    selected.sort();
+    let mut expected = vec![left, middle];
+    expected.sort();
+    assert_eq!(selected, expected);
+    assert!(!selected.contains(&right));
+    assert!(
+        !editor(&mut harness).picker_is_open(),
+        "a right-drag doesn't open the picker"
+    );
 }
 
 #[test]
@@ -1226,7 +1253,7 @@ fn export_saves_the_canvas_as_a_png() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     add_from_browser(&mut harness, "Iron Plate");
     let path = std::env::temp_dir().join(format!("aic-export-{}.png", std::process::id()));
-    workspace(&mut harness).request_export(path.clone());
+    editor(&mut harness).request_export(path.clone());
     harness.run();
     let png = std::fs::read(&path).expect("the export is written");
     let _ = std::fs::remove_file(&path);
@@ -1262,7 +1289,7 @@ fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
     let strings = Strings::english();
     let dir = temp_dir("drafts");
     let drafts = dir.join("drafts");
-    workspace(&mut harness).set_drafts_dir(Some(drafts.clone()));
+    editor(&mut harness).set_drafts_dir(Some(drafts.clone()));
     harness.run();
     assert!(
         files_in(&drafts).is_empty(),
@@ -1273,25 +1300,22 @@ fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
     harness.run();
     let draft = files_in(&drafts);
     assert_eq!(draft.len(), 1, "the first change saves at once");
-    assert!(workspace(&mut harness).document().is_draft());
-    assert!(workspace(&mut harness).title().starts_with("Untitled —"));
+    assert!(editor(&mut harness).document().is_draft());
+    assert!(editor(&mut harness).title().starts_with("Untitled —"));
 
     let mine = dir.join("plan.aicm");
-    workspace(&mut harness).save_to(&mine, &strings);
+    editor(&mut harness).save_to(&mine, &strings);
     harness.run();
     assert!(files_in(&drafts).is_empty(), "the draft is gone");
-    assert!(!workspace(&mut harness).document().is_draft());
-    assert_eq!(
-        workspace(&mut harness).document().path(),
-        Some(mine.as_path())
-    );
+    assert!(!editor(&mut harness).document().is_draft());
+    assert_eq!(editor(&mut harness).document().path(), Some(mine.as_path()));
 
     // New saves the open file first, then starts a fresh draft.
     smelter(&mut harness, 300.0, 0.0);
-    workspace(&mut harness).request(aic_app::files::Pending::New, &strings);
+    editor(&mut harness).request(aic_app::files::Pending::New, &strings);
     harness.run();
     let saved = Graph::from_json(
-        workspace(&mut harness).catalog(),
+        editor(&mut harness).catalog(),
         &std::fs::read_to_string(&mine).unwrap(),
     )
     .unwrap();
@@ -1309,15 +1333,15 @@ fn reopening_restores_the_graph_and_where_the_canvas_looked() {
     let node = smelter(&mut harness, 120.0, 80.0);
     harness.run();
     fit_view(&mut harness);
-    workspace(&mut harness).save_to(&path, &strings);
-    let view = workspace(&mut harness)
+    editor(&mut harness).save_to(&path, &strings);
+    let view = editor(&mut harness)
         .canvas_view()
         .expect("the canvas was drawn");
 
     let mut again = self::harness(&fixture("tests/fixtures/satisfactory/vtest"));
-    workspace(&mut again).reopen(&path, &strings);
+    editor(&mut again).reopen(&path, &strings);
     again.run();
-    let ws = workspace(&mut again);
+    let ws = editor(&mut again);
     assert_eq!(ws.document().graph().nodes().len(), 1);
     let pos = ws.document().graph().nodes().values().next().unwrap().pos;
     assert_eq!((pos.x, pos.y), (120.0, 80.0), "positions are saved");
@@ -1336,15 +1360,15 @@ fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     let strings = Strings::english();
     let dir = temp_dir("broken");
-    workspace(&mut harness).set_drafts_dir(Some(dir.join("drafts")));
+    editor(&mut harness).set_drafts_dir(Some(dir.join("drafts")));
 
-    workspace(&mut harness).reopen(&dir.join("gone.aicm"), &strings);
+    editor(&mut harness).reopen(&dir.join("gone.aicm"), &strings);
     harness.run();
     harness.get_by_label_contains("is gone. Started a new one.");
 
     let broken = dir.join("broken.aicm");
     std::fs::write(&broken, "{ not json").unwrap();
-    workspace(&mut harness).reopen(&broken, &strings);
+    editor(&mut harness).reopen(&broken, &strings);
     harness.run();
     harness.get_by_label_contains("Could not open");
     smelter(&mut harness, 0.0, 0.0);
@@ -1354,7 +1378,7 @@ fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
         "{ not json",
         "autosave never writes over a file it couldn't read"
     );
-    assert!(workspace(&mut harness).document().is_draft());
+    assert!(editor(&mut harness).document().is_draft());
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1368,13 +1392,13 @@ fn the_region_can_change_until_the_first_node() {
     harness.get_by_label("Wuling").click();
     harness.run();
     assert_eq!(
-        workspace(&mut harness).document().graph().region().as_str(),
+        editor(&mut harness).document().graph().region().as_str(),
         "jinlong"
     );
     smelter(&mut harness, 0.0, 0.0);
     harness.run();
     assert!(
-        workspace(&mut harness)
+        editor(&mut harness)
             .document_mut()
             .set_region("tundra".into())
             .is_err()
@@ -1385,13 +1409,13 @@ fn the_region_can_change_until_the_first_node() {
 fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     let dir = temp_dir("toolbar");
-    workspace(&mut harness).set_drafts_dir(Some(dir.clone()));
+    editor(&mut harness).set_drafts_dir(Some(dir.clone()));
     harness.get_by_label("Nothing to save yet");
 
     let node = smelter(&mut harness, 0.0, 0.0);
     harness.run();
     harness.get_by_label("✔ Saved as a draft");
-    workspace(&mut harness).select_nodes(vec![node]);
+    editor(&mut harness).select_nodes(vec![node]);
     harness.run();
 
     harness.get_by_label("Duplicate").click();
@@ -1401,7 +1425,7 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     harness.step();
     assert_eq!(
-        workspace(&mut harness).flashing(),
+        editor(&mut harness).flashing(),
         Some(aic_app::edit::Shortcut::Undo),
         "the key lights its button"
     );
@@ -1448,7 +1472,7 @@ fn a_limit_in_the_middle_settles_the_buckflower_graph() {
     link(&mut harness, limited, carbon, "plant_moss_1");
     link(&mut harness, free, carbon, "plant_moss_1");
 
-    let s = workspace(&mut harness).document().solution().clone();
+    let s = editor(&mut harness).document().solution().clone();
     assert_near(count(&s, limited), 3.0);
     assert_near(count(&s, picker), 1.5);
     assert_near(count(&s, carbon), 3.0);
@@ -1514,9 +1538,7 @@ fn link_labels_show_over_their_links() {
 }
 
 fn picker_rect(harness: &mut Harness<'_, App>) -> eframe::egui::Rect {
-    let area = workspace(harness)
-        .picker_area()
-        .expect("the picker is open");
+    let area = editor(harness).picker_area().expect("the picker is open");
     harness
         .ctx
         .memory(|m| m.area_rect(area))
@@ -1530,7 +1552,7 @@ fn the_picker_opens_at_the_click_after_the_window_was_resized() {
     smelter(&mut harness, 2000.0, 1500.0);
     smelter(&mut harness, 2600.0, 1900.0);
     fit_view(&mut harness);
-    let at = workspace(&mut harness).canvas_center_on_screen();
+    let at = editor(&mut harness).canvas_center_on_screen();
     secondary_click_at(&mut harness, at);
     let rect = picker_rect(&mut harness);
     assert!(
@@ -1545,7 +1567,7 @@ fn the_picker_opens_at_the_click_after_the_window_was_resized() {
     harness.set_size(WINDOW_SIZE.into());
     harness.run();
 
-    let at = workspace(&mut harness).canvas_center_on_screen() - eframe::egui::vec2(300.0, 300.0);
+    let at = editor(&mut harness).canvas_center_on_screen() - eframe::egui::vec2(300.0, 300.0);
     secondary_click_at(&mut harness, at);
     let rect = picker_rect(&mut harness);
     assert!(

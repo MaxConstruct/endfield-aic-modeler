@@ -19,9 +19,9 @@ use aic_core::Graph;
 use eframe::egui;
 
 use crate::document::Document;
+use crate::editor::Editor;
 use crate::i18n::Strings;
 use crate::throttle::Poll;
-use crate::workspace::Workspace;
 
 /// The storage key for the recent files list.
 pub const RECENT_KEY: &str = "recent-files";
@@ -42,7 +42,7 @@ pub enum Pending {
     OpenPath(PathBuf),
 }
 
-impl Workspace {
+impl Editor {
     pub fn recent_files(&self) -> &[PathBuf] {
         &self.recent_files
     }
@@ -218,14 +218,14 @@ impl Workspace {
         let view_moved = self.doc.path().is_some()
             && self
                 .canvas
-                .view()
+                .top_view()
                 .is_some_and(|view| Some(view) != self.saved_view);
         self.doc.is_modified() || view_moved
     }
 
     /// Writes the file. Returns whether it worked; if not, the status bar says why.
     fn write(&mut self, path: &Path, draft: bool, strings: &Strings) -> bool {
-        let view = self.canvas.view();
+        let view = self.canvas.top_view();
         let json = self
             .doc
             .graph()

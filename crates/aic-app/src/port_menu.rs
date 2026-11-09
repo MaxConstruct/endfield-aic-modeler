@@ -16,7 +16,7 @@ pub const WIDTH: f32 = 220.0;
 
 pub struct PortMenu {
     pub port: Port,
-    /// Top-left of the popup, on screen. The workspace moves it with the port.
+    /// Top-left of the popup, on screen. The editor moves it with the port.
     pub screen_pos: Pos2,
     buffer: String,
     /// What the player is typing in each link's share field.
