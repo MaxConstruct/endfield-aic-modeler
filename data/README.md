@@ -26,6 +26,12 @@ knows that format; the rest of the app uses the normalized `Catalog`.
 
 Data is copied in by hand. The app never downloads it, and the build never fetches it.
 
+Every version folder here is built into the app binary (`crates/aic-app/build.rs`), so a packaged app
+(`scripts/package-macos.sh`, `scripts/package-windows.ps1`) needs no `data/` folder beside it. A data
+folder found on disk still wins: the `--data` flag, `AIC_DATA_DIR`, `data/` next to the executable,
+then `data/` in the working directory. Only when none of those exists does the app use the built-in
+copy.
+
 ## Sources
 
 - `v1.5.3/`: `data.json` and `i18n/en.json` copied from endfield-calc/factoriolab, `src/data/aef/`;

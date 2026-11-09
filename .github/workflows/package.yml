@@ -1,0 +1,32 @@
+# Builds the macOS .dmg and the portable Windows .exe and keeps them as workflow artifacts.
+# Runs by hand (Actions > Package > Run workflow) or on a version tag.
+name: Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/package-macos.sh --universal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aic-modeler-macos
+          path: target/dist/*.dmg
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: pwsh scripts/package-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aic-modeler-windows
+          path: target/dist/*.exe

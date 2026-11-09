@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use aic_data::{Catalog, DataVersion, LoadError};
+use aic_data::{Bundle, Catalog, DataDirSearch, DataVersion, LoadError};
 use serde::{Deserialize, Serialize};
 
 /// The storage key for [`DataChoice`].
@@ -18,17 +18,34 @@ pub struct DataChoice {
     pub language: Option<String>,
 }
 
-/// The `data/` folder and the versions in it, newest first.
+/// Where the data versions come from.
+#[derive(Debug, Clone)]
+pub enum DataSource {
+    /// A `data/` folder on disk.
+    Folder(PathBuf),
+    /// The data built into the program.
+    BuiltIn(&'static Bundle),
+}
+
+/// A `data/` folder, on disk or built in, and the versions in it, newest first.
 #[derive(Debug, Clone)]
 pub struct DataFolder {
-    pub dir: PathBuf,
+    pub source: DataSource,
     pub versions: Vec<DataVersion>,
 }
 
 impl DataFolder {
-    /// Finds the data folder (the `--data` flag first, see `aic_data::find_data_dir`).
+    /// Finds the data folder (the `--data` flag first, see `aic_data::DataDirSearch`), else uses the
+    /// built-in data. A `--data` flag or `AIC_DATA_DIR` that points nowhere is an error, not a
+    /// silent fallback that would hide the typo.
     pub fn find(flag: Option<&Path>) -> Result<Self, LoadError> {
-        Self::at(aic_data::find_data_dir(flag)?)
+        let search = DataDirSearch::from_process(flag);
+        let explicit = search.flag.is_some() || search.env.is_some();
+        match search.resolve() {
+            Ok(dir) => Self::at(dir),
+            Err(error) if explicit => Err(error),
+            Err(error) => Self::built_in().ok_or(error),
+        }
     }
 
     pub fn at(dir: PathBuf) -> Result<Self, LoadError> {
@@ -36,7 +53,20 @@ impl DataFolder {
         if versions.is_empty() {
             return Err(LoadError::NoDataDir { tried: vec![dir] });
         }
-        Ok(Self { dir, versions })
+        Ok(Self {
+            source: DataSource::Folder(dir),
+            versions,
+        })
+    }
+
+    /// The data built into the program, if any was.
+    pub fn built_in() -> Option<Self> {
+        let bundle = crate::embedded::bundle();
+        let versions = bundle.versions();
+        (!versions.is_empty()).then_some(Self {
+            source: DataSource::BuiltIn(bundle),
+            versions,
+        })
     }
 
     /// The chosen version, or the newest when none is chosen or the chosen one is gone.
@@ -50,7 +80,12 @@ impl DataFolder {
 
     /// The languages the chosen version has names in.
     pub fn languages(&self, choice: &DataChoice) -> Vec<String> {
-        aic_data::list_languages(&self.version(choice).path).unwrap_or_default()
+        let version = self.version(choice);
+        match &self.source {
+            DataSource::Folder(_) => aic_data::list_languages(&version.path),
+            DataSource::BuiltIn(bundle) => bundle.languages(&version.name),
+        }
+        .unwrap_or_default()
     }
 
     /// Loads the chosen version in the chosen language, falling back to English when that
@@ -63,7 +98,10 @@ impl DataFolder {
         } else {
             DEFAULT_LANGUAGE
         };
-        aic_data::load(&version.path, language)
+        match &self.source {
+            DataSource::Folder(_) => aic_data::load(&version.path, language),
+            DataSource::BuiltIn(bundle) => bundle.load(&version.name, language),
+        }
     }
 }
 
@@ -85,5 +123,34 @@ mod tests {
         assert_eq!(folder.version(&choice).name, folder.versions[0].name);
         let catalog = folder.load(&choice).expect("loads");
         assert_eq!(catalog.version(), folder.versions[0].name);
+    }
+
+    #[test]
+    fn without_a_data_folder_the_built_in_data_is_used() {
+        // Tests run in crates/aic-app from target/…/deps: no data/ folder in either.
+        if std::env::var_os(aic_data::DATA_DIR_ENV).is_some() {
+            return;
+        }
+        let folder = DataFolder::find(None).expect("built-in data");
+        assert!(matches!(folder.source, DataSource::BuiltIn(_)));
+    }
+
+    #[test]
+    fn a_data_flag_that_points_nowhere_is_an_error() {
+        assert!(DataFolder::find(Some(Path::new("does-not-exist"))).is_err());
+    }
+
+    #[test]
+    fn the_built_in_data_is_the_repository_data() {
+        let built_in = DataFolder::built_in().expect("data/ is built in");
+        let names = |folder: &DataFolder| -> Vec<String> {
+            folder.versions.iter().map(|v| v.name.clone()).collect()
+        };
+        assert_eq!(names(&built_in), names(&repo_data()));
+        let choice = DataChoice::default();
+        assert_eq!(built_in.languages(&choice), repo_data().languages(&choice));
+        let bundled = built_in.load(&choice).expect("loads");
+        let from_disk = repo_data().load(&choice).expect("loads");
+        assert_eq!(bundled.to_json(), from_disk.to_json());
     }
 }

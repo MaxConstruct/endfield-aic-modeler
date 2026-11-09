@@ -1,3 +1,6 @@
+// A release build on Windows opens no console window beside the app; a debug build keeps it for logs.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use std::path::PathBuf;
 
 use aic_app::data::DataFolder;

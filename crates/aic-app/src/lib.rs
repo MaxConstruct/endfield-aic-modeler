@@ -7,6 +7,7 @@ pub mod data;
 pub mod document;
 pub mod edit;
 pub mod editor;
+mod embedded;
 mod export;
 pub mod files;
 pub mod format;
@@ -118,8 +119,8 @@ impl App {
     }
 }
 
-/// Finds the data folder (the `--data` flag first, see `aic_data::find_data_dir`) and loads the
-/// newest data version in English.
+/// Finds the data folder (the `--data` flag first, else the built-in data; see `DataFolder::find`)
+/// and loads the newest data version in English.
 pub fn load_catalog(flag: Option<&Path>) -> Result<Catalog, LoadError> {
     DataFolder::find(flag)?.load(&DataChoice::default())
 }
