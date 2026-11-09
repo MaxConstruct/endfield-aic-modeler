@@ -1205,6 +1205,35 @@ fn body_width(ui: &Ui, inputs: &[InPin], outputs: &[OutPin]) -> f32 {
     CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN) - columns * PORT_COLUMN - 2.0 * spacing
 }
 
+/// Fills the body's width and lays `add` out in a column centered on the card. With ports on one
+/// side only, the body also takes the missing side's room, so the column steps off that side by a
+/// port column: the facility sits in the middle of every card, whichever ports it has.
+fn centered_body<R>(
+    ui: &mut Ui,
+    inputs: &[InPin],
+    outputs: &[OutPin],
+    add: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    let width = body_width(ui, inputs, outputs);
+    ui.set_width(width);
+    let (left, column) = match (inputs.is_empty(), outputs.is_empty()) {
+        (true, false) => (PORT_COLUMN, width - PORT_COLUMN),
+        (false, true) => (0.0, width - PORT_COLUMN),
+        _ => (0.0, width),
+    };
+    let rect = Rect::from_min_size(
+        ui.cursor().min + vec2(left, 0.0),
+        vec2(column, ui.available_height()),
+    );
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Center)),
+        add,
+    )
+    .inner
+}
+
 impl SnarlViewer<Member> for Viewer<'_> {
     fn title(&mut self, member: &Member) -> String {
         match *member {
@@ -1435,8 +1464,9 @@ impl SnarlViewer<Member> for Viewer<'_> {
         let id = match snarl[node] {
             Member::Node(id) => id,
             Member::Workspace(workspace) => {
-                ui.set_width(body_width(ui, inputs, outputs));
-                self.workspace_body(ui, workspace);
+                centered_body(ui, inputs, outputs, |ui| {
+                    self.workspace_body(ui, workspace);
+                });
                 return;
             }
         };
@@ -1449,9 +1479,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
             return;
         }
         let rate = self.solution.rate.get(&id).copied().flatten();
-        let width = body_width(ui, inputs, outputs);
-        ui.set_width(width);
-        ui.vertical_centered(|ui| match &kind {
+        centered_body(ui, inputs, outputs, |ui| match &kind {
             NodeKind::Recipe {
                 facility, limit, ..
             } => {
@@ -1789,6 +1817,11 @@ impl SnarlViewer<Member> for Viewer<'_> {
         if let Some(camera) = self.hold {
             *to_global = camera;
         }
+        // egui lays text out on whole pixels and then moves it by this transform; an offset between
+        // pixels would smear every glyph on the canvas. At 100% the text is then as sharp as the
+        // panels'; at other zooms egui scales the laid-out text.
+        let ppp = self.ctx.pixels_per_point();
+        to_global.translation = (to_global.translation * ppp).round() / ppp;
         pin_ports_to_edges(
             &self.ctx,
             self.graph,

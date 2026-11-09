@@ -701,6 +701,28 @@ fn the_mouse_wheel_zooms_the_canvas_around_the_pointer() {
 }
 
 #[test]
+fn the_canvas_sits_on_whole_pixels_so_its_text_is_sharp() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    add_from_browser(&mut harness, "Iron Plate");
+    // A zoom around a point between pixels would leave the canvas between pixels too.
+    let at = editor(&mut harness).canvas_center_on_screen() + eframe::egui::vec2(100.3, 50.7);
+    scroll_at(
+        &mut harness,
+        at,
+        eframe::egui::MouseWheelUnit::Line,
+        eframe::egui::vec2(0.0, 1.0),
+    );
+    let ppp = harness.ctx.pixels_per_point();
+    let view = editor(&mut harness).canvas_view().expect("canvas is shown");
+    let corner = editor(&mut harness).canvas_corner_on_screen();
+    // Screen = zoom × graph + offset; the view's point is at the canvas's corner.
+    let offset = corner.to_vec2() - eframe::egui::vec2(view.x, view.y) * view.zoom;
+    for pixels in [offset.x * ppp, offset.y * ppp] {
+        assert!((pixels - pixels.round()).abs() < 0.01, "offset {offset:?}");
+    }
+}
+
+#[test]
 fn small_scrolls_add_up_to_5_percent_steps() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     add_from_browser(&mut harness, "Iron Plate");
@@ -774,10 +796,11 @@ fn the_status_bar_shows_the_zoom_and_sets_it() {
         harness.get_by_role_and_label(Role::Slider, "Zoom").rect(),
         slider
     );
-    let moved = graph_point(&mut harness, center) - under;
+    // Each zoom snaps the canvas to whole pixels, so after four the middle may be a pixel off.
+    let moved = (graph_point(&mut harness, center) - under) * middle;
     assert!(
-        moved.length() < 0.5,
-        "the middle of the canvas stays: {moved:?}"
+        moved.length() < 2.0,
+        "the middle of the canvas stays: {moved:?} on screen"
     );
 }
 
@@ -1772,6 +1795,54 @@ fn the_facility_name_sits_under_the_recipe_title() {
         "lined up with the title"
     );
     snapshot_graph(&mut harness, "facility_in_header");
+}
+
+#[test]
+fn a_cards_body_is_centered_whichever_ports_it_has() {
+    let mut harness = harness(&fixture("../../data/v1.5.3"));
+    let recipe = |recipe: &str, facility: &str| NodeKind::Recipe {
+        recipe: recipe.into(),
+        facility: facility.into(),
+        limit: None,
+    };
+    let nodes = [
+        // Inputs and outputs, outputs only, inputs only.
+        add(
+            &mut harness,
+            recipe("plant_moss_seed_1", "seedcol_1"),
+            450.0,
+            40.0,
+        ),
+        add(&mut harness, recipe("liquid_acid", "pump_2"), 450.0, 260.0),
+        add(
+            &mut harness,
+            recipe("liquid_cleaner_1-sewage", "liquid_cleaner_1"),
+            450.0,
+            480.0,
+        ),
+    ];
+    harness.run();
+    snapshot_graph(&mut harness, "centered_bodies");
+    // Labels on the canvas report graph-space rects; the cards are taken to graph space too.
+    let fields: Vec<eframe::egui::Rect> = harness
+        .get_all_by_role_and_label(eframe::egui::accesskit::Role::TextInput, "Node limit")
+        .map(|n| n.rect())
+        .collect();
+    for node in nodes {
+        let card = node_rect(&mut harness, node);
+        let card = eframe::egui::Rect::from_min_max(
+            graph_point(&mut harness, card.min),
+            graph_point(&mut harness, card.max),
+        );
+        let field = fields
+            .iter()
+            .find(|field| card.contains(field.center()))
+            .expect("the card has a limit field");
+        assert!(
+            (field.center().x - card.center().x).abs() < 1.0,
+            "{field:?} is centered on {card:?}"
+        );
+    }
 }
 
 #[test]
