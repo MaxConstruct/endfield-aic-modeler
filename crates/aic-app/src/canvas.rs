@@ -11,7 +11,7 @@ use std::rc::Rc;
 use aic_core::{
     Graph, LinkId, Member, NodeId, NodeKind, Port, PortRef, RoundUp, Side, Solution, WorkspaceId,
 };
-use aic_data::{Catalog, FacilityId, ImageKind, ItemId};
+use aic_data::{Catalog, FacilityId, ImageKind, ItemId, RecipeId};
 use eframe::egui::{
     self, Color32, CornerRadius, FontId, Id, LayerId, Pos2, Rect, RichText, Sense, Stroke, Ui,
     Vec2, emath::TSTransform, vec2,
@@ -930,6 +930,32 @@ struct Viewer<'a> {
 }
 
 impl Viewer<'_> {
+    /// A recipe card's facility, under its title where a long name has the card's width. With a
+    /// choice of facilities it is a button: one click moves to the next, and the inspector has the
+    /// full list.
+    fn facility_line(&mut self, ui: &mut Ui, id: NodeId, recipe: &RecipeId, facility: &FacilityId) {
+        let name = names::facility(self.catalog, facility.as_str());
+        let text = RichText::new(name).small().color(theme::color::TEXT_MUTED);
+        let facilities = self
+            .catalog
+            .recipe(recipe.as_str())
+            .map(|r| r.facilities.as_slice())
+            .unwrap_or_default();
+        if facilities.len() > 1 {
+            let button = egui::Button::new(text).frame(false).truncate();
+            if ui.add(button).clicked() {
+                let next = facilities
+                    .iter()
+                    .position(|f| f == facility)
+                    .map_or(0, |i| (i + 1) % facilities.len());
+                self.events
+                    .push(CanvasEvent::SetFacility(id, facilities[next].clone()));
+            }
+        } else {
+            ui.add(egui::Label::new(text).truncate());
+        }
+    }
+
     fn kind(&self, id: NodeId) -> Option<&NodeKind> {
         self.graph.node(id).map(|node| &node.kind)
     }
@@ -1297,7 +1323,9 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 return;
             }
         };
-        let Some(kind) = self.kind(id) else {
+        // Borrowed from the graph, not the viewer, so the facility line can push events.
+        let graph = self.graph;
+        let Some(kind) = graph.node(id).map(|node| &node.kind) else {
             return;
         };
         if let NodeKind::WorkspacePort { side, .. } = kind {
@@ -1318,6 +1346,12 @@ impl SnarlViewer<Member> for Viewer<'_> {
             }
             let subject = names::node_subject(self.catalog, self.strings, kind);
             title_label(ui, theme::strong(subject));
+            if let NodeKind::Recipe {
+                recipe, facility, ..
+            } = kind
+            {
+                self.facility_line(ui, id, recipe, facility);
+            }
             if let NodeKind::Storage { .. } = kind {
                 let balance = self.solution.storage.get(&id).and_then(|s| s.balance);
                 if let Some(balance) = balance {
@@ -1419,15 +1453,9 @@ impl SnarlViewer<Member> for Viewer<'_> {
         ui.set_width(width);
         ui.vertical_centered(|ui| match &kind {
             NodeKind::Recipe {
-                recipe,
-                facility,
-                limit,
+                facility, limit, ..
             } => {
-                let facilities = self
-                    .catalog
-                    .recipe(recipe.as_str())
-                    .map(|r| r.facilities.clone())
-                    .unwrap_or_default();
+                // The facility's name is in the header, under the title.
                 let name = names::facility(self.catalog, facility.as_str());
                 if let Some(image) = widgets::image(
                     ui,
@@ -1437,20 +1465,6 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     FACILITY_IMAGE,
                 ) {
                     image.on_hover_text(name);
-                }
-                if facilities.len() > 1 {
-                    // One click moves to the next facility; the inspector has the full list.
-                    let button = egui::Button::new(RichText::new(name).small()).truncate();
-                    if ui.add(button).clicked() {
-                        let next = facilities
-                            .iter()
-                            .position(|f| f == facility)
-                            .map_or(0, |i| (i + 1) % facilities.len());
-                        self.events
-                            .push(CanvasEvent::SetFacility(id, facilities[next].clone()));
-                    }
-                } else {
-                    ui.add(egui::Label::new(RichText::new(name).small()).truncate());
                 }
                 let count = self.solution.facility_count.get(&id).copied().flatten();
                 match count.filter(|_| self.round_up).map(RoundUp::of) {

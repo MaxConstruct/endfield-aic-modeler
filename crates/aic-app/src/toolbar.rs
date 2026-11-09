@@ -191,7 +191,9 @@ impl Editor {
                     .size()
                     .x
             })
-            .fold(0.0, f32::max);
+            .fold(0.0, f32::max)
+            // A label's own width is rounded up to whole points.
+            .ceil();
         let response = ui
             .allocate_ui_with_layout(
                 vec2(widest, ui.available_height()),

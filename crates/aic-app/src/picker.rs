@@ -196,8 +196,8 @@ static OPENINGS: AtomicU64 = AtomicU64::new(0);
 const WIDTH: f32 = 560.0;
 const HEIGHT: f32 = 420.0;
 const LEFT_WIDTH: f32 = 160.0;
-const ROW_HEIGHT: f32 = 30.0;
-const BADGE: f32 = 22.0;
+const ROW_HEIGHT: f32 = 32.0;
+const BADGE: f32 = 32.0;
 
 impl Picker {
     pub fn new(origin: Origin, screen_pos: Pos2, graph_pos: Pos2) -> Self {

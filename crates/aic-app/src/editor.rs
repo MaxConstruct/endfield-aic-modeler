@@ -728,7 +728,8 @@ impl Editor {
                 f32::INFINITY,
                 egui::TextStyle::Body,
             )
-            .size();
+            .size()
+            .ceil();
         ui.add_sized(widest, egui::Label::new(percent(view.zoom)));
         let step = |ui: &mut Ui, text: &str, label: String| {
             let response = ui.add(egui::Button::new(text).frame(false));

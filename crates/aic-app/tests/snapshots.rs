@@ -1741,6 +1741,40 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
 /// The player's Buckflower graph from real data: a limit on the middle planter settles everything
 /// linked to it (ADR 0006).
 #[test]
+fn the_facility_name_sits_under_the_recipe_title() {
+    let mut harness = harness(&fixture("../../data/v1.5.3"));
+    let node = add(
+        &mut harness,
+        NodeKind::Recipe {
+            recipe: "plant_moss_seed_1".into(),
+            facility: "seedcol_1".into(),
+            limit: None,
+        },
+        450.0,
+        250.0,
+    );
+    harness.run();
+    assert!(editor(&mut harness).node_on_screen(node).is_some());
+    // Labels on the canvas report graph-space rects; the two are compared with each other.
+    let facility = harness.get_by_label("Seed-Picking Unit").rect();
+    let title = harness
+        .get_all_by_label("Buckflower Seed")
+        .map(|n| n.rect())
+        .filter(|rect| rect.bottom() <= facility.top() + 1.0)
+        .max_by(|a, b| a.bottom().total_cmp(&b.bottom()))
+        .expect("the title is above the facility");
+    assert!(
+        facility.top() >= title.bottom() - 1.0 && facility.top() < title.bottom() + 8.0,
+        "{facility:?} sits right under {title:?}"
+    );
+    assert!(
+        (facility.left() - title.left()).abs() < 1.0,
+        "lined up with the title"
+    );
+    snapshot_graph(&mut harness, "facility_in_header");
+}
+
+#[test]
 fn a_limit_in_the_middle_settles_the_buckflower_graph() {
     let mut harness = harness(&fixture("../../data/v1.5.3"));
     let recipe = |recipe: &str, facility: &str, limit: Option<f64>| NodeKind::Recipe {

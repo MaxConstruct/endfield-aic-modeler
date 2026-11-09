@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use eframe::egui::{
     self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, RichText,
-    Shadow, Stroke, Style, TextStyle, Vec2, Visuals, epaint::text::VariationCoords,
+    Shadow, Stroke, Style, TextStyle, Vec2, Visuals,
 };
 
 /// The palette. Neutrals step up from the canvas (darkest) to panels, then cards and popovers.
@@ -107,7 +107,7 @@ pub mod text {
     pub const SMALL: f32 = 12.0;
     /// Labels, buttons, list rows.
     pub const BODY: f32 = 13.0;
-    /// Numbers in panels, port rates.
+    /// Numbers in panels, port rates: the tabular face (`Monospace`).
     pub const MONO: f32 = 13.0;
     /// Panel titles.
     pub const HEADING: f32 = 15.0;
@@ -120,14 +120,14 @@ pub fn semibold() -> FontFamily {
     FontFamily::Name(SEMIBOLD.into())
 }
 
-/// Font family of the semibold mono face, for the number a card is about.
-pub fn mono_semibold() -> FontFamily {
-    FontFamily::Name(MONO_SEMIBOLD.into())
+/// Font family of the semibold tabular face, for the number a card is about.
+pub fn tabular_semibold() -> FontFamily {
+    FontFamily::Name(TABULAR_SEMIBOLD.into())
 }
 
 /// The number a card is about, at `size`: semibold, tabular.
 pub fn number(size: f32) -> FontId {
-    FontId::new(size, mono_semibold())
+    FontId::new(size, tabular_semibold())
 }
 
 /// Emphasized text: the semibold face in the strongest text color. egui's own `strong()` only
@@ -166,26 +166,22 @@ pub fn node_frame() -> egui::Frame {
 }
 
 const SEMIBOLD: &str = "semibold";
-const MONO_SEMIBOLD: &str = "mono-semibold";
+const TABULAR_SEMIBOLD: &str = "tabular-semibold";
 const NUMBER_STYLE: &str = "number";
 
-/// The app's faces, embedded so it looks the same on macOS and Windows. Both are under the SIL Open
-/// Font License (`fonts/*-LICENSE.txt`). Inter carries words in static Regular and SemiBold cuts.
-/// JetBrains Mono carries numbers that must line up (egui can't turn on Inter's tabular figures);
-/// it is one variable file, set to each weight.
-const INTER_REGULAR: &[u8] = include_bytes!("../fonts/Inter-Regular.ttf");
-const INTER_SEMIBOLD: &[u8] = include_bytes!("../fonts/Inter-SemiBold.ttf");
-const JETBRAINS_MONO: &[u8] = include_bytes!("../fonts/JetBrainsMono-Variable.ttf");
+/// The app's faces, embedded so it looks the same on macOS and Windows, under the SIL Open Font
+/// License (`fonts/Inter-LICENSE.txt`). Inter Display carries words in static Light and SemiBold
+/// cuts. Numbers that must line up use the same cuts with tabular figures frozen in as the default
+/// digits (`scripts/tabular-fonts.sh`): egui shapes text without OpenType features, so it can't
+/// turn on `tnum` itself.
+const INTER_LIGHT: &[u8] = include_bytes!("../fonts/InterDisplay-Light.ttf");
+const INTER_SEMIBOLD: &[u8] = include_bytes!("../fonts/InterDisplay-SemiBold.ttf");
+const TABULAR_LIGHT: &[u8] = include_bytes!("../fonts/InterDisplayTabular-Light.ttf");
+const TABULAR_SEMIBOLD_CUT: &[u8] = include_bytes!("../fonts/InterDisplayTabular-SemiBold.ttf");
 
-/// JetBrains Mono at `weight`.
-fn mono_at(weight: f32) -> FontData {
-    let mut data = FontData::from_static(JETBRAINS_MONO);
-    data.tweak.coords = VariationCoords::new([(b"wght", weight)]);
-    data
-}
-
-/// Inter and JetBrains Mono in front of egui's default fonts. egui's own faces stay behind them as
-/// fallbacks for the symbols and emoji the toolbar draws.
+/// Inter Display and its tabular cuts in front of egui's default fonts. egui's own faces stay
+/// behind them as fallbacks for the symbols and emoji the toolbar draws. egui's `Monospace` family
+/// is the tabular face, so `.monospace()` sets a number.
 fn fonts() -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let defaults = |family: &FontFamily, fonts: &FontDefinitions| {
@@ -200,19 +196,27 @@ fn fonts() -> FontDefinitions {
         list.extend(fallback.iter().cloned());
         list
     };
-    let regular = family("inter", FontData::from_static(INTER_REGULAR), &proportional);
+    let regular = family("inter", FontData::from_static(INTER_LIGHT), &proportional);
     let regular_bold = family(
         "inter-semibold",
         FontData::from_static(INTER_SEMIBOLD),
         &regular,
     );
-    let mono = family("jetbrains-mono", mono_at(400.0), &monospace);
-    let mono_bold = family("jetbrains-mono-semibold", mono_at(600.0), &mono);
+    let mono = family(
+        "inter-tabular",
+        FontData::from_static(TABULAR_LIGHT),
+        &monospace,
+    );
+    let mono_bold = family(
+        "inter-tabular-semibold",
+        FontData::from_static(TABULAR_SEMIBOLD_CUT),
+        &mono,
+    );
 
     fonts.families.insert(FontFamily::Proportional, regular);
     fonts.families.insert(FontFamily::Monospace, mono);
     fonts.families.insert(semibold(), regular_bold);
-    fonts.families.insert(mono_semibold(), mono_bold);
+    fonts.families.insert(tabular_semibold(), mono_bold);
     fonts
 }
 
@@ -376,11 +380,43 @@ mod tests {
             FontFamily::Proportional,
             FontFamily::Monospace,
             semibold(),
-            mono_semibold(),
+            tabular_semibold(),
         ] {
             let list = &fonts.families[&family];
             assert!(!list.is_empty(), "{family:?}");
             assert!(list.iter().all(|name| fonts.font_data.contains_key(name)));
+        }
+    }
+
+    #[test]
+    fn the_tabular_faces_set_every_digit_one_width() {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(fonts());
+        // Fonts load on the first pass; no renderer takes its textures.
+        ctx.run_ui(Default::default(), |_| {})
+            .textures_delta
+            .clear();
+        let width = |text: &str, family: FontFamily| {
+            ctx.fonts_mut(|fonts| {
+                let font = FontId::new(text::MONO, family);
+                fonts
+                    .layout_no_wrap(text.to_owned(), font, Color32::WHITE)
+                    .size()
+                    .x
+            })
+        };
+        // Inter's own digits differ, which is why the tabular cuts exist.
+        assert!(width("1111", FontFamily::Proportional) < width("0000", FontFamily::Proportional));
+        for family in [FontFamily::Monospace, tabular_semibold()] {
+            let zero = width("0000", family.clone());
+            for digit in '1'..='9' {
+                let digits: String = std::iter::repeat_n(digit, 4).collect();
+                assert_eq!(
+                    width(&digits, family.clone()),
+                    zero,
+                    "{digit} in {family:?}"
+                );
+            }
         }
     }
 }

@@ -36,23 +36,23 @@ colors:
   node-workspace: "#3A3052"
 typography:
   label:
-    fontFamily: "Inter"
+    fontFamily: "Inter Display"
     fontSize: "12px"
-    fontWeight: 400
+    fontWeight: 300
   body:
-    fontFamily: "Inter"
+    fontFamily: "Inter Display"
     fontSize: "13px"
-    fontWeight: 400
+    fontWeight: 300
   mono:
-    fontFamily: "JetBrains Mono"
+    fontFamily: "Inter Display Tabular"
     fontSize: "13px"
-    fontWeight: 400
+    fontWeight: 300
   title:
-    fontFamily: "Inter"
+    fontFamily: "Inter Display"
     fontSize: "15px"
     fontWeight: 600
   number:
-    fontFamily: "JetBrains Mono"
+    fontFamily: "Inter Display Tabular"
     fontSize: "18px"
     fontWeight: 600
 rounded:
@@ -145,7 +145,7 @@ numbers, contrast that holds at 1x), not decoration. No glow, gradients or theme
 **Key Characteristics:**
 - Cool graphite ramp: canvas, then panels, then cards and popovers, each one step lighter.
 - One blue, for selection and focus only. Every other hue is a state.
-- Inter for words, JetBrains Mono for numbers that must line up; both embedded, identical on macOS and Windows.
+- Inter Display Light for words, its tabular-figure cut for numbers that must line up; embedded, identical on macOS and Windows.
 - 1pt hairlines, 4/6/8 radii, short soft shadows only on things that float.
 - Act, don't ask: no confirm dialogs, no OK/Cancel; undo and autosave are the safety net.
 
@@ -188,18 +188,18 @@ Low-chroma, one per node kind, set in `Canvas::header_frame` via `theme::color::
 
 ## Typography
 
-**UI Font:** Inter 4.1 (SIL OFL), Regular and SemiBold static cuts embedded from `crates/aic-app/fonts/`, identical on macOS and Windows.
-**Mono Font:** JetBrains Mono (SIL OFL), one variable file embedded from `crates/aic-app/fonts/`, set to wght 400 and 600; identical on macOS and Windows.
+**UI Font:** Inter Display (SIL OFL), Light and SemiBold static cuts embedded from `crates/aic-app/fonts/`, identical on macOS and Windows.
+**Number Font:** Inter Display Tabular: the same two cuts with Inter's tabular figures (`tnum`) frozen in as the default digits by `scripts/tabular-fonts.sh`. egui shapes text without OpenType features, so the font carries them. It is egui's `Monospace` family.
 
-**Character:** Inter carries every word; mono carries numbers that must line up, because egui can't enable Inter's tabular figures. egui's default fonts stay behind both as fallbacks for symbol and emoji glyphs.
+**Character:** One typeface throughout. Every digit is the same width in the tabular cut, so columns of numbers line up; letters and punctuation keep Inter's proportional widths. egui's default fonts stay behind both as fallbacks for symbol and emoji glyphs.
 
 ### Hierarchy
 egui `TextStyle`s set in `theme::apply`; steps about 1.15 apart.
-- **Number** (mono semibold, 18): the number a card is about (facility count, a source's supply). `theme::number(text::NUMBER)` in `TEXT_STRONG`; also `theme::number_style()`.
-- **Title** (Inter SemiBold, 15): panel titles; `TextStyle::Heading`.
-- **Body** (Inter Regular, 13): labels, buttons, list rows; `Body` and `Button`.
-- **Mono** (13): numbers in panels and port rates; `Monospace`, `FontId::monospace(text::MONO)`.
-- **Label** (Inter Regular, 12): link labels, captions, node kind lines, status bar; `Small`.
+- **Number** (tabular SemiBold, 18): the number a card is about (facility count, a source's supply). `theme::number(text::NUMBER)` in `TEXT_STRONG`; also `theme::number_style()`.
+- **Title** (Inter Display SemiBold, 15): panel titles; `TextStyle::Heading`.
+- **Body** (Inter Display Light, 13): labels, buttons, list rows; `Body` and `Button`.
+- **Mono** (tabular Light, 13): numbers in panels and port rates; `Monospace`, `FontId::monospace(text::MONO)`.
+- **Label** (Inter Display Light, 12): link labels, captions, node kind lines, status bar; `Small`.
 
 ### Named Rules
 **The Real Bold Rule.** egui's `.strong()` only changes color. Emphasis is `theme::strong(text)` (semibold family + `TEXT_STRONG`); a heading-sized emphasis adds `.size(text::HEADING)`.
@@ -245,7 +245,7 @@ Quiet and flat. Rest: `CONTROL` fill, `DIVIDER` outline, `TEXT`. Hover/open: `CO
 `INSET` fill, radius small, 20pt high. Focus: `ACCENT_TEXT` outline, 2pt `ACCENT` cursor that doesn't blink. Unparseable input turns its text `NEGATIVE`; nothing pops up.
 
 ### Node Card (signature)
-`RAISED`, 1pt `BORDER`, radius medium, card shadow, 300pt wide; text never wraps and can't be selected (a drag moves the node). Header filled with its kind's tint: a 12pt muted kind line (omitted on recipe cards) over a `theme::strong` title. Body: facility image, the focal **Number**, a small limit button. Ports are item-icon pins at the edges with mono rates beside them, colored `LINKED`, `DEPOT_IN` or `DEPOT_OUT`; a throttled port gets a 10pt amber triangle. Selected: 2pt `ACCENT` outline.
+`RAISED`, 1pt `BORDER`, radius medium, card shadow, 300pt wide; text never wraps and can't be selected (a drag moves the node). Header filled with its kind's tint: a 12pt muted kind line (omitted on recipe cards) over a `theme::strong` title; a recipe card puts its facility's name under the title instead, 12pt `TEXT_MUTED`, with the header's full width for long names (a frameless button that cycles facilities when the recipe has several). Body: facility image, the focal **Number**, a small limit button. Ports are item-icon pins at the edges with mono rates beside them, colored `LINKED`, `DEPOT_IN` or `DEPOT_OUT`; a throttled port gets a 10pt amber triangle. Selected: 2pt `ACCENT` outline.
 
 ### Links and Link Labels
 Wires 2pt `LINKED`. The label is 12pt text on `INSET` at 90%, radius 3, 3pt pad, at the wire's midpoint; amber when over one belt; 1.5pt `ACCENT` outline when selected.
