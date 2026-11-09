@@ -968,10 +968,25 @@ impl Viewer<'_> {
         let response = ui
             .interact(rect, Id::new(("port-row", id, side, item)), Sense::click())
             .on_hover_text(hint);
+        // Beside the pin, on the node's edge; last frame's spot is close enough.
+        let pin_center = self.pins.borrow().get(&pin).copied();
+        // egui-snarl owns the pin's own clicks, and a primary click on a pin does nothing there,
+        // so a double-click on the icon is read from the pointer.
+        let on_icon = pin_center.is_some_and(|center| {
+            let icon = Rect::from_center_size(center, Vec2::splat(PIN_ICON));
+            let from_screen = self.to_global.inverse();
+            ui.input(|i| {
+                let pointer = &i.pointer;
+                let multi = pointer.button_double_clicked(egui::PointerButton::Primary)
+                    || pointer.button_triple_clicked(egui::PointerButton::Primary);
+                multi
+                    && pointer
+                        .interact_pos()
+                        .is_some_and(|pos| icon.contains(from_screen * pos))
+            })
+        });
         // egui counts a quick third click as a triple click, not a double one; either opens it.
-        if response.double_clicked() || response.triple_clicked() {
-            // Beside the pin, on the node's edge; last frame's spot is close enough.
-            let pin_center = self.pins.borrow().get(&pin).copied();
+        if response.double_clicked() || response.triple_clicked() || on_icon {
             let graph_pos = pin_center.unwrap_or(match side {
                 Side::Input => rect.left_center(),
                 Side::Output => rect.right_center(),

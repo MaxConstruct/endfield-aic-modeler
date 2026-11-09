@@ -630,6 +630,24 @@ fn double_clicking_a_port_sets_the_limit_as_a_rate() {
 }
 
 #[test]
+fn double_clicking_a_ports_icon_opens_its_menu() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let plate = add_from_browser(&mut harness, "Iron Plate");
+    let pin = editor(&mut harness)
+        .port_on_screen(plate, Side::Output, "iron_plate")
+        .expect("pin is drawn");
+    double_click_at(&mut harness, pin);
+    assert!(
+        editor(&mut harness).port_menu_is_open(),
+        "double-click on the icon opens the port menu"
+    );
+    assert!(
+        editor(&mut harness).document().graph().links().is_empty(),
+        "no link starts from the double-click"
+    );
+}
+
+#[test]
 fn the_port_menu_clears_the_ports_links() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     let plate = add_from_browser(&mut harness, "Iron Plate");
