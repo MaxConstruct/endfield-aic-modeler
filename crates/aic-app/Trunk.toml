@@ -1,0 +1,12 @@
+# The web build (M9): `trunk serve` in this folder, or `scripts/build-web.sh` for a release build.
+
+[build]
+target = "index.html"
+dist = "../../target/web"
+# Relative URLs, so the build works from any folder of a site.
+public_url = "./"
+
+[tools]
+# The wasm-bindgen in Cargo.lock; `cargo install --locked wasm-bindgen-cli --version 0.2.130`, so
+# Trunk uses it rather than downloading one.
+wasm_bindgen = "0.2.130"

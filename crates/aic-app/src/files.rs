@@ -9,18 +9,20 @@
 //! - The app reopens the last document, draft or file, when it starts. A file that is missing or
 //!   can't be read is left alone; the app starts a new draft and says why in the status bar.
 //!
-//! Writes go to a temporary file that then replaces the real one, so a crash mid-write can't
-//! leave half a file.
+//! Files live in a [`FileStore`]: on disk, or in the web build, in the browser's storage. There,
+//! Save and Save As also download a copy, and Open uploads a file into the browser's storage.
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use aic_core::Graph;
 use eframe::egui;
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::document::Document;
 use crate::editor::Editor;
 use crate::i18n::Strings;
+use crate::store::{BrowserFiles, FileStore};
 use crate::throttle::Poll;
 
 /// The storage key for the recent files list.
@@ -33,6 +35,26 @@ pub const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(5);
 const RECENT_LIMIT: usize = 8;
 /// The save file extension.
 const EXTENSION: &str = "aicm";
+/// Where the web build keeps drafts, and the files the player saved or opened.
+const BROWSER_DRAFTS: &str = "/drafts";
+const BROWSER_FILES: &str = "/files";
+/// How often the editor looks for a file the browser is reading.
+const UPLOAD_POLL: Duration = Duration::from_millis(100);
+
+/// A file for the browser to download: the web build's Save, Save As and Export.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Download {
+    /// The file name, extension included.
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+/// A file the player picked to open in the browser.
+#[derive(Debug)]
+pub struct Upload {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
 
 /// Something from the File menu that replaces the open graph. The open one is saved first.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +79,30 @@ impl Editor {
         self.drafts_dir = dir;
     }
 
+    /// Keeps files in the browser's storage, starting with `files`, as the web build does.
+    pub fn use_browser_files(&mut self, files: BrowserFiles) {
+        self.store = FileStore::Browser(files);
+        self.drafts_dir = Some(PathBuf::from(BROWSER_DRAFTS));
+    }
+
+    /// The files in the browser's storage; `None` when files are on disk.
+    pub fn browser_files(&self) -> Option<&BrowserFiles> {
+        match &self.store {
+            FileStore::Browser(files) => Some(files),
+            FileStore::Disk => None,
+        }
+    }
+
+    /// How `path` is named in menus and messages.
+    pub fn file_label(&self, path: &Path) -> String {
+        self.store.label(path)
+    }
+
+    /// The files waiting for the browser to download them, oldest first.
+    pub fn take_downloads(&mut self) -> Vec<Download> {
+        std::mem::take(&mut self.downloads)
+    }
+
     /// The document to reopen next time: the open file or draft, once it has been saved.
     pub fn last_document(&self) -> Option<&Path> {
         self.doc.path()
@@ -67,15 +113,85 @@ impl Editor {
         self.save_now(strings);
         match action {
             Pending::New => self.start_new(),
-            Pending::Open => {
-                let picked = rfd::FileDialog::new()
-                    .add_filter("AIC Modeler", &[EXTENSION])
-                    .pick_file();
-                if let Some(path) = picked {
-                    self.open_file(&path, strings);
-                }
-            }
+            Pending::Open if self.store.is_browser() => self.pick_upload(),
+            Pending::Open => self.pick_file(strings),
             Pending::OpenPath(path) => self.open_file(&path, strings),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn pick_file(&mut self, strings: &Strings) {
+        let picked = rfd::FileDialog::new()
+            .add_filter("AIC Modeler", &[EXTENSION])
+            .pick_file();
+        if let Some(path) = picked {
+            self.open_file(&path, strings);
+        }
+    }
+
+    /// The web build has no disk.
+    #[cfg(target_arch = "wasm32")]
+    fn pick_file(&mut self, _strings: &Strings) {}
+
+    /// Asks the browser for a file to open; [`Self::poll_upload`] opens it once picked.
+    fn pick_upload(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.upload = Some(crate::web::pick_file(EXTENSION));
+        }
+    }
+
+    /// Opens the file the player picked in the browser, once it has been read.
+    pub(crate) fn poll_upload(&mut self, ctx: &egui::Context, strings: &Strings) {
+        let Some(receiver) = &self.upload else {
+            return;
+        };
+        match receiver.try_recv() {
+            Ok(upload) => {
+                self.upload = None;
+                self.open_upload(&upload.name, upload.bytes, strings);
+            }
+            // The browser reads the file in the background; look again soon.
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(UPLOAD_POLL);
+            }
+            // Cancelled.
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => self.upload = None,
+        }
+    }
+
+    /// Opens a file uploaded to the browser, keeping it in the browser's storage under its name. A
+    /// file that doesn't open isn't kept.
+    pub fn open_upload(&mut self, name: &str, bytes: Vec<u8>, strings: &Strings) {
+        self.save_now(strings);
+        let path = Path::new(BROWSER_FILES).join(file_name(name));
+        let text = match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(error) => {
+                let error = error.to_string();
+                self.status =
+                    Some(strings.format("file-open-failed", &[("file", name), ("error", &error)]));
+                return;
+            }
+        };
+        let had = self.store.read(&path).ok();
+        if let Err(error) = self.store.write(&path, &text) {
+            let error = error.to_string();
+            self.status =
+                Some(strings.format("file-open-failed", &[("file", name), ("error", &error)]));
+            return;
+        }
+        let opened = self.read_file(&path, strings);
+        if let Err(message) = opened {
+            match had {
+                Some(old) => {
+                    let _ = self.store.write(&path, &old);
+                }
+                None => self.store.remove(&path),
+            }
+            self.status = Some(message);
+        } else {
+            self.status = None;
         }
     }
 
@@ -98,8 +214,8 @@ impl Editor {
     /// Reopens the document open when the app last closed. Whatever goes wrong, the app carries on
     /// with a new draft and the file is left as it is.
     pub fn reopen(&mut self, path: &Path, strings: &Strings) {
-        if !path.exists() {
-            let file = path.display().to_string();
+        if !self.store.exists(path) {
+            let file = self.store.label(path);
             self.status = Some(strings.format("file-last-missing", &[("file", &file)]));
             self.forget_recent(path);
             return;
@@ -108,8 +224,11 @@ impl Editor {
     }
 
     fn read_file(&mut self, path: &Path, strings: &Strings) -> Result<(), String> {
-        let name = path.display().to_string();
-        let text = std::fs::read_to_string(path).map_err(|e| (name.clone(), e.to_string()));
+        let name = self.store.label(path);
+        let text = self
+            .store
+            .read(path)
+            .map_err(|e| (name.clone(), e.to_string()));
         let loaded = text.and_then(|text| {
             Graph::from_json(&self.catalog, &text).map_err(|e| (name.clone(), e.to_string()))
         });
@@ -134,23 +253,121 @@ impl Editor {
         Ok(())
     }
 
-    /// Cmd+S: saves now. A draft asks where to keep it instead, as Save As does.
+    /// Cmd+S: saves now. A draft asks where to keep it instead, as Save As does. In the browser,
+    /// also downloads the file.
     pub fn save(&mut self, strings: &Strings) {
         if self.doc.is_draft() || self.doc.path().is_none() {
             self.save_as(strings);
         } else {
             self.save_now(strings);
+            if self.store.is_browser() {
+                self.download_document();
+            }
         }
     }
 
-    pub fn save_as(&mut self, strings: &Strings) {
-        let name = self
-            .doc
+    /// The name Save As offers: the file's own, or Untitled for a draft.
+    fn offered_name(&self, strings: &Strings) -> String {
+        self.doc
             .path()
             .filter(|_| !self.doc.is_draft())
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| format!("{}.{EXTENSION}", strings.get("file-untitled")));
+            .unwrap_or_else(|| format!("{}.{EXTENSION}", strings.get("file-untitled")))
+    }
+
+    /// Asks where to save: a file dialog on disk, a name in the browser.
+    pub fn save_as(&mut self, strings: &Strings) {
+        let name = self.offered_name(strings);
+        if self.store.is_browser() {
+            let stem = name.strip_suffix(&format!(".{EXTENSION}")).unwrap_or(&name);
+            self.save_as_prompt = Some(stem.to_owned());
+            return;
+        }
+        self.pick_save_path(name, strings);
+    }
+
+    /// Saves under `name` in the browser's storage, then downloads the file. The extension is
+    /// added when missing.
+    pub fn save_as_named(&mut self, name: &str, strings: &Strings) {
+        let path = Path::new(BROWSER_FILES).join(file_name(name));
+        self.save_to(&path, strings);
+        if self.doc.path() == Some(path.as_path()) && !self.save_failed {
+            self.download_document();
+        }
+    }
+
+    /// Whether a file of that name is already in the browser's storage, so Save As replaces it.
+    pub fn browser_file_exists(&self, name: &str) -> bool {
+        self.store.is_browser()
+            && self
+                .store
+                .exists(&Path::new(BROWSER_FILES).join(file_name(name)))
+    }
+
+    /// The browser's Save As: a name for the file, kept in the browser and downloaded.
+    pub(crate) fn save_as_prompt_ui(&mut self, ctx: &egui::Context, strings: &Strings) {
+        let Some(mut name) = self.save_as_prompt.take() else {
+            return;
+        };
+        let mut keep = true;
+        let mut confirmed = false;
+        egui::Window::new(strings.get("file-save-as-title"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(strings.get("file-save-as-hint"));
+                ui.horizontal(|ui| {
+                    ui.label(strings.get("file-save-as-name"));
+                    let field = ui.text_edit_singleline(&mut name);
+                    if !field.has_focus() && !field.lost_focus() {
+                        field.request_focus();
+                    }
+                    confirmed |=
+                        field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                });
+                if self.browser_file_exists(&name) {
+                    ui.label(strings.get("file-save-as-replaces"));
+                }
+                ui.horizontal(|ui| {
+                    let valid = !name.trim().is_empty();
+                    confirmed |= ui
+                        .add_enabled(
+                            valid,
+                            egui::Button::new(strings.get("file-save-as-confirm")),
+                        )
+                        .clicked();
+                    confirmed &= valid;
+                    keep &= !ui.button(strings.get("file-save-as-cancel")).clicked();
+                });
+                keep &= !ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        if confirmed {
+            self.save_as_named(&name, strings);
+        } else if keep {
+            self.save_as_prompt = Some(name);
+        }
+    }
+
+    /// Queues the open document, as saved, for the browser to download.
+    fn download_document(&mut self) {
+        let Some(path) = self.doc.path() else {
+            return;
+        };
+        if let Ok(text) = self.store.read(path) {
+            self.downloads.push(Download {
+                name: self.store.label(path),
+                bytes: text.into_bytes(),
+            });
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn pick_save_path(&mut self, _name: String, _strings: &Strings) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn pick_save_path(&mut self, name: String, strings: &Strings) {
         let picked = rfd::FileDialog::new()
             .add_filter("AIC Modeler", &[EXTENSION])
             .set_file_name(name)
@@ -174,7 +391,7 @@ impl Editor {
         let draft = self.is_in_drafts(path);
         if self.write(path, draft, strings) {
             if let Some(old) = old_draft.filter(|old| old != path) {
-                let _ = std::fs::remove_file(old);
+                self.store.remove(&old);
             }
             self.other_data_version = None;
             if !draft {
@@ -230,7 +447,7 @@ impl Editor {
             .doc
             .graph()
             .to_json_with_view(self.catalog.version(), view);
-        match write_atomically(path, json.as_bytes()) {
+        match self.store.write(path, &json) {
             Ok(()) => {
                 self.doc.mark_saved(path.to_owned(), draft);
                 self.saved_view = view;
@@ -240,7 +457,7 @@ impl Editor {
             }
             Err(error) => {
                 self.save_failed = true;
-                let file = path.display().to_string();
+                let file = self.store.label(path);
                 self.status = Some(strings.format(
                     "file-save-failed",
                     &[("file", &file), ("error", &error.to_string())],
@@ -252,9 +469,6 @@ impl Editor {
 
     fn new_draft_path(&self) -> Option<PathBuf> {
         let dir = self.drafts_dir.as_ref()?;
-        if std::fs::create_dir_all(dir).is_err() {
-            return None;
-        }
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_millis());
@@ -273,7 +487,8 @@ impl Editor {
             && self.doc.graph().nodes().is_empty()
             && let Some(path) = self.doc.path()
         {
-            let _ = std::fs::remove_file(path);
+            let path = path.to_owned();
+            self.store.remove(&path);
         }
     }
 
@@ -321,13 +536,17 @@ impl Editor {
     }
 }
 
-/// Writes `bytes` to a temporary file next to `path`, then puts it in `path`'s place.
-fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    std::fs::write(&temporary, bytes)?;
-    std::fs::rename(&temporary, path)
+/// `name` as a save file name: only its last part, with the extension added when missing.
+fn file_name(name: &str) -> String {
+    let name = name.rsplit(['/', '\\']).next().unwrap_or(name).trim();
+    if Path::new(name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(EXTENSION))
+    {
+        name.to_owned()
+    } else {
+        format!("{name}.{EXTENSION}")
+    }
 }
 
 #[cfg(test)]
@@ -335,14 +554,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_atomic_write_replaces_the_file_and_leaves_no_temporary() {
-        let dir = std::env::temp_dir().join(format!("aic-atomic-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("plan.aicm");
-        std::fs::write(&path, "old").unwrap();
-        write_atomically(&path, b"new").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
-        let _ = std::fs::remove_dir_all(dir);
+    fn a_save_file_name_keeps_only_its_last_part_and_gets_the_extension() {
+        assert_eq!(file_name("plan"), "plan.aicm");
+        assert_eq!(file_name("plan.AICM"), "plan.AICM");
+        assert_eq!(file_name("../drafts/plan"), "plan.aicm");
+        assert_eq!(file_name(r"C:\plans\plan.aicm"), "plan.aicm");
     }
 }

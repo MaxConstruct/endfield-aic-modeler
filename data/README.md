@@ -32,6 +32,10 @@ folder found on disk still wins: the `--data` flag, `AIC_DATA_DIR`, `data/` next
 then `data/` in the working directory. Only when none of those exists does the app use the built-in
 copy.
 
+The web build (`scripts/build-web.sh`) doesn't build the data in: Trunk copies this folder next to
+the page, and the app fetches its files from there at startup. That is the site's own copy, not a
+third-party fetch.
+
 ## Sources
 
 - `v1.5.3/`: `data.json` and `i18n/en.json` copied from endfield-calc/factoriolab, `src/data/aef/`;

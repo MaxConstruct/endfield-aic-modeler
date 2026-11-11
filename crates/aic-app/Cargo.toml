@@ -17,6 +17,24 @@ indexmap = "2"
 rfd = "0.18.0"
 serde = { version = "1.0.229", features = ["derive"] }
 unic-langid = "0.9.6"
+web-time = "1.1"
+
+# The web build (M9): eframe's web runner, fetching data/ from the site, and file downloads.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Blob",
+    "BlobPropertyBag",
+    "Document",
+    "Element",
+    "HtmlAnchorElement",
+    "HtmlCanvasElement",
+    "Response",
+    "Url",
+    "Window",
+] }
 
 [dev-dependencies]
 egui_kittest = { version = "0.36", features = ["wgpu", "snapshot", "eframe"] }

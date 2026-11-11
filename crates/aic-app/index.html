@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AIC Modeler</title>
+    <!-- The app, built for wasm32 by Trunk. -->
+    <link data-trunk rel="rust" data-bin="aic-app" data-wasm-opt="0" />
+    <!-- The game data, which the app fetches from data/ next to this page. -->
+    <link data-trunk rel="copy-dir" href="../../data" />
+    <style>
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            /* theme::color::CANVAS, so the page doesn't flash white before the app draws. */
+            background: #111214;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="aic-modeler"></canvas>
+</body>
+</html>

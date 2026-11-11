@@ -176,7 +176,7 @@ impl Editor {
 
     /// Lights the shortcut's toolbar button for a moment, so a key press shows where its button is.
     pub(crate) fn flash(&mut self, shortcut: Shortcut) {
-        self.flash = Some((shortcut, std::time::Instant::now()));
+        self.flash = Some((shortcut, web_time::Instant::now()));
     }
 
     pub(crate) fn has_selected_nodes(&self) -> bool {

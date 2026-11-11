@@ -165,9 +165,14 @@ dependencies = [
  "fluent-bundle",
  "image",
  "indexmap",
+ "js-sys",
  "rfd",
  "serde",
  "unic-langid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]

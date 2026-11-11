@@ -1,6 +1,8 @@
 //! Data versions built into the program, so it runs without a `data/` folder beside it.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::ops::Bound;
 use std::path::PathBuf;
 
 use crate::catalog::Catalog;
@@ -14,16 +16,39 @@ const ORIGIN: &str = "<built-in data>";
 
 /// The files of a `data/` folder held in memory, keyed by their path under `data/` with `/`
 /// separators (`v1.5.3/data.json`). Holds the same versions [`crate::list_versions`] would find.
+///
+/// The files are either built into the program ([`Bundle::new`]) or read at run time, as the web
+/// build fetches them ([`Bundle::from_owned`]).
 #[derive(Debug, Clone, Default)]
 pub struct Bundle {
-    files: BTreeMap<&'static str, &'static [u8]>,
+    files: BTreeMap<Cow<'static, str>, Cow<'static, [u8]>>,
 }
 
 impl Bundle {
     pub fn new(files: &[(&'static str, &'static [u8])]) -> Self {
         Self {
-            files: files.iter().copied().collect(),
+            files: files
+                .iter()
+                .map(|&(path, bytes)| (Cow::Borrowed(path), Cow::Borrowed(bytes)))
+                .collect(),
         }
+    }
+
+    /// A bundle that owns its files, keyed as in [`Bundle::new`].
+    pub fn from_owned(files: impl IntoIterator<Item = (String, Vec<u8>)>) -> Self {
+        Self {
+            files: files
+                .into_iter()
+                .map(|(path, bytes)| (Cow::Owned(path), Cow::Owned(bytes)))
+                .collect(),
+        }
+    }
+
+    /// Every file and its path, in path order.
+    pub fn files(&self) -> impl Iterator<Item = (&str, &[u8])> {
+        self.files
+            .iter()
+            .map(|(path, bytes)| (path.as_ref(), bytes.as_ref()))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -91,8 +116,8 @@ impl VersionFiles for BundledVersion<'_> {
         Ok(self
             .bundle
             .files
-            .range(prefix.as_str()..)
-            .map(|(path, _)| *path)
+            .range::<str, _>((Bound::Included(prefix.as_str()), Bound::Unbounded))
+            .map(|(path, _)| path.as_ref())
             .take_while(|path| path.starts_with(&prefix))
             .filter_map(|path| path.strip_prefix(&prefix))
             .filter(|name| !name.contains('/'))

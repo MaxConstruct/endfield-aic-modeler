@@ -7,6 +7,9 @@ app-title = AIC Modeler
 
 load-failed-title = Could not load game data
 load-failed-hint = Put a data folder next to the app, or start it with --data <path>.
+load-failed-hint-web = Check that the site serves its data folder, then reload the page.
+data-loading = Loading game data… { $done } of { $total } files
+data-fetch-failed = Could not fetch { $file }: { $error }
 
 ## Window and menus
 
@@ -55,6 +58,13 @@ file-untitled = Untitled
 file-open-failed = Could not open { $file }: { $error }
 file-save-failed = Could not save { $file }: { $error }
 file-last-missing = The last graph, { $file }, is gone. Started a new one.
+file-save-as-title = Save As
+file-save-as-name = Name
+file-save-as-replaces = This replaces the saved file of that name.
+file-save-as-hint = The file is kept in this browser and downloaded.
+file-save-as-confirm = Save
+file-save-as-cancel = Cancel
+export-downloaded = Downloaded the canvas as { $file }.
 file-other-data-version = This file was made with data { $file }; the app uses { $active }. Recipes are matched by ID.
 
 ## Top bar

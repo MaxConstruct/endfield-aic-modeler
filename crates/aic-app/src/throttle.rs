@@ -1,7 +1,9 @@
 //! A throttle that fires on both edges, like VueUse's `useThrottleFn`: the first call after a quiet
 //! spell runs at once, later ones at most once per interval, and the last one always runs.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use web_time::Instant;
 
 /// What to do about work that is waiting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

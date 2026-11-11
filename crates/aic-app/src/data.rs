@@ -1,8 +1,10 @@
 //! Which data version and language the app loads, and switching between them while it runs.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use aic_data::{Bundle, Catalog, DataDirSearch, DataVersion, LoadError};
+use aic_data::{Bundle, Catalog, DataVersion, LoadError};
 use serde::{Deserialize, Serialize};
 
 /// The storage key for [`DataChoice`].
@@ -22,9 +24,11 @@ pub struct DataChoice {
 #[derive(Debug, Clone)]
 pub enum DataSource {
     /// A `data/` folder on disk.
+    #[cfg(not(target_arch = "wasm32"))]
     Folder(PathBuf),
-    /// The data built into the program.
-    BuiltIn(&'static Bundle),
+    /// The files of a `data/` folder in memory: built into the program, or fetched by the web
+    /// build.
+    Bundled(Arc<Bundle>),
 }
 
 /// A `data/` folder, on disk or built in, and the versions in it, newest first.
@@ -38,8 +42,9 @@ impl DataFolder {
     /// Finds the data folder (the `--data` flag first, see `aic_data::DataDirSearch`), else uses the
     /// built-in data. A `--data` flag or `AIC_DATA_DIR` that points nowhere is an error, not a
     /// silent fallback that would hide the typo.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn find(flag: Option<&Path>) -> Result<Self, LoadError> {
-        let search = DataDirSearch::from_process(flag);
+        let search = aic_data::DataDirSearch::from_process(flag);
         let explicit = search.flag.is_some() || search.env.is_some();
         match search.resolve() {
             Ok(dir) => Self::at(dir),
@@ -48,6 +53,7 @@ impl DataFolder {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn at(dir: PathBuf) -> Result<Self, LoadError> {
         let versions = aic_data::list_versions(&dir)?;
         if versions.is_empty() {
@@ -60,11 +66,16 @@ impl DataFolder {
     }
 
     /// The data built into the program, if any was.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn built_in() -> Option<Self> {
-        let bundle = crate::embedded::bundle();
+        Self::bundled(crate::embedded::bundle())
+    }
+
+    /// The versions in `bundle`, if it has any.
+    pub fn bundled(bundle: Arc<Bundle>) -> Option<Self> {
         let versions = bundle.versions();
         (!versions.is_empty()).then_some(Self {
-            source: DataSource::BuiltIn(bundle),
+            source: DataSource::Bundled(bundle),
             versions,
         })
     }
@@ -82,8 +93,9 @@ impl DataFolder {
     pub fn languages(&self, choice: &DataChoice) -> Vec<String> {
         let version = self.version(choice);
         match &self.source {
+            #[cfg(not(target_arch = "wasm32"))]
             DataSource::Folder(_) => aic_data::list_languages(&version.path),
-            DataSource::BuiltIn(bundle) => bundle.languages(&version.name),
+            DataSource::Bundled(bundle) => bundle.languages(&version.name),
         }
         .unwrap_or_default()
     }
@@ -99,8 +111,9 @@ impl DataFolder {
             DEFAULT_LANGUAGE
         };
         match &self.source {
+            #[cfg(not(target_arch = "wasm32"))]
             DataSource::Folder(_) => aic_data::load(&version.path, language),
-            DataSource::BuiltIn(bundle) => bundle.load(&version.name, language),
+            DataSource::Bundled(bundle) => bundle.load(&version.name, language),
         }
     }
 }
@@ -132,7 +145,7 @@ mod tests {
             return;
         }
         let folder = DataFolder::find(None).expect("built-in data");
-        assert!(matches!(folder.source, DataSource::BuiltIn(_)));
+        assert!(matches!(folder.source, DataSource::Bundled(_)));
     }
 
     #[test]

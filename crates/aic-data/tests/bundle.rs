@@ -84,3 +84,22 @@ fn a_missing_file_names_where_it_was_looked_for() {
         "{error}"
     );
 }
+
+/// The web build fetches the files over HTTP, so its bundle owns them.
+#[test]
+fn a_bundle_of_owned_files_loads_the_same_catalog() {
+    let borrowed = bundle_of(&fixtures());
+    let owned = Bundle::from_owned(
+        borrowed
+            .files()
+            .map(|(path, bytes)| (path.to_owned(), bytes.to_vec())),
+    );
+    assert_eq!(
+        owned.load("v1.10.0", "en").unwrap().to_json(),
+        borrowed.load("v1.10.0", "en").unwrap().to_json()
+    );
+    assert_eq!(
+        owned.languages("v1.10.0").unwrap(),
+        borrowed.languages("v1.10.0").unwrap()
+    );
+}

@@ -1,6 +1,9 @@
 //! Builds the game data into the program: every file of every version folder under the repository's
 //! `data/` goes into `$OUT_DIR/embedded_data.rs` as a table of `include_bytes!`, which
 //! `src/embedded.rs` hands to `aic_data::Bundle`. A missing `data/` gives an empty table.
+//!
+//! The web build fetches the same files from its own site instead, so for `wasm32` the table holds
+//! only their paths (`src/web.rs`).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -28,13 +31,22 @@ fn main() {
     }
     files.sort();
 
-    let mut table = String::from("pub static FILES: &[(&str, &[u8])] = &[\n");
+    let web = env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|arch| arch == "wasm32");
+    let mut table = if web {
+        String::from("pub static FILES: &[&str] = &[\n")
+    } else {
+        String::from("pub static FILES: &[(&str, &[u8])] = &[\n")
+    };
     for (key, path) in &files {
-        writeln!(
-            table,
-            "    ({key:?}, include_bytes!({:?})),",
-            path.display().to_string()
-        )
+        if web {
+            writeln!(table, "    {key:?},")
+        } else {
+            writeln!(
+                table,
+                "    ({key:?}, include_bytes!({:?})),",
+                path.display().to_string()
+            )
+        }
         .expect("writing to a String");
     }
     table.push_str("];\n");

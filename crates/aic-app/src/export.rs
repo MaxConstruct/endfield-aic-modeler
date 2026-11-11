@@ -6,6 +6,7 @@ use std::sync::Arc;
 use eframe::egui::{self, ColorImage, Rect};
 
 use crate::editor::Editor;
+use crate::files::Download;
 use crate::i18n::Strings;
 
 /// Tags our screenshot request, so a reply meant for someone else is left alone.
@@ -14,12 +15,12 @@ struct CanvasExport(PathBuf);
 
 impl Editor {
     /// Asks where to save, then takes a screenshot of the window; the next frames crop and save it.
+    /// The browser downloads it instead.
     pub fn export_png(&mut self, strings: &Strings) {
-        let picked = rfd::FileDialog::new()
-            .add_filter("PNG", &["png"])
-            .set_file_name(format!("{}.png", strings.get("file-untitled")))
-            .save_file();
-        if let Some(path) = picked {
+        let name = format!("{}.png", strings.get("file-untitled"));
+        if self.store.is_browser() {
+            self.request_export(PathBuf::from(name));
+        } else if let Some(path) = pick_png_path(name) {
             self.request_export(path);
         }
     }
@@ -53,17 +54,46 @@ impl Editor {
         });
         let pixels_per_point = ctx.pixels_per_point();
         for (path, image) in shots {
-            let result = canvas_png(&image, self.canvas.rect, pixels_per_point)
-                .and_then(|png| std::fs::write(&path, png).map_err(|e| e.to_string()));
-            let file = path.display().to_string();
+            let browser = self.store.is_browser();
+            let file = self.store.label(&path);
+            let result = canvas_png(&image, self.canvas.rect, pixels_per_point).and_then(|png| {
+                if browser {
+                    self.downloads.push(Download {
+                        name: file.clone(),
+                        bytes: png,
+                    });
+                    Ok(())
+                } else {
+                    std::fs::write(&path, png).map_err(|e| e.to_string())
+                }
+            });
+            let done = if browser {
+                "export-downloaded"
+            } else {
+                "export-done"
+            };
             self.status = Some(match result {
-                Ok(()) => strings.format("export-done", &[("file", &file)]),
+                Ok(()) => strings.format(done, &[("file", &file)]),
                 Err(error) => {
                     strings.format("export-failed", &[("file", &file), ("error", &error)])
                 }
             });
         }
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn pick_png_path(name: String) -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .add_filter("PNG", &["png"])
+        .set_file_name(name)
+        .save_file()
+}
+
+/// The web build has no disk.
+#[cfg(target_arch = "wasm32")]
+fn pick_png_path(_name: String) -> Option<PathBuf> {
+    None
 }
 
 /// The part of a window screenshot under `canvas` (in points), as PNG bytes.

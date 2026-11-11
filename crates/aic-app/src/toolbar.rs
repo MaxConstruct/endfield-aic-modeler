@@ -1,7 +1,6 @@
 //! The toolbar beside the menus: a button for every editing command, and the save indicator in the
 //! status bar. A key press lights its button for a moment, so the toolbar teaches the keys.
 
-use std::path::Path;
 use std::time::Duration;
 
 use eframe::egui::{self, RichText, Ui, vec2};
@@ -207,8 +206,7 @@ impl Editor {
         let file = self
             .doc
             .path()
-            .map(Path::display)
-            .map(|p| p.to_string())
+            .map(|path| self.store.label(path))
             .unwrap_or_else(|| strings.get("file-untitled"));
         let when = self.last_saved.map(|at| ago(strings, at.elapsed()));
         let hint = match when {

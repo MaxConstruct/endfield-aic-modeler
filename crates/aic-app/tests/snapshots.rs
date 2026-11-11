@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use aic_app::canvas::Selection;
 use aic_app::i18n::Strings;
 use aic_app::picker::Origin;
+use aic_app::store::BrowserFiles;
 use aic_app::{App, WINDOW_SIZE};
 use aic_core::{Graph, NodeId, NodeKind, Port, PortRef, Side, Solution};
 use egui_kittest::Harness;
@@ -2011,4 +2012,132 @@ fn the_picker_opens_at_the_click_after_the_window_was_resized() {
         rect.min
     );
     assert!(rect.height() > 300.0, "full height again: {rect:?}");
+}
+
+// The web build's files: kept in the browser's storage, downloaded on Save, uploaded on Open.
+
+fn browser_harness() -> Harness<'static, App> {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    editor(&mut harness).use_browser_files(BrowserFiles::default());
+    harness
+}
+
+fn downloads(harness: &mut Harness<'_, App>) -> Vec<(String, String)> {
+    editor(harness)
+        .take_downloads()
+        .into_iter()
+        .map(|d| (d.name, String::from_utf8(d.bytes).unwrap()))
+        .collect()
+}
+
+#[test]
+fn in_the_browser_save_as_keeps_the_file_in_storage_and_downloads_it() {
+    let mut harness = browser_harness();
+    let strings = Strings::english();
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    assert!(
+        editor(&mut harness).document().is_draft(),
+        "the first change saves a draft in the browser"
+    );
+    let draft = editor(&mut harness).document().path().unwrap().to_owned();
+    assert!(
+        downloads(&mut harness).is_empty(),
+        "autosave downloads nothing"
+    );
+
+    editor(&mut harness).save_as_named("plan", &strings);
+    harness.run();
+    let saved = downloads(&mut harness);
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].0, "plan.aicm");
+    let graph = Graph::from_json(editor(&mut harness).catalog(), &saved[0].1).unwrap();
+    assert_eq!(graph.graph.nodes().len(), 1);
+
+    let ws = editor(&mut harness);
+    assert!(!ws.document().is_draft());
+    let files = ws.browser_files().expect("browser files");
+    assert!(!files.contains(&draft), "the draft is gone");
+    let path = ws.document().path().unwrap().to_owned();
+    assert!(files.contains(&path));
+    assert_eq!(ws.recent_files(), [path]);
+    assert_eq!(ws.file_label(&ws.recent_files()[0]), "plan.aicm");
+
+    // Save downloads the file again, under the same name.
+    smelter(&mut harness, 300.0, 0.0);
+    editor(&mut harness).save(&strings);
+    let again = downloads(&mut harness);
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0].0, "plan.aicm");
+    let graph = Graph::from_json(editor(&mut harness).catalog(), &again[0].1).unwrap();
+    assert_eq!(graph.graph.nodes().len(), 2);
+}
+
+#[test]
+fn in_the_browser_an_uploaded_file_opens_and_is_kept() {
+    let mut source = browser_harness();
+    let strings = Strings::english();
+    smelter(&mut source, 0.0, 0.0);
+    smelter(&mut source, 300.0, 0.0);
+    editor(&mut source).save_as_named("plan", &strings);
+    let (name, text) = downloads(&mut source).remove(0);
+
+    let mut harness = browser_harness();
+    editor(&mut harness).open_upload(&name, text.into_bytes(), &strings);
+    harness.run();
+    assert_eq!(node_count(&mut harness), 2);
+    let ws = editor(&mut harness);
+    assert!(!ws.document().is_draft());
+    let path = ws.document().path().unwrap().to_owned();
+    assert_eq!(ws.file_label(&path), "plan.aicm");
+    assert!(ws.browser_files().unwrap().contains(&path));
+    assert_eq!(ws.recent_files(), [path]);
+
+    editor(&mut harness).open_upload("broken.aicm", b"{ not json".to_vec(), &strings);
+    harness.run();
+    harness.get_by_label_contains("Could not open broken.aicm");
+    assert_eq!(node_count(&mut harness), 2, "the open graph stays");
+    let ws = editor(&mut harness);
+    assert_eq!(
+        ws.browser_files().unwrap().len(),
+        1,
+        "a broken file isn't kept"
+    );
+}
+
+/// eframe storage in memory, as the browser's local storage would hold it.
+#[derive(Default)]
+struct MemoryStorage(std::collections::HashMap<String, String>);
+
+impl eframe::Storage for MemoryStorage {
+    fn get_string(&self, key: &str) -> Option<String> {
+        self.0.get(key).cloned()
+    }
+    fn set_string(&mut self, key: &str, value: String) {
+        self.0.insert(key.to_owned(), value);
+    }
+    fn remove_string(&mut self, key: &str) {
+        self.0.remove(key);
+    }
+    fn flush(&mut self) {}
+}
+
+#[test]
+fn in_the_browser_the_last_graph_reopens_from_storage() {
+    let mut harness = browser_harness();
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    let mut storage = MemoryStorage::default();
+    eframe::App::save(harness.state_mut(), &mut storage);
+
+    let catalog = aic_data::load(&fixture("tests/fixtures/satisfactory/vtest"), "en").unwrap();
+    let mut again = Harness::builder()
+        .with_size(WINDOW_SIZE)
+        .build_eframe(|cc| {
+            aic_app::theme::install(&cc.egui_ctx);
+            App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
+        });
+    again.run();
+    assert_eq!(node_count(&mut again), 1);
+    assert!(editor(&mut again).document().is_draft());
 }

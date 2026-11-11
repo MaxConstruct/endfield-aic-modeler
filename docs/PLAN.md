@@ -53,7 +53,8 @@ Tech:
 **Audience and release**
 
 - The goal is a public tool. The repo stays private (or at least unannounced) until Max is happy with it.
-- Targets: macOS and Windows. Linux may build but isn't supported. A wasm web build comes later (M9).
+- Targets: macOS and Windows. Linux may build but isn't supported. A wasm web build (M9) runs in the
+  browser from any static site.
 - Until the repo goes public there are no CI binaries; everything is built from source. After that,
   releases are unsigned binaries on GitHub Releases, with README steps for Gatekeeper and SmartScreen.
 - Code license: MIT OR Apache-2.0. Game data and icons belong to Hypergryph/Gryphline and are committed to
@@ -633,10 +634,22 @@ Done, except where noted.
 - Validate output by loading it with `aic-data` and running the same consistency checks as the M1 tests.
 
 ### M9: Web build
-- `wasm32-unknown-unknown` build of `aic-app` with eframe's web runner.
-- Load `data/<version>/` from the same site with `fetch`, then `Catalog::from_bytes`.
-- Save/open becomes download/upload. Recent files and settings use eframe storage.
-- Must stay on the `microlp` backend.
+Done.
+- `wasm32-unknown-unknown` build of `aic-app` with eframe's web runner, built by Trunk:
+  `scripts/build-web.sh` writes `target/web/` (`--serve` serves a debug build with live reload).
+  `crates/aic-app/index.html` and `Trunk.toml` hold the setup; Trunk uses the `wasm-bindgen-cli`
+  installed with Cargo at the version in `Cargo.lock`, so the build downloads no tools of its own.
+- Data comes from the same site: Trunk copies `data/` next to the page, and on `wasm32` `build.rs`
+  writes the list of its files (paths only, no bytes). The app fetches them all at startup with a
+  loading screen, puts them in an `aic_data::Bundle::from_owned`, and from there loads exactly as the
+  desktop app loads its built-in data, version switching included.
+- Files live in a `FileStore` (`store.rs`): the disk on the desktop, the browser's storage on the
+  web (`BrowserFiles`, kept in eframe storage, which is the browser's local storage). Drafts, the
+  last document and Open Recent work the same on both. In the browser, Save As asks for a name, keeps
+  the file and downloads a copy; Save downloads it again; Open uploads a `.aicm` into the browser's
+  storage and opens it; Export PNG downloads the image.
+- Stays on the `microlp` backend; `aic-core` builds for `wasm32` unchanged. Times use `web-time`,
+  since `std::time::Instant` panics in the browser.
 
 ---
 

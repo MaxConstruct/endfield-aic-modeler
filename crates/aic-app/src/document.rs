@@ -12,7 +12,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use web_time::Instant;
 
 use aic_core::{
     EditError, Graph, LinkError, LinkId, Member, NodeId, NodeKind, Port, PortRef, Pos, Side,

@@ -14,13 +14,14 @@ use crate::canvas::{self, Canvas, CanvasEvent, Selection};
 use crate::data::{DataChoice, DataFolder};
 use crate::document::{Anchor, Document, port_ref};
 use crate::edit::Shortcut;
-use crate::files::Pending;
+use crate::files::{Download, Pending, Upload};
 use crate::format;
 use crate::i18n::Strings;
 use crate::names;
 use crate::picker::{self, Choice, Origin, Picker};
 use crate::port_menu::{self, PortMenu};
 use crate::settings::{Availability, SettingsWindow};
+use crate::store::FileStore;
 use crate::throttle::Throttle;
 use crate::widgets::colors;
 
@@ -53,6 +54,14 @@ pub struct Editor {
     pub(crate) recent_files: Vec<PathBuf>,
     /// Where drafts are saved; `None` keeps new graphs in memory until Save As.
     pub(crate) drafts_dir: Option<PathBuf>,
+    /// Where files are read and written: the disk, or the browser's storage.
+    pub(crate) store: FileStore,
+    /// Files for the browser to download.
+    pub(crate) downloads: Vec<Download>,
+    /// The name typed into the browser's Save As prompt, while it is open.
+    pub(crate) save_as_prompt: Option<String>,
+    /// The file the player is picking in the browser, once read.
+    pub(crate) upload: Option<std::sync::mpsc::Receiver<Upload>>,
     pub(crate) autosave: Throttle,
     /// The canvas view as last saved, so moving the view also gets saved.
     pub(crate) saved_view: Option<CanvasView>,
@@ -63,9 +72,9 @@ pub struct Editor {
     /// Decoded icons belong to the old data after a switch.
     pub(crate) icons_stale: bool,
     /// The shortcut last pressed, and when: its toolbar button lights up for a moment.
-    pub(crate) flash: Option<(Shortcut, std::time::Instant)>,
+    pub(crate) flash: Option<(Shortcut, web_time::Instant)>,
     /// When the document was last written, and whether the last try failed.
-    pub(crate) last_saved: Option<std::time::Instant>,
+    pub(crate) last_saved: Option<web_time::Instant>,
     pub(crate) save_failed: bool,
     /// Where to save the canvas once the window is next drawn.
     pub(crate) export_to: Option<PathBuf>,
@@ -100,6 +109,10 @@ impl Editor {
             clipboard: None,
             recent_files: Vec::new(),
             drafts_dir: None,
+            store: FileStore::default(),
+            downloads: Vec::new(),
+            save_as_prompt: None,
+            upload: None,
             autosave: Throttle::new(crate::files::AUTOSAVE_INTERVAL),
             saved_view: None,
             other_data_version: None,
@@ -266,6 +279,7 @@ impl Editor {
 
     pub fn ui(&mut self, ui: &mut Ui, strings: &Strings) {
         self.handle_close_request(ui.ctx(), strings);
+        self.poll_upload(ui.ctx(), strings);
         if std::mem::take(&mut self.icons_stale) {
             crate::widgets::forget_icons(ui.ctx());
         }
@@ -311,6 +325,7 @@ impl Editor {
         self.doc.sync_from_view(&self.catalog);
         self.picker_ui(ui.ctx(), strings);
         self.port_menu_ui(ui.ctx(), strings);
+        self.save_as_prompt_ui(ui.ctx(), strings);
         let data = self
             .data
             .as_ref()
@@ -636,7 +651,7 @@ impl Editor {
             ui.menu_button(strings.get("menu-open-recent"), |ui| {
                 let mut chosen = None;
                 for path in &self.recent_files {
-                    let name = path.display().to_string();
+                    let name = self.store.label(path);
                     if ui.button(name).clicked() {
                         chosen = Some(path.clone());
                     }
