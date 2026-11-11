@@ -254,6 +254,11 @@ impl Editor {
         self.canvas.rect.center()
     }
 
+    /// Zooms the canvas to `zoom` (1 is 100%) around its middle, from the next frame.
+    pub fn zoom_canvas_to(&mut self, zoom: f32) {
+        self.canvas.zoom_to(zoom);
+    }
+
     /// The top-left of the canvas, on screen: where [`Self::canvas_view`]'s point is.
     pub fn canvas_corner_on_screen(&self) -> Pos2 {
         self.canvas.rect.min

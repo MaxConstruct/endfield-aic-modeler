@@ -25,8 +25,19 @@ use egui_snarl::{InPinId, OutPinId, Snarl};
 /// A node's id in the egui-snarl view. Not stable: snarl reuses it after a removal.
 pub type ViewId = egui_snarl::NodeId;
 
+/// How much bigger the view's space is than the graph's. The canvas lays its cards out at its
+/// largest zoom and shrinks the picture to the zoom shown, so text stays sharp up to that zoom (see
+/// `canvas::MAX_ZOOM`); positions in the view are graph positions times this. Files, the graph and
+/// everything outside the canvas keep graph positions.
+pub const VIEW_SCALE: f32 = 2.0;
+
+/// A graph position as a view position.
+fn to_view(pos: Pos) -> Pos2 {
+    Pos2::new(pos.x, pos.y) * VIEW_SCALE
+}
+
 /// Where a new node's edge should land once its size is known: its right edge for a node that
-/// feeds the port it was added from, its left edge for one that the port feeds.
+/// feeds the port it was added from, its left edge for one that the port feeds. In graph space.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Anchor {
     Left(f32),
@@ -238,7 +249,7 @@ impl Document {
                 Member::Node(id) => self.graph.nodes()[id].pos,
                 Member::Workspace(id) => self.graph.workspaces()[id].pos,
             };
-            let view_id = self.view.insert_node(Pos2::new(pos.x, pos.y), member);
+            let view_id = self.view.insert_node(to_view(pos), member);
             self.view_ids.insert(member, view_id);
         }
         let links: Vec<LinkId> = self.graph.links().keys().collect();
@@ -282,7 +293,7 @@ impl Document {
         )
     }
 
-    /// The canvas's nodes and wires.
+    /// The canvas's nodes and wires, at view positions ([`VIEW_SCALE`]).
     pub fn view(&self) -> &Snarl<Member> {
         &self.view
     }
@@ -305,13 +316,14 @@ impl Document {
         Ok(())
     }
 
-    /// Adds a node to the level shown.
+    /// Adds a node to the level shown, at `pos` in graph space.
     pub fn add_node(&mut self, kind: NodeKind, pos: Pos2) -> NodeId {
+        let pos = Pos { x: pos.x, y: pos.y };
         let id = self
             .graph
-            .add_node_in(kind, Pos { x: pos.x, y: pos.y }, self.level)
+            .add_node_in(kind, pos, self.level)
             .expect("the level shown exists");
-        let view_id = self.view.insert_node(pos, Member::Node(id));
+        let view_id = self.view.insert_node(to_view(pos), Member::Node(id));
         self.view_ids.insert(Member::Node(id), view_id);
         self.changed();
         id
@@ -519,6 +531,7 @@ impl Document {
     pub fn sync_from_view(&mut self, catalog: &Catalog) {
         for (view_id, pos, &member) in self.view.nodes_pos_ids() {
             debug_assert_eq!(self.view_ids.get(&member), Some(&view_id));
+            let pos = pos / VIEW_SCALE;
             let new = Pos { x: pos.x, y: pos.y };
             // Position doesn't affect the solve, so a move doesn't make the solution stale.
             match member {

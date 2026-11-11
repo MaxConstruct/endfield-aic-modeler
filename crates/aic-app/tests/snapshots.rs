@@ -1778,7 +1778,8 @@ fn the_facility_name_sits_under_the_recipe_title() {
     );
     harness.run();
     assert!(editor(&mut harness).node_on_screen(node).is_some());
-    // Labels on the canvas report graph-space rects; the two are compared with each other.
+    // Labels on the canvas report rects in the canvas's view space; the two are compared with each
+    // other.
     let facility = harness.get_by_label("Seed-Picking Unit").rect();
     let title = harness
         .get_all_by_label("Buckflower Seed")
@@ -1795,6 +1796,30 @@ fn the_facility_name_sits_under_the_recipe_title() {
         "lined up with the title"
     );
     snapshot_graph(&mut harness, "facility_in_header");
+}
+
+#[test]
+fn card_text_is_drawn_at_200_percent() {
+    let mut harness = harness(&fixture("../../data/v1.5.3"));
+    add(
+        &mut harness,
+        NodeKind::Recipe {
+            recipe: "plant_moss_seed_1".into(),
+            facility: "seedcol_1".into(),
+            limit: None,
+        },
+        460.0,
+        330.0,
+    );
+    harness.run();
+    editor(&mut harness).zoom_canvas_to(2.0);
+    harness.run();
+    let zoom = editor(&mut harness)
+        .canvas_view()
+        .expect("canvas is shown")
+        .zoom;
+    assert!((zoom - 2.0).abs() < 1e-4, "zoom is {zoom}");
+    harness.snapshot("card_at_200");
 }
 
 #[test]
@@ -1823,16 +1848,17 @@ fn a_cards_body_is_centered_whichever_ports_it_has() {
     ];
     harness.run();
     snapshot_graph(&mut harness, "centered_bodies");
-    // Labels on the canvas report graph-space rects; the cards are taken to graph space too.
+    // Labels on the canvas report rects in the canvas's view space; the cards are taken there too.
     let fields: Vec<eframe::egui::Rect> = harness
         .get_all_by_role_and_label(eframe::egui::accesskit::Role::TextInput, "Node limit")
         .map(|n| n.rect())
         .collect();
     for node in nodes {
         let card = node_rect(&mut harness, node);
+        let view = aic_app::document::VIEW_SCALE;
         let card = eframe::egui::Rect::from_min_max(
-            graph_point(&mut harness, card.min),
-            graph_point(&mut harness, card.max),
+            graph_point(&mut harness, card.min) * view,
+            graph_point(&mut harness, card.max) * view,
         );
         let field = fields
             .iter()

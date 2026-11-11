@@ -215,7 +215,10 @@ Panels toggle away; the canvas never does.
 egui `Spacing` (in `theme::apply`): `item_spacing` 8x3, `button_padding` 8x2, `interact_size` 40x20,
 `window_margin` 10, `menu_margin` 4, `indent` 16, `icon_width` 14 (inner 8, spacing 6),
 `combo_height` 320, `ScrollStyle::thin()` (floating). Canvas: 40pt grid (`BackgroundPattern::grid`),
-cards fixed at 300pt wide with 6pt inner margin, 32pt item-icon pins, 64pt facility image, 2pt wires.
+cards fixed at 300pt wide with 6pt inner margin, 48pt item-icon pins, 64pt facility image, 2pt wires.
+Sizes are points at 100%. The canvas is laid out at its 200% maximum and drawn shrunk (egui-snarl's
+`crisp_magnified_text`), so card text is rasterized at the size shown and stays sharp when zoomed
+in; `canvas::crisp` converts a size, `document::VIEW_SCALE` converts positions.
 Toolbar buttons are 30x26.
 
 **The 1x-First Rule.** Design at 1x (1440p, Windows 100%), then check 1.5x and 2x. Custom painting snaps to pixels; hairlines are 1pt. `subpixel_binning` is off so text renders the same everywhere.

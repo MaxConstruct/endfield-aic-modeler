@@ -22,7 +22,9 @@ use egui_snarl::ui::{
 };
 use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 
-use crate::document::{Anchor, Document, PinTarget, ViewId, is_port, pin_targets, port_ref};
+use crate::document::{
+    Anchor, Document, PinTarget, VIEW_SCALE, ViewId, is_port, pin_targets, port_ref,
+};
 use crate::format;
 use crate::i18n::Strings;
 use crate::names;
@@ -31,7 +33,10 @@ use crate::theme;
 use crate::widgets::{self, ItemPicture, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
 
 const CANVAS_ID: &str = "aic-canvas";
-/// How far from a port a node added from it is placed, in graph units.
+// Sizes below are in points at 100%. Inside the canvas everything is laid out at the largest zoom
+// (egui-snarl's crisp mode, so text stays sharp when zoomed in) and drawn shrunk; `crisp` turns a
+// size into view space there. Text styles and egui's spacing are scaled by snarl itself.
+/// How far from a port a node added from it is placed.
 const PORT_GAP: f32 = 80.0;
 /// Size of the facility picture on a recipe card (and the depot picture on a source or sink).
 const FACILITY_IMAGE: f32 = 64.0;
@@ -48,19 +53,27 @@ const NODE_MARGIN: i8 = 6;
 const CARD_WIDTH: f32 = 300.0;
 /// How far a port column reaches into the card, from inside its margin.
 const PORT_COLUMN: f32 = PIN_ICON - NODE_MARGIN as f32 + RATE_GAP + RATE_WIDTH;
+/// A card's corner radius, in view space.
+const CARD_RADIUS: u8 = theme::radius::MEDIUM * VIEW_SCALE as u8;
 /// Room left at the top of a workspace's canvas for the back button and the add-port buttons.
 const EDGE_TOP: f32 = 48.0;
 /// Space between a workspace's port tiles and the canvas edge, and between two tiles.
 const EDGE_GAP: f32 = 8.0;
 /// How far the pointer moves with the right button down before it draws a selection box.
 const BOX_THRESHOLD: f32 = 4.0;
-/// How far the canvas zooms out and in.
+/// How far the canvas zooms out and in. The canvas is laid out at `MAX_ZOOM`, which is what the
+/// document's view space is scaled by.
 pub const MIN_ZOOM: f32 = 0.2;
-pub const MAX_ZOOM: f32 = 2.0;
+pub const MAX_ZOOM: f32 = VIEW_SCALE;
 /// The wheel and the slider zoom in whole steps of this: 65%, 70%, never 67%.
 pub const ZOOM_STEP: f32 = 0.05;
 /// The zooms the status bar's − and + step through.
 const ZOOM_STEPS: [f32; 7] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+/// A size in points at 100% as a size in view space, where the canvas lays its cards out.
+const fn crisp(points: f32) -> f32 {
+    points * VIEW_SCALE
+}
 
 /// `zoom` to the nearest whole [`ZOOM_STEP`], within the range.
 fn round_zoom(zoom: f32) -> f32 {
@@ -237,6 +250,8 @@ pub struct Canvas {
     right_press: Option<(Pos2, TSTransform)>,
     /// The workspace name being typed in a card's menu.
     title_edit: String,
+    /// The levels shown so far; egui-snarl places its camera the first time it sees one.
+    shown_levels: std::collections::HashSet<Option<WorkspaceId>>,
 }
 
 impl Default for Canvas {
@@ -248,6 +263,10 @@ impl Default for Canvas {
                 pin_size: Some(PIN_ICON),
                 wire_width: Some(2.0),
                 collapsible: Some(false),
+                // Lay the canvas out at the largest zoom and shrink it, so text is drawn at the
+                // size it is shown and stays sharp up to 200%. Positions in the view are scaled to
+                // match (`VIEW_SCALE`).
+                crisp_magnified_text: Some(true),
                 min_scale: Some(MIN_ZOOM),
                 max_scale: Some(MAX_ZOOM),
                 bg_pattern: Some(BackgroundPattern::grid(vec2(40.0, 40.0), 0.0)),
@@ -278,6 +297,7 @@ impl Default for Canvas {
             top_view: None,
             right_press: None,
             title_edit: String::new(),
+            shown_levels: Default::default(),
         }
     }
 }
@@ -289,12 +309,17 @@ impl Canvas {
         if !self.rect.is_positive() {
             return None;
         }
-        let corner = self.to_global.inverse() * self.rect.min;
+        let corner = self.to_global.inverse() * self.rect.min / VIEW_SCALE;
         Some(aic_core::CanvasView {
             x: corner.x,
             y: corner.y,
-            zoom: self.to_global.scaling,
+            zoom: self.zoom(),
         })
+    }
+
+    /// The zoom shown: 1 at 100%. The camera's own scaling is in view space.
+    fn zoom(&self) -> f32 {
+        self.to_global.scaling * VIEW_SCALE
     }
 
     /// Where the top of the graph is looked at, even while a workspace is open. Saved with the file.
@@ -318,20 +343,18 @@ impl Canvas {
 
     /// The middle of the visible canvas, in graph space.
     pub fn center(&self) -> Pos2 {
-        self.to_global.inverse() * self.rect.center()
+        self.to_global.inverse() * self.rect.center() / VIEW_SCALE
     }
 
+    /// A point in graph space, on screen.
     pub fn to_screen(&self, graph_pos: Pos2) -> Pos2 {
-        self.to_global * graph_pos
+        self.to_global * (graph_pos * VIEW_SCALE)
     }
 
     /// Where a node or workspace card was drawn last frame, on screen.
     pub fn item_on_screen(&self, member: Member) -> Option<Rect> {
         let rect = self.node_rects.get(&member)?;
-        Some(Rect::from_min_max(
-            self.to_screen(rect.min),
-            self.to_screen(rect.max),
-        ))
+        Some(self.to_global * *rect)
     }
 
     /// Where the port of `item` on `node`'s `side` was drawn last frame, on screen.
@@ -359,7 +382,7 @@ impl Canvas {
             }),
         };
         let center = *self.pins.borrow().get(&key)?;
-        Some(self.to_screen(center))
+        Some(self.to_global * center)
     }
 
     pub fn show(
@@ -392,6 +415,9 @@ impl Canvas {
             })
             .map(|(view_id, pos, _)| (view_id, pos))
             .collect();
+        // egui-snarl fits its camera to the nodes the first time it sees a level. With none to fit,
+        // start at 100% instead.
+        let fresh = self.shown_levels.insert(level) && view.nodes().next().is_none();
         let zoom = match self.pending_zoom.take() {
             Some(zoom) => Some((self.rect.center(), zoom)),
             None => self.wheel_zoom(ui),
@@ -408,6 +434,7 @@ impl Canvas {
             pins: &self.pins,
             to_global: &mut self.to_global,
             hold: self.right_press.map(|(_, camera)| camera),
+            fresh,
             zoom,
             level,
             canvas_rect: self.rect,
@@ -417,9 +444,10 @@ impl Canvas {
                 .take()
                 .filter(|_| level.is_none())
                 .map(|view| {
-                    // Screen = zoom × graph + translation, with the view's corner at the canvas corner.
+                    // Screen = zoom × graph + translation, with the view's corner at the canvas
+                    // corner; the camera's scaling is in view space.
                     let corner = Pos2::new(view.x, view.y).to_vec2() * view.zoom;
-                    TSTransform::new(self.rect.min.to_vec2() - corner, view.zoom)
+                    TSTransform::new(self.rect.min.to_vec2() - corner, view.zoom / VIEW_SCALE)
                 }),
             node_rects: &mut self.node_rects,
             pin_cache: HashMap::new(),
@@ -471,7 +499,7 @@ impl Canvas {
         {
             events.push(CanvasEvent::OpenPicker {
                 origin: Origin::Canvas,
-                graph_pos: self.to_global.inverse() * pos,
+                graph_pos: self.to_global.inverse() * pos / VIEW_SCALE,
             });
         }
         events
@@ -563,7 +591,7 @@ impl Canvas {
         }
         ui.ctx().input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
         let speed = ui.ctx().options(|o| o.input_options.scroll_zoom_speed);
-        let current = self.to_global.scaling;
+        let current = self.zoom();
         let wanted = current * self.wheel_rest * (speed * (delta.x + delta.y)).exp();
         let zoom = round_zoom(wanted);
         // Past either end of the range, the rest of the scroll is dropped.
@@ -843,21 +871,21 @@ impl SnarlPin for RecordingPin {
         };
         if rect.is_finite() {
             // Links run behind cards, so a link seems to end at the card's edge, at this tile.
-            painter.rect_filled(rect, 4.0, fill.gamma_multiply(0.35));
-            picture.paint(painter, rect.shrink(3.0));
+            painter.rect_filled(rect, crisp(4.0), fill.gamma_multiply(0.35));
+            picture.paint(painter, rect.shrink(crisp(3.0)));
             if self.throttled {
                 paint_throttle_marker(painter, rect);
             }
             if let Some(rate) = &self.rate {
                 // The icon's own rect, not one hovered larger.
-                let icon = Rect::from_center_size(rect.center(), Vec2::splat(PIN_ICON));
+                let icon = Rect::from_center_size(rect.center(), Vec2::splat(crisp(PIN_ICON)));
                 let (anchor, align) = match self.side {
                     Side::Input => (
-                        icon.right_center() + vec2(RATE_GAP, 0.0),
+                        icon.right_center() + vec2(crisp(RATE_GAP), 0.0),
                         egui::Align2::LEFT_CENTER,
                     ),
                     Side::Output => (
-                        icon.left_center() - vec2(RATE_GAP, 0.0),
+                        icon.left_center() - vec2(crisp(RATE_GAP), 0.0),
                         egui::Align2::RIGHT_CENTER,
                     ),
                 };
@@ -865,7 +893,7 @@ impl SnarlPin for RecordingPin {
                     anchor,
                     align,
                     &rate.text,
-                    FontId::monospace(theme::text::MONO),
+                    egui::TextStyle::Monospace.resolve(style),
                     rate.color,
                 );
             }
@@ -885,7 +913,10 @@ struct Rate {
 
 /// A small warning triangle in the top corner of a port's tile.
 fn paint_throttle_marker(painter: &egui::Painter, tile: Rect) {
-    let rect = Rect::from_min_size(tile.right_top() - vec2(11.0, -1.0), vec2(10.0, 10.0));
+    let rect = Rect::from_min_size(
+        tile.right_top() - vec2(crisp(11.0), crisp(-1.0)),
+        Vec2::splat(crisp(10.0)),
+    );
     let points = vec![
         Pos2::new(rect.center().x, rect.top()),
         rect.right_bottom(),
@@ -914,6 +945,8 @@ struct Viewer<'a> {
     pending_view: Option<TSTransform>,
     /// A camera to keep, whatever snarl's pan and zoom did this frame.
     hold: Option<TSTransform>,
+    /// The level is shown for the first time, empty: its camera starts at 100%.
+    fresh: bool,
     /// A zoom this frame: the point on screen that holds still, and the new zoom.
     zoom: Option<(Pos2, f32)>,
     /// The workspace shown, whose ports sit on the canvas's edges.
@@ -1003,7 +1036,7 @@ impl Viewer<'_> {
                 side,
                 item,
             },
-            graph_pos: center + vec2(offset, 0.0),
+            graph_pos: center / VIEW_SCALE + vec2(offset, 0.0),
         });
     }
 
@@ -1045,19 +1078,25 @@ impl Viewer<'_> {
         };
         let rect = match side {
             Side::Input => Rect::from_min_max(
-                Pos2::new(column.left() + PORT_COLUMN - RATE_WIDTH, column.top()),
-                Pos2::new(column.left() + PORT_COLUMN, column.top() + PIN_ICON),
+                Pos2::new(
+                    column.left() + crisp(PORT_COLUMN - RATE_WIDTH),
+                    column.top(),
+                ),
+                Pos2::new(
+                    column.left() + crisp(PORT_COLUMN),
+                    column.top() + crisp(PIN_ICON),
+                ),
             ),
             Side::Output => Rect::from_min_max(
-                Pos2::new(column.right() - PORT_COLUMN, column.top()),
+                Pos2::new(column.right() - crisp(PORT_COLUMN), column.top()),
                 Pos2::new(
-                    column.right() - PORT_COLUMN + RATE_WIDTH,
-                    column.top() + PIN_ICON,
+                    column.right() - crisp(PORT_COLUMN - RATE_WIDTH),
+                    column.top() + crisp(PIN_ICON),
                 ),
             ),
         };
         ui.allocate_exact_size(
-            vec2((PORT_COLUMN - used).max(0.0), PIN_ICON),
+            vec2((crisp(PORT_COLUMN) - used).max(0.0), crisp(PIN_ICON)),
             Sense::hover(),
         );
         let rate = Rate {
@@ -1081,7 +1120,7 @@ impl Viewer<'_> {
         // egui-snarl owns the pin's own clicks, and a primary click on a pin does nothing there,
         // so a double-click on the icon is read from the pointer.
         let on_icon = pin_center.is_some_and(|center| {
-            let icon = Rect::from_center_size(center, Vec2::splat(PIN_ICON));
+            let icon = Rect::from_center_size(center, Vec2::splat(crisp(PIN_ICON)));
             let from_screen = self.to_global.inverse();
             ui.input(|i| {
                 let pointer = &i.pointer;
@@ -1098,7 +1137,7 @@ impl Viewer<'_> {
             let graph_pos = pin_center.unwrap_or(match side {
                 Side::Input => rect.left_center(),
                 Side::Output => rect.right_center(),
-            });
+            }) / VIEW_SCALE;
             self.events.push(CanvasEvent::OpenPortMenu {
                 port: Port {
                     node: id,
@@ -1145,7 +1184,7 @@ impl Viewer<'_> {
             id: Id::new(("node-limit", id)),
             buffer,
             current: limit,
-            width: 76.0,
+            width: crisp(76.0),
             hint: self.strings.get("node-no-limit"),
             label: self.strings.get("node-limit-label"),
         };
@@ -1165,7 +1204,7 @@ impl Viewer<'_> {
             .filter(|&node| !is_port(self.graph, node))
             .count();
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("🏭").size(FACILITY_IMAGE * 0.6));
+            ui.label(RichText::new("🏭").size(crisp(FACILITY_IMAGE * 0.6)));
             ui.label(RichText::new(crate::names::node_count(self.strings, count)).small());
             if ui
                 .small_button(self.strings.get("workspace-open"))
@@ -1181,7 +1220,7 @@ impl Viewer<'_> {
         let text = format::short(value);
         ui.label(
             RichText::new(if text.is_empty() { " ".into() } else { text })
-                .font(theme::number(theme::text::NUMBER))
+                .text_style(theme::number_style())
                 .color(theme::color::TEXT_STRONG),
         );
     }
@@ -1190,7 +1229,7 @@ impl Viewer<'_> {
 /// A card's title, cut short with an ellipsis to fit the card; the whole title shows on hover.
 fn title_label(ui: &mut Ui, text: RichText) {
     let width =
-        CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN) - 2.0 * ui.spacing().window_margin.leftf();
+        crisp(CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN)) - 2.0 * ui.spacing().window_margin.leftf();
     ui.set_max_width(width);
     ui.add(egui::Label::new(text).truncate());
 }
@@ -1202,7 +1241,7 @@ fn body_width(ui: &Ui, inputs: &[InPin], outputs: &[OutPin]) -> f32 {
         .filter(|empty| !**empty)
         .count() as f32;
     let spacing = ui.spacing().item_spacing.x;
-    CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN) - columns * PORT_COLUMN - 2.0 * spacing
+    crisp(CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN) - columns * PORT_COLUMN) - 2.0 * spacing
 }
 
 /// Fills the body's width and lays `add` out in a column centered on the card. With ports on one
@@ -1217,8 +1256,8 @@ fn centered_body<R>(
     let width = body_width(ui, inputs, outputs);
     ui.set_width(width);
     let (left, column) = match (inputs.is_empty(), outputs.is_empty()) {
-        (true, false) => (PORT_COLUMN, width - PORT_COLUMN),
-        (false, true) => (0.0, width - PORT_COLUMN),
+        (true, false) => (crisp(PORT_COLUMN), width - crisp(PORT_COLUMN)),
+        (false, true) => (0.0, width - crisp(PORT_COLUMN)),
         _ => (0.0, width),
     };
     let rect = Rect::from_min_size(
@@ -1266,10 +1305,10 @@ impl SnarlViewer<Member> for Viewer<'_> {
         snarl: &Snarl<Member>,
     ) -> egui::Frame {
         let frame = default
-            .corner_radius(CornerRadius::same(theme::radius::MEDIUM))
-            .inner_margin(egui::Margin::same(NODE_MARGIN));
+            .corner_radius(CornerRadius::same(CARD_RADIUS))
+            .inner_margin(egui::Margin::same(crisp(f32::from(NODE_MARGIN)) as i8));
         if self.selection.is_some_and(|s| s.contains(snarl[node])) {
-            frame.stroke(Stroke::new(2.0, colors::ACCENT))
+            frame.stroke(Stroke::new(crisp(2.0), colors::ACCENT))
         } else {
             frame
         }
@@ -1312,7 +1351,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
             Member::Workspace(_) => {
                 return default
                     .fill(theme::color::node::WORKSPACE)
-                    .corner_radius(CornerRadius::same(theme::radius::MEDIUM));
+                    .corner_radius(CornerRadius::same(CARD_RADIUS));
             }
         };
         use theme::color::node;
@@ -1326,7 +1365,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
         };
         default
             .fill(tint)
-            .corner_radius(CornerRadius::same(theme::radius::MEDIUM))
+            .corner_radius(CornerRadius::same(CARD_RADIUS))
     }
 
     fn show_header(
@@ -1475,7 +1514,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
         };
         // A port tile is its pin and rate alone; this keeps the rate inside the tile.
         if let NodeKind::WorkspacePort { .. } = kind {
-            ui.set_min_width(PIN_ICON * 0.5);
+            ui.set_min_width(crisp(PIN_ICON * 0.5));
             return;
         }
         let rate = self.solution.rate.get(&id).copied().flatten();
@@ -1490,7 +1529,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     self.catalog,
                     ImageKind::Facility,
                     facility.as_str(),
-                    FACILITY_IMAGE,
+                    crisp(FACILITY_IMAGE),
                 ) {
                     image.on_hover_text(name);
                 }
@@ -1499,7 +1538,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     Some(rounded) => {
                         ui.label(
                             RichText::new(rounded.facilities.to_string())
-                                .font(theme::number(theme::text::NUMBER))
+                                .text_style(theme::number_style())
                                 .color(theme::color::TEXT_STRONG),
                         );
                         let percent = format::short(Some(rounded.utilization * 100.0));
@@ -1521,7 +1560,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     self.catalog,
                     ImageKind::Node,
                     SOURCE_IMAGE,
-                    FACILITY_IMAGE,
+                    crisp(FACILITY_IMAGE),
                 );
                 Self::big_number(ui, rate);
                 self.limit_field(ui, id, Some(*limit), true);
@@ -1536,7 +1575,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     self.catalog,
                     ImageKind::Node,
                     SINK_IMAGE,
-                    FACILITY_IMAGE,
+                    crisp(FACILITY_IMAGE),
                 );
                 Self::big_number(ui, rate);
                 self.limit_field(ui, id, *limit, false);
@@ -1545,7 +1584,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 Self::big_number(ui, rate);
                 for (coupon, earned) in self.solution.coupons.get(&id).into_iter().flatten() {
                     ui.horizontal(|ui| {
-                        widgets::item_icon(ui, self.catalog, coupon.as_str(), 16.0);
+                        widgets::item_icon(ui, self.catalog, coupon.as_str(), crisp(16.0));
                         let text = self
                             .strings
                             .format("outpost-earns", &[("rate", &format::short(Some(*earned)))]);
@@ -1586,8 +1625,8 @@ impl SnarlViewer<Member> for Viewer<'_> {
             && let Some(&anchor) = self.anchors.get(&id)
         {
             let dx = match anchor {
-                Anchor::Left(x) => x - rect.left(),
-                Anchor::Right(x) => x - rect.right(),
+                Anchor::Left(x) => x * VIEW_SCALE - rect.left(),
+                Anchor::Right(x) => x * VIEW_SCALE - rect.right(),
             };
             if dx.abs() < 0.5 {
                 self.anchors.remove(&id);
@@ -1729,7 +1768,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
         };
         self.events.push(CanvasEvent::OpenPicker {
             origin,
-            graph_pos: pos,
+            graph_pos: pos / VIEW_SCALE,
         });
         ui.close();
     }
@@ -1798,17 +1837,17 @@ impl SnarlViewer<Member> for Viewer<'_> {
 
     fn current_transform(&mut self, to_global: &mut TSTransform, snarl: &mut Snarl<Member>) {
         // egui-snarl fits the view to its nodes the first time it sees the canvas. With no nodes
-        // that fit divides by zero; start from the plain view instead.
+        // there is nothing to fit; start from the plain view at 100% instead.
         let usable = to_global.scaling.is_finite()
             && to_global.scaling > 0.0
             && to_global.translation.is_finite();
-        if !usable {
-            *to_global = TSTransform::IDENTITY;
+        if !usable || self.fresh {
+            *to_global = TSTransform::from_scaling(1.0 / VIEW_SCALE);
         }
         if let Some((fixed, zoom)) = self.zoom {
-            // The graph point at `fixed` stays there.
+            // The graph point at `fixed` stays there. The camera's scaling is in view space.
             let under = to_global.inverse() * fixed;
-            let zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+            let zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM) / VIEW_SCALE;
             *to_global = TSTransform::new(fixed.to_vec2() - under.to_vec2() * zoom, zoom);
         }
         if let Some(view) = self.pending_view.take() {
@@ -1922,23 +1961,24 @@ impl LinkLabels<'_> {
                 } else {
                     visuals.text_color()
                 };
-                let galley =
-                    painter.layout_no_wrap(text, FontId::proportional(theme::text::SMALL), color);
-                let rect = Rect::from_center_size(a.lerp(b, 0.5), galley.size()).expand(3.0);
+                let font = FontId::proportional(crisp(theme::text::SMALL));
+                let galley = painter.layout_no_wrap(text, font, color);
+                let pad = crisp(3.0);
+                let rect = Rect::from_center_size(a.lerp(b, 0.5), galley.size()).expand(pad);
                 let selected = self.selection == Some(&Selection::Link(id));
                 let stroke = if selected {
-                    Stroke::new(1.5, colors::ACCENT)
+                    Stroke::new(crisp(1.5), colors::ACCENT)
                 } else {
                     Stroke::NONE
                 };
                 painter.rect(
                     rect,
-                    3.0,
+                    pad,
                     visuals.extreme_bg_color.gamma_multiply(0.9),
                     stroke,
                     egui::StrokeKind::Outside,
                 );
-                painter.galley(rect.min + vec2(3.0, 3.0), galley, color);
+                painter.galley(rect.min + Vec2::splat(pad), galley, color);
                 if clicked_at.is_some_and(|pos| rect.contains(pos)) {
                     clicked = Some(id);
                 }
