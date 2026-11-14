@@ -24,4 +24,4 @@ pub use command::{Chord, ChordKey, Command};
 pub use document::{Document, Level};
 pub use files::Opened;
 pub use selection::Selection;
-pub use session::{FileCommand, Outcome, Session, ViewCommand};
+pub use session::{Applied, FileCommand, Outcome, Session, ViewCommand};

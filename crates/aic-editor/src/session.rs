@@ -56,10 +56,25 @@ pub enum Outcome {
     File(FileCommand),
     /// Text for the system clipboard: the copied nodes as a save file.
     WriteClipboard(String),
+    /// The system clipboard is the UI's to read: it calls [`Session::paste_text`] with what it
+    /// finds.
+    ReadClipboard,
+    /// An undo or redo replaced the graph: what a popup or menu pointed at may be gone.
+    Restored,
     /// A view command, for the UI's layout.
     View(ViewCommand),
     /// There was nothing to do.
     Nothing,
+}
+
+/// What [`Session::apply_settings`] leaves to the UI.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Applied {
+    /// The last document, reopened, with the camera saved in it; `None` if there was none or it
+    /// didn't open.
+    pub opened: Option<crate::files::Opened>,
+    /// Whether the status bar shows performance; a UI flag the session only carries.
+    pub show_performance: bool,
 }
 
 pub struct Session {
@@ -251,6 +266,30 @@ impl Session {
             recent_files: self.recent_files().to_vec(),
             last_document: self.last_document().map(Path::to_owned),
             show_performance,
+        }
+    }
+
+    /// Applies settings read from a UI's settings file: the data choice (when there is a data
+    /// folder and the choice differs), the raw resource availability and the recent files, then
+    /// reopens the last document. A choice that doesn't load keeps the current data and says why
+    /// in [`Self::status`]; a last document that is gone says so too, and the session carries on
+    /// with its new draft.
+    pub fn apply_settings(&mut self, settings: &Settings) -> Applied {
+        if self
+            .data_choice()
+            .is_some_and(|current| *current != settings.data)
+        {
+            self.switch_data(settings.data.clone());
+        }
+        self.availability = settings.availability.clone();
+        self.set_recent_files(settings.recent_files.clone());
+        let opened = settings
+            .last_document
+            .as_deref()
+            .and_then(|path| self.reopen(path));
+        Applied {
+            opened,
+            show_performance: settings.show_performance,
         }
     }
 
@@ -560,11 +599,14 @@ impl Session {
     }
 
     /// Copies the selection: nodes, and workspaces with everything in them.
-    pub fn copy(&mut self) {
+    /// Returns whether anything was selected to copy.
+    pub fn copy(&mut self) -> bool {
         let items = self.selected_items();
-        if !items.is_empty() {
-            self.clipboard = Some((self.doc.graph().copy_members(&items), 0));
+        if items.is_empty() {
+            return false;
         }
+        self.clipboard = Some((self.doc.graph().copy_members(&items), 0));
+        true
     }
 
     /// The copied nodes as a save file, for the system clipboard.
@@ -699,27 +741,18 @@ impl Session {
             Command::Open => Outcome::File(FileCommand::Open),
             Command::Save => Outcome::File(FileCommand::Save),
             Command::SaveAs => Outcome::File(FileCommand::SaveAs),
-            Command::Undo => {
-                self.undo();
-                Outcome::Done
-            }
-            Command::Redo => {
-                self.redo();
-                Outcome::Done
-            }
+            Command::Undo => Self::restored(self.undo()),
+            Command::Redo => Self::restored(self.redo()),
             Command::Cut => {
-                self.copy();
+                let copied = self.copy();
                 self.delete_selection();
-                self.written()
+                self.written(copied)
             }
             Command::Copy => {
-                self.copy();
-                self.written()
+                let copied = self.copy();
+                self.written(copied)
             }
-            Command::Paste => {
-                self.paste(level);
-                Outcome::Done
-            }
+            Command::Paste => Outcome::ReadClipboard,
             Command::Duplicate => {
                 self.duplicate(level);
                 Outcome::Done
@@ -748,9 +781,20 @@ impl Session {
         }
     }
 
-    fn written(&self) -> Outcome {
+    /// Text for the system clipboard, only if this command copied something: a Copy with nothing
+    /// selected must not overwrite what the player has on the clipboard.
+    fn written(&self, copied: bool) -> Outcome {
         self.copy_text()
+            .filter(|_| copied)
             .map_or(Outcome::Nothing, Outcome::WriteClipboard)
+    }
+
+    fn restored(did: bool) -> Outcome {
+        if did {
+            Outcome::Restored
+        } else {
+            Outcome::Nothing
+        }
     }
 }
 
@@ -958,5 +1002,80 @@ mod tests {
         let graph = session.document().graph();
         assert!(graph.nodes().values().all(|n| n.workspace.is_none()));
         assert_eq!(graph.nodes().len(), 2);
+    }
+
+    #[test]
+    fn copy_writes_the_clipboard_only_when_something_was_copied() {
+        let mut session = session();
+        let node = session.add_node(smelter(), origin(), None);
+        session.select(Some(Selection::node(node)));
+        assert!(matches!(
+            session.run(Command::Copy, None),
+            Outcome::WriteClipboard(_)
+        ));
+        // Nothing selected: the earlier copy must not go to the system clipboard again.
+        session.select(None);
+        assert_eq!(session.run(Command::Copy, None), Outcome::Nothing);
+        assert_eq!(session.run(Command::Cut, None), Outcome::Nothing);
+    }
+
+    #[test]
+    fn paste_asks_the_ui_for_the_system_clipboard() {
+        let mut session = session();
+        let node = session.add_node(smelter(), origin(), None);
+        session.select(Some(Selection::node(node)));
+        session.copy();
+        assert_eq!(session.run(Command::Paste, None), Outcome::ReadClipboard);
+        assert_eq!(
+            session.document().graph().nodes().len(),
+            1,
+            "nothing pasted yet"
+        );
+    }
+
+    #[test]
+    fn undo_and_redo_say_the_graph_was_replaced() {
+        let mut session = session();
+        assert_eq!(session.run(Command::Undo, None), Outcome::Nothing);
+        session.add_node(smelter(), origin(), None);
+        session.checkpoint();
+        assert_eq!(session.run(Command::Undo, None), Outcome::Restored);
+        assert_eq!(session.run(Command::Redo, None), Outcome::Restored);
+        assert_eq!(session.run(Command::Redo, None), Outcome::Nothing);
+    }
+
+    #[test]
+    fn applying_settings_restores_availability_recent_files_and_the_last_document() {
+        let mut one = session();
+        let dir = std::env::temp_dir().join(format!("aic-apply-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        one.add_node(smelter(), origin(), None);
+        let file = dir.join("plan.aicm");
+        one.save_to(&file, web_time::Instant::now(), None);
+        let mut settings = one.settings(false);
+        settings
+            .availability
+            .set(&"tundra".into(), &"iron_ore".into(), Some(120.0));
+
+        let mut other = session();
+        let applied = other.apply_settings(&settings);
+        assert!(!applied.show_performance);
+        assert!(applied.opened.is_some());
+        assert_eq!(other.document().graph().nodes().len(), 1);
+        assert_eq!(other.recent_files(), [file.clone()]);
+        assert_eq!(
+            other
+                .availability()
+                .get(&"tundra".into(), &"iron_ore".into()),
+            Some(120.0)
+        );
+
+        // A last document that is gone says so, and the session carries on.
+        let mut gone = settings.clone();
+        gone.last_document = Some(dir.join("gone.aicm"));
+        let mut third = session();
+        assert!(third.apply_settings(&gone).opened.is_none());
+        assert!(third.status().is_some());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

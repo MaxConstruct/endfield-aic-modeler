@@ -123,7 +123,9 @@ impl Editor {
             }
             // The window puts copied nodes on the system clipboard when the key is pressed (see
             // `keyboard`); a menu click copies within the app only.
-            Outcome::WriteClipboard(_) | Outcome::Done | Outcome::Nothing => {}
+            // egui pastes on its own Paste event; a menu click pastes what this window copied.
+            Outcome::ReadClipboard => self.session.paste(self.view.level()),
+            Outcome::WriteClipboard(_) | Outcome::Restored | Outcome::Done | Outcome::Nothing => {}
         }
     }
 
