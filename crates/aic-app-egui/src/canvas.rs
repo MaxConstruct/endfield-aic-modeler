@@ -26,12 +26,12 @@ use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 use crate::document::{
     Anchor, DocView, PinTarget, VIEW_SCALE, ViewId, is_port, pin_targets, port_ref,
 };
-use crate::format;
 use crate::i18n::Strings;
-use crate::names;
 use crate::picker::Origin;
 use crate::theme;
 use crate::widgets::{self, ItemPicture, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
+use aic_editor::format;
+use aic_editor::names;
 use aic_editor::{Document, Session};
 
 const CANVAS_ID: &str = "aic-canvas";
@@ -1218,7 +1218,7 @@ impl Viewer<'_> {
             .count();
         ui.vertical_centered(|ui| {
             ui.label(RichText::new("🏭").size(crisp(FACILITY_IMAGE * 0.6)));
-            ui.label(RichText::new(crate::names::node_count(self.strings, count)).small());
+            ui.label(RichText::new(aic_editor::names::node_count(self.strings, count)).small());
             if ui
                 .small_button(self.strings.get("workspace-open"))
                 .clicked()

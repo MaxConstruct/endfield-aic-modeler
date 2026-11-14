@@ -11,17 +11,17 @@ use eframe::egui::{self, Pos2, RichText, Ui};
 use crate::canvas::{self, Canvas, CanvasEvent, Selection};
 use crate::data::{DataChoice, DataFolder};
 use crate::document::{DocView, DocumentMut, DocumentRef, to_pos};
-use crate::edit::Shortcut;
 use crate::files::{Download, Pending, Upload};
-use crate::format;
 use crate::i18n::Strings;
-use crate::names;
 use crate::picker::{self, Choice, Origin, Picker};
 use crate::port_menu::{self, PortMenu};
 use crate::settings::{Availability, SettingsWindow};
 use crate::views::Views;
 use crate::widgets::colors;
+use aic_editor::Command;
 use aic_editor::Session;
+use aic_editor::format;
+use aic_editor::names;
 use aic_editor::picker::recipe_node;
 
 /// A solve slower than this is reported in the status bar.
@@ -60,7 +60,7 @@ pub struct Editor {
     /// Decoded icons belong to the old data after a switch.
     pub(crate) icons_stale: bool,
     /// The shortcut last pressed, and when: its toolbar button lights up for a moment.
-    pub(crate) flash: Option<(Shortcut, web_time::Instant)>,
+    pub(crate) flash: Option<(Command, web_time::Instant)>,
     /// Where to save the canvas once the window is next drawn.
     pub(crate) export_to: Option<PathBuf>,
     /// Whether the status bar shows the frame rate and the last solve's time.
@@ -131,7 +131,7 @@ impl Editor {
 
     /// Loads another data version or language from the data folder. The open graph stays; its
     /// recipe nodes are matched against the new data by ID. A failure keeps the current data.
-    pub fn switch_data(&mut self, choice: DataChoice, _strings: &Strings) {
+    pub fn switch_data(&mut self, choice: DataChoice) {
         if self.session.switch_data(choice) {
             self.view
                 .rebuild(self.session.document(), self.session.catalog());
@@ -273,8 +273,8 @@ impl Editor {
         if ui.ctx().current_pass_index() == 0 {
             self.frames.add(ui.input(|i| i.time), ());
         }
-        self.handle_close_request(ui.ctx(), strings);
-        self.poll_upload(ui.ctx(), strings);
+        self.handle_close_request(ui.ctx());
+        self.poll_upload(ui.ctx());
         if std::mem::take(&mut self.icons_stale) {
             crate::widgets::forget_icons(ui.ctx());
         }
@@ -317,13 +317,13 @@ impl Editor {
             .settings
             .show(ui.ctx(), catalog, strings, availability, data);
         if let Some(choice) = switch {
-            self.switch_data(choice, strings);
+            self.switch_data(choice);
         }
-        self.keyboard(ui.ctx(), strings);
+        self.keyboard(ui.ctx());
         self.finish_export(ui.ctx(), strings);
         self.end_undo_step(ui.ctx());
-        self.autosave(ui.ctx(), strings);
-        self.update_title(ui.ctx(), strings);
+        self.autosave(ui.ctx());
+        self.update_title(ui.ctx());
         if self.session.solve_if_stale().is_some() {
             ui.ctx().request_repaint();
         }
@@ -338,7 +338,7 @@ impl Editor {
         }
     }
 
-    pub(crate) fn apply(&mut self, event: CanvasEvent, strings: &Strings) {
+    pub(crate) fn apply(&mut self, event: CanvasEvent) {
         let level = self.view.level();
         match event {
             CanvasEvent::Connect { from, to } => self.session.connect(from, to),
@@ -363,7 +363,7 @@ impl Editor {
             }
             CanvasEvent::Cut(member) => {
                 self.select(Selection::of_items(vec![member]));
-                self.run(Shortcut::Cut, strings);
+                self.run(Command::Cut);
             }
             CanvasEvent::Copy(member) => {
                 self.select(Selection::of_items(vec![member]));
@@ -494,20 +494,20 @@ impl Editor {
                 ui.checkbox(&mut self.show_performance, strings.get("menu-performance"));
                 ui.separator();
                 let entries = [
-                    Shortcut::SplitRight,
-                    Shortcut::SplitDown,
-                    Shortcut::DuplicateView,
-                    Shortcut::MoveToWindow,
-                    Shortcut::CloseView,
+                    Command::SplitRight,
+                    Command::SplitDown,
+                    Command::DuplicateView,
+                    Command::MoveToWindow,
+                    Command::CloseView,
                 ];
                 for shortcut in entries {
-                    if shortcut == Shortcut::MoveToWindow && !crate::views::WINDOWS {
+                    if shortcut == Command::MoveToWindow && !crate::views::WINDOWS {
                         continue;
                     }
                     let button = egui::Button::new(strings.get(shortcut.label_key()))
                         .shortcut_text(ui.ctx().format_shortcut(&crate::edit::keys(shortcut)));
                     if ui.add_enabled(self.can_run(shortcut), button).clicked() {
-                        self.run(shortcut, strings);
+                        self.run(shortcut);
                     }
                 }
             });
@@ -563,7 +563,7 @@ impl Editor {
     }
 
     fn file_menu(&mut self, ui: &mut Ui, strings: &Strings) {
-        let item = |ui: &mut Ui, key: &str, shortcut: Option<Shortcut>| {
+        let item = |ui: &mut Ui, key: &str, shortcut: Option<Command>| {
             let mut button = egui::Button::new(strings.get(key));
             if let Some(shortcut) = shortcut {
                 button =
@@ -571,11 +571,11 @@ impl Editor {
             }
             ui.add(button).clicked()
         };
-        if item(ui, "menu-new", Some(Shortcut::New)) {
-            self.request(Pending::New, strings);
+        if item(ui, "menu-new", Some(Command::New)) {
+            self.request(Pending::New);
         }
-        if item(ui, "menu-open", Some(Shortcut::Open)) {
-            self.request(Pending::Open, strings);
+        if item(ui, "menu-open", Some(Command::Open)) {
+            self.request(Pending::Open);
         }
         ui.add_enabled_ui(!self.session.recent_files().is_empty(), |ui| {
             ui.menu_button(strings.get("menu-open-recent"), |ui| {
@@ -587,16 +587,16 @@ impl Editor {
                     }
                 }
                 if let Some(path) = chosen {
-                    self.request(Pending::OpenPath(path), strings);
+                    self.request(Pending::OpenPath(path));
                 }
             });
         });
         ui.separator();
-        if item(ui, "menu-save", Some(Shortcut::Save)) {
-            self.save(strings);
+        if item(ui, "menu-save", Some(Command::Save)) {
+            self.save();
         }
-        if item(ui, "menu-save-as", Some(Shortcut::SaveAs)) {
-            self.save_as(strings);
+        if item(ui, "menu-save-as", Some(Command::SaveAs)) {
+            self.save_as();
         }
         ui.separator();
         if item(ui, "menu-export-png", None) {
@@ -607,22 +607,22 @@ impl Editor {
 
     fn edit_menu(&mut self, ui: &mut Ui, strings: &Strings) {
         let entries = [
-            Shortcut::Undo,
-            Shortcut::Redo,
-            Shortcut::Cut,
-            Shortcut::Copy,
-            Shortcut::Paste,
-            Shortcut::Duplicate,
-            Shortcut::Delete,
-            Shortcut::SelectAll,
-            Shortcut::MakeWorkspace,
-            Shortcut::Dissolve,
+            Command::Undo,
+            Command::Redo,
+            Command::Cut,
+            Command::Copy,
+            Command::Paste,
+            Command::Duplicate,
+            Command::Delete,
+            Command::SelectAll,
+            Command::MakeWorkspace,
+            Command::Dissolve,
         ];
         for shortcut in entries {
             let button = egui::Button::new(strings.get(shortcut.label_key()))
                 .shortcut_text(ui.ctx().format_shortcut(&crate::edit::keys(shortcut)));
             if ui.add_enabled(self.can_run(shortcut), button).clicked() {
-                self.run(shortcut, strings);
+                self.run(shortcut);
             }
         }
     }

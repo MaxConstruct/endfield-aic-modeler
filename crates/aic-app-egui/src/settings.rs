@@ -8,8 +8,8 @@ use eframe::egui::{self, RichText, Ui};
 
 use crate::data::{DEFAULT_LANGUAGE, DataChoice, DataFolder};
 use crate::i18n::Strings;
-use crate::names;
 use crate::widgets::{self, colors};
+use aic_editor::names;
 
 pub use aic_editor::settings::{Availability, BadAmount, STORAGE_KEY, parse_amount};
 

@@ -194,7 +194,6 @@ fn build(app: &mut App, target: usize) -> Option<NodeId> {
     }
     for (producer, consumer, item) in feeds {
         let _ = doc.connect(
-            &catalog,
             PortRef::new(nodes[producer], item.clone()),
             PortRef::new(nodes[consumer], item),
         );

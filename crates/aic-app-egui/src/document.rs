@@ -372,14 +372,13 @@ impl DocumentMut<'_> {
         self.session.set_limit(node, limit)
     }
 
-    pub fn remove_node(&mut self, _catalog: &Catalog, node: NodeId) {
+    pub fn remove_node(&mut self, node: NodeId) {
         self.session.remove_node(node);
         self.sync();
     }
 
     pub fn connect(
         &mut self,
-        _catalog: &Catalog,
         from: aic_core::PortRef,
         to: aic_core::PortRef,
     ) -> Result<LinkId, aic_core::LinkError> {

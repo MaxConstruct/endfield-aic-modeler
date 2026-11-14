@@ -10,13 +10,13 @@ use indexmap::IndexMap;
 use crate::canvas::Selection;
 use crate::document::pins;
 use crate::editor::Editor;
-use crate::format;
 use crate::i18n::Strings;
-use crate::names;
 use crate::settings::parse_amount;
 use crate::theme;
 use crate::widgets::{self, LimitField, colors};
+use aic_editor::format;
 use aic_editor::messages::{per_min, warning_text};
+use aic_editor::names;
 
 impl Editor {
     pub(crate) fn inspector(&mut self, ui: &mut Ui, strings: &Strings) {

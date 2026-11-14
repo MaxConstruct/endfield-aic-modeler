@@ -1,4 +1,5 @@
-# English UI strings. Every user-facing string in aic-app-egui comes from here.
+# English UI strings. Every user-facing string of every UI (aic-app-egui, aic-app-iced) comes from
+# here. A string only the iced app needs goes under a comment `# iced only`.
 # Numbers arrive preformatted, so messages never format them.
 
 app-title = AIC Modeler

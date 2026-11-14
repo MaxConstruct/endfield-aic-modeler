@@ -1062,7 +1062,7 @@ mod tests {
         assert!(!applied.show_performance);
         assert!(applied.opened.is_some());
         assert_eq!(other.document().graph().nodes().len(), 1);
-        assert_eq!(other.recent_files(), [file.clone()]);
+        assert_eq!(other.recent_files(), std::slice::from_ref(&file));
         assert_eq!(
             other
                 .availability()

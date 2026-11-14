@@ -8,9 +8,9 @@ use aic_data::Catalog;
 use eframe::egui::{self, Id, Key, Pos2};
 
 use crate::i18n::Strings;
-use crate::names;
 use crate::theme;
 use crate::widgets::LimitField;
+use aic_editor::names;
 
 /// The menu's width in points, so one opened from an input can sit left of its port.
 pub const WIDTH: f32 = 220.0;

@@ -5,10 +5,10 @@ use std::time::Duration;
 
 use eframe::egui::{self, RichText, Ui, vec2};
 
-use crate::edit::Shortcut;
 use crate::editor::Editor;
 use crate::i18n::Strings;
 use crate::widgets::colors;
+use aic_editor::Command;
 
 /// Every text the save indicator shows; it is as wide as the widest.
 const SAVE_STATES: [&str; 6] = [
@@ -25,56 +25,56 @@ const FLASH: Duration = Duration::from_millis(400);
 const BUTTON: egui::Vec2 = vec2(28.0, 22.0);
 
 /// The toolbar's buttons in order; `None` is a separator. File commands live in the File menu.
-const LAYOUT: [Option<Shortcut>; 12] = [
-    Some(Shortcut::Undo),
-    Some(Shortcut::Redo),
+const LAYOUT: [Option<Command>; 12] = [
+    Some(Command::Undo),
+    Some(Command::Redo),
     None,
-    Some(Shortcut::Cut),
-    Some(Shortcut::Copy),
-    Some(Shortcut::Paste),
-    Some(Shortcut::Duplicate),
-    Some(Shortcut::Delete),
-    Some(Shortcut::SelectAll),
+    Some(Command::Cut),
+    Some(Command::Copy),
+    Some(Command::Paste),
+    Some(Command::Duplicate),
+    Some(Command::Delete),
+    Some(Command::SelectAll),
     None,
-    Some(Shortcut::MakeWorkspace),
-    Some(Shortcut::Dissolve),
+    Some(Command::MakeWorkspace),
+    Some(Command::Dissolve),
 ];
 
 /// The button's picture: a symbol egui's built-in fonts draw (checked by eye in a snapshot;
 /// many symbols, such as 📋 and ⧉, are missing from them).
-fn icon(command: Shortcut) -> &'static str {
+fn icon(command: Command) -> &'static str {
     match command {
-        Shortcut::New => "🗋",
-        Shortcut::Open => "🗁",
-        Shortcut::Save => "💾",
-        Shortcut::SaveAs => "🖹",
-        Shortcut::Undo => "⟲",
-        Shortcut::Redo => "⟳",
-        Shortcut::Cut => "✂",
-        Shortcut::Copy => "🗐",
-        Shortcut::Paste => "🗊",
-        Shortcut::Duplicate => "✚",
-        Shortcut::Delete => "🗑",
-        Shortcut::SelectAll => "⛶",
-        Shortcut::MakeWorkspace => "⊞",
-        Shortcut::Dissolve => "⊟",
+        Command::New => "🗋",
+        Command::Open => "🗁",
+        Command::Save => "💾",
+        Command::SaveAs => "🖹",
+        Command::Undo => "⟲",
+        Command::Redo => "⟳",
+        Command::Cut => "✂",
+        Command::Copy => "🗐",
+        Command::Paste => "🗊",
+        Command::Duplicate => "✚",
+        Command::Delete => "🗑",
+        Command::SelectAll => "⛶",
+        Command::MakeWorkspace => "⊞",
+        Command::Dissolve => "⊟",
         // Not on the toolbar: in the View menu and the tab menus only.
-        Shortcut::SplitRight
-        | Shortcut::SplitDown
-        | Shortcut::DuplicateView
-        | Shortcut::MoveToWindow
-        | Shortcut::CloseView => "",
+        Command::SplitRight
+        | Command::SplitDown
+        | Command::DuplicateView
+        | Command::MoveToWindow
+        | Command::CloseView => "",
     }
 }
 
 impl Editor {
     /// Whether a command can do anything right now; the toolbar and the Edit menu grey it out if not.
-    pub(crate) fn can_run(&self, shortcut: Shortcut) -> bool {
+    pub(crate) fn can_run(&self, shortcut: Command) -> bool {
         self.session.can_run(shortcut)
     }
 
     /// The shortcut whose button is lit, if its moment isn't over.
-    pub fn flashing(&self) -> Option<Shortcut> {
+    pub fn flashing(&self) -> Option<Command> {
         self.flash
             .filter(|(_, at)| at.elapsed() < FLASH)
             .map(|(shortcut, _)| shortcut)
@@ -111,7 +111,7 @@ impl Editor {
                 ui.ctx()
                     .accesskit_node_builder(response.id, |node| node.set_label(label));
                 if response.clicked() {
-                    self.run(shortcut, strings);
+                    self.run(shortcut);
                 }
             }
         });

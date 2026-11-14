@@ -10,8 +10,8 @@ use eframe::egui::{self, Align2, Key, Pos2, Rect, Sense, Ui, Vec2, WidgetInfo, W
 pub use aic_editor::picker::{Builtin, Choice, Matching, Origin, builtin_kind, builtins, recipes};
 
 use crate::i18n::Strings;
-use crate::names;
 use crate::widgets::{self, paint_item};
+use aic_editor::names;
 
 /// An open picker.
 pub struct Picker {

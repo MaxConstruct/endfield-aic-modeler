@@ -907,14 +907,30 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
   `rebind`, a stale view swapped in and `from_graph`.
 - (2026-11-15, A5) The egui view layer no longer wraps the document: the `Session` owns the
   `aic_editor::Document`, so egui's `DocView` keeps only the snarl view and is brought in line
-  lazily (`DocView::sync` compares `Document::generation`) at the start of a canvas draw, before
-  `sync_from_view` and at the end of a frame. `A4`'s wrapper methods are gone; `Editor::document()`
-  / `document_mut()` return small façades (`DocumentRef`, `DocumentMut`) so the tests keep their
-  calls (`DocumentMut::connect` ignores its catalog argument).
-- (2026-11-15, A5) `Outcome` is `Done | File(FileCommand) | WriteClipboard(String) |
-  View(ViewCommand) | Nothing` (no `PickOpenPath`/`ReadClipboard`: files move in A6, and pasting uses
-  the app clipboard). egui ignores `WriteClipboard` from a menu click, as it always did; keys still
-  copy to the system clipboard through egui's clipboard events.
+  lazily (`DocView::sync` compares `Document::generation`). Review fix (2026-11-15): `sync_view()`
+  now runs in `view_ui` before every canvas draw, in `DocView::swap` before the outgoing view is
+  parked (so it comes back with its ids), after `Editor::undo`/`redo`, and before `sync_from_view`.
+  `Editor::document()` / `document_mut()` return small façades (`DocumentRef`, `DocumentMut`) so
+  the tests keep their calls.
+- (2026-11-15, A5) `Outcome` is `Done | File(FileCommand) | WriteClipboard(String) | ReadClipboard |
+  Restored | View(ViewCommand) | Nothing`. `WriteClipboard` comes only when a Copy or Cut really
+  copied something; `Paste` returns `ReadClipboard` (the UI reads the system clipboard and calls
+  `paste_text`; egui pastes its app clipboard on that outcome, as before); an undo or redo that did
+  something returns `Restored` (so a UI closes popups), else `Nothing`. egui ignores `WriteClipboard`
+  from a menu click, as it always did; keys still copy through egui's clipboard events.
+- (2026-11-15, A5, review fix) Every level-taking `Document`/`Session` call resolves a level that
+  is gone (an undo took its workspace away) to the top (`Document::resolve_level`) instead of
+  panicking or filing nodes in a workspace that doesn't exist. The nearest surviving ancestor is not
+  known once a workspace is gone from the graph, so the fallback is always the top. Slot ids are
+  reused after a restore, so a stale id may name a new workspace; nothing can prevent that.
+- (2026-11-15, A6, review fix) `Session::apply_settings(&Settings) -> Applied` applies the data
+  choice, availability and recent files and reopens the last document; the UI keeps
+  `show_performance` and the camera. egui still uses its eframe keys.
+- (2026-11-15, review fix) `scripts/check-frontends.sh` runs `cargo tree --target all
+  --all-features` and `set -f`, so dependencies of other targets and optional features count; planted
+  normal, wasm32-target, feature-gated and dev violations all fail. egui's unused `strings` and
+  `catalog` parameters kept for test compatibility are gone (tests changed shape only), `Shortcut`
+  is `Command` in egui, and only `data`, `i18n` and `store` are re-exported from `aic_app_egui`.
 - (2026-11-15, A5) `Session` makes its own `Strings::english()`; the egui `App` keeps passing its own
   `&Strings` to widgets (two small English tables, same file).
 - (2026-11-15, A5) `Session::disconnect` also clears a selected link; egui's `sync_from_view` uses
@@ -932,11 +948,18 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
   in (`now: Instant`), so autosave can be tested without sleeping.
 - (2026-11-15, A6) `crop_png` (plan section 4, `export.rs`) is not in any A task and wasn't moved;
   egui keeps its export code. Whoever builds iced's export (C13) can move it then.
-- (2026-11-15, A2, unrelated bug) The egui kittest snapshots are flaky on this machine: with no
-  change at all, `a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports`
-  (`workspace_inside`, ~500 differing pixels) and sometimes `a_view_of_a_dissolved_workspace_goes_back_to_the_top`
-  and `a_new_port_starts_without_an_item_and_an_unlinked_port_warns` fail on some runs and pass on
-  others. Seen on the A1 commit too. Not touched; a re-run passes. Never re-recorded.
+- (2026-11-15, A2, unrelated bug, cause found in review, still open) Some egui kittest snapshots
+  (`workspace_inside`, `workspace_card`, sometimes `a_new_port_starts_without_an_item_and_an_unlinked_port_warns`
+  and `a_view_of_a_dissolved_workspace_goes_back_to_the_top`) fail on some runs of an unchanged tree
+  (also before Phase A). The cause is not machine flakiness: a toolbar button lit by a key press
+  (Cmd+A, Cmd+G) goes dark after 400 ms of wall-clock time (`toolbar.rs` `FLASH`, `Instant::elapsed`).
+  The stored PNGs show the button LIT (`workspace_inside.png` has Select all lit,
+  `workspace_card.png` has Make workspace lit), so a run that is slow enough to pass 400 ms between
+  the key and the snapshot fails by about 505 px. Timing the flash by egui's clock (tried, then
+  reverted) makes it deterministic, but unlit, because kittest's `run()` keeps stepping while the
+  flash asks for a repaint; that fails every time against the stored lit PNGs. Fixing it without
+  re-recording means freezing the flash in tests (a test-only switch) or changing the tests to wait
+  out the flash and re-recording the PNGs; both need Max's decision.
 
 ---
 

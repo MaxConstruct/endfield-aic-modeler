@@ -2,16 +2,12 @@
 //! maps the keys to egui's and finishes what the session leaves to the toolkit.
 
 use aic_core::WorkspaceId;
-use aic_editor::{Chord, ChordKey, FileCommand, Outcome, ViewCommand};
+use aic_editor::{Chord, ChordKey, Command, FileCommand, Outcome, ViewCommand};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 
 use crate::editor::Editor;
 use crate::files::Pending;
-use crate::i18n::Strings;
 use crate::views::ViewAction;
-
-/// Something the player can do from a menu or with a key.
-pub use aic_editor::Command as Shortcut;
 
 /// A chord as egui's keyboard shortcut. `COMMAND` is Cmd on macOS and Ctrl elsewhere.
 fn shortcut_of(chord: Chord) -> KeyboardShortcut {
@@ -23,7 +19,7 @@ fn shortcut_of(chord: Chord) -> KeyboardShortcut {
         modifiers |= Modifiers::SHIFT;
     }
     let key = match chord.key {
-        ChordKey::Letter(letter) => Key::from_name(&letter.to_string()).expect("a letter is a key"),
+        ChordKey::Letter(letter) => letter_key(letter),
         ChordKey::Delete => Key::Delete,
         ChordKey::Backspace => Key::Backspace,
         ChordKey::Backslash => Key::Backslash,
@@ -31,19 +27,53 @@ fn shortcut_of(chord: Chord) -> KeyboardShortcut {
     KeyboardShortcut::new(modifiers, key)
 }
 
+/// The key of a letter, upper case.
+fn letter_key(letter: char) -> Key {
+    const LETTERS: [Key; 26] = [
+        Key::A,
+        Key::B,
+        Key::C,
+        Key::D,
+        Key::E,
+        Key::F,
+        Key::G,
+        Key::H,
+        Key::I,
+        Key::J,
+        Key::K,
+        Key::L,
+        Key::M,
+        Key::N,
+        Key::O,
+        Key::P,
+        Key::Q,
+        Key::R,
+        Key::S,
+        Key::T,
+        Key::U,
+        Key::V,
+        Key::W,
+        Key::X,
+        Key::Y,
+        Key::Z,
+    ];
+    let at = (letter as usize).wrapping_sub('A' as usize);
+    *LETTERS.get(at).expect("a chord letter is A to Z")
+}
+
 /// The keys that do `command`.
-pub fn keys(command: Shortcut) -> KeyboardShortcut {
+pub fn keys(command: Command) -> KeyboardShortcut {
     shortcut_of(command.chord())
 }
 
 impl Editor {
-    pub(crate) fn keyboard(&mut self, ctx: &egui::Context, strings: &Strings) {
+    pub(crate) fn keyboard(&mut self, ctx: &egui::Context) {
         let typing = ctx.memory(|m| m.focused().is_some());
         let overlay = self.picker.is_some() || self.port_menu.is_some();
         if overlay {
             return;
         }
-        for command in Shortcut::ALL {
+        for command in Command::ALL {
             if typing && !command.works_while_typing() {
                 continue;
             }
@@ -54,7 +84,7 @@ impl Editor {
                 });
             if pressed {
                 self.flash(command);
-                self.run(command, strings);
+                self.run(command);
             }
         }
         if typing {
@@ -75,7 +105,7 @@ impl Editor {
             (copy, cut, pasted)
         });
         if copy || cut {
-            self.flash(if cut { Shortcut::Cut } else { Shortcut::Copy });
+            self.flash(if cut { Command::Cut } else { Command::Copy });
             self.session.copy();
             if let Some(text) = self.session.copy_text() {
                 ctx.copy_text(text);
@@ -85,7 +115,7 @@ impl Editor {
             self.session.delete_selection();
         }
         if let Some(text) = pasted {
-            self.flash(Shortcut::Paste);
+            self.flash(Command::Paste);
             self.session.paste_text(&text, self.view.level());
         }
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
@@ -93,19 +123,19 @@ impl Editor {
         }
     }
 
-    pub fn run(&mut self, command: Shortcut, strings: &Strings) {
+    pub fn run(&mut self, command: Command) {
         let focused = self.views.focused();
         match command {
             // A menu or the picker pointed at what an undo or redo may take away.
-            Shortcut::Undo => return self.undo(),
-            Shortcut::Redo => return self.redo(),
+            Command::Undo => return self.undo(),
+            Command::Redo => return self.redo(),
             _ => {}
         }
         match self.session.run(command, self.view.level()) {
-            Outcome::File(FileCommand::New) => self.request(Pending::New, strings),
-            Outcome::File(FileCommand::Open) => self.request(Pending::Open, strings),
-            Outcome::File(FileCommand::Save) => self.save(strings),
-            Outcome::File(FileCommand::SaveAs) => self.save_as(strings),
+            Outcome::File(FileCommand::New) => self.request(Pending::New),
+            Outcome::File(FileCommand::Open) => self.request(Pending::Open),
+            Outcome::File(FileCommand::Save) => self.save(),
+            Outcome::File(FileCommand::SaveAs) => self.save_as(),
             Outcome::View(ViewCommand::SplitRight) => {
                 self.views.request(ViewAction::SplitRight(focused));
             }
@@ -130,7 +160,7 @@ impl Editor {
     }
 
     /// Lights the shortcut's toolbar button for a moment, so a key press shows where its button is.
-    pub(crate) fn flash(&mut self, shortcut: Shortcut) {
+    pub(crate) fn flash(&mut self, shortcut: Command) {
         self.flash = Some((shortcut, web_time::Instant::now()));
     }
 
@@ -184,5 +214,22 @@ impl Editor {
     /// Takes the selected workspace apart, selecting what was in it.
     pub fn dissolve_selection(&mut self) {
         self.session.dissolve_selection(self.view.level());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_command_chord_maps_to_a_key() {
+        for command in Command::ALL {
+            let _ = keys(command);
+            if let Some(chord) = command.also() {
+                let _ = shortcut_of(chord);
+            }
+        }
+        assert_eq!(letter_key('Z'), Key::Z);
+        assert_eq!(keys(Command::Redo).logical_key, Key::Z);
     }
 }

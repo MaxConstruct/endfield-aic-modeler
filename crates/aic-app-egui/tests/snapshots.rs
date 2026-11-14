@@ -98,9 +98,8 @@ fn pick(
 /// Stands in for dragging a link between two existing nodes.
 fn link(harness: &mut Harness<'_, App>, from: NodeId, to: NodeId, item: &str) {
     let ws = editor(harness);
-    let catalog = ws.catalog().clone();
     ws.document_mut()
-        .connect(&catalog, PortRef::new(from, item), PortRef::new(to, item))
+        .connect(PortRef::new(from, item), PortRef::new(to, item))
         .expect("link is valid");
     harness.run();
 }
@@ -449,10 +448,7 @@ fn add(harness: &mut Harness<'_, App>, kind: NodeKind, x: f32, y: f32) -> NodeId
 
 fn link_any(harness: &mut Harness<'_, App>, from: PortRef, to: PortRef) {
     let ws = editor(harness);
-    let catalog = ws.catalog().clone();
-    ws.document_mut()
-        .connect(&catalog, from, to)
-        .expect("link is valid");
+    ws.document_mut().connect(from, to).expect("link is valid");
 }
 
 // A source too small for the smelter's limit throttles it (marker on its input). The ingots pass
@@ -1129,14 +1125,13 @@ fn copy_and_paste_keep_links_inside_the_copy() {
 #[test]
 fn save_then_open_the_file_again() {
     let mut harness = harness(&aic_editor::testing::fixture_dir());
-    let strings = Strings::english();
     let path = std::env::temp_dir().join(format!("aic-save-{}.aicm", std::process::id()));
     smelter(&mut harness, 0.0, 0.0);
     harness.run();
     assert!(editor(&mut harness).document().is_modified());
     assert!(editor(&mut harness).title().starts_with("Untitled •"));
 
-    editor(&mut harness).save_to(&path, &strings);
+    editor(&mut harness).save_to(&path);
     harness.run();
     assert!(!editor(&mut harness).document().is_modified());
     let name = path.file_name().unwrap().to_string_lossy().into_owned();
@@ -1149,7 +1144,7 @@ fn save_then_open_the_file_again() {
     editor(&mut harness).new_graph("tundra".into());
     harness.run();
     assert_eq!(node_count(&mut harness), 0);
-    editor(&mut harness).open_file(&path, &strings);
+    editor(&mut harness).open_file(&path);
     harness.run();
     assert_eq!(node_count(&mut harness), 1);
     assert_eq!(editor(&mut harness).document().path(), Some(path.as_path()));
@@ -1210,7 +1205,7 @@ fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
         version: Some("v1.9.0".into()),
         language: None,
     };
-    editor(&mut harness).switch_data(choice.clone(), &Strings::english());
+    editor(&mut harness).switch_data(choice.clone());
     harness.run();
     let ws = editor(&mut harness);
     assert_eq!(ws.catalog().version(), "v1.9.0");
@@ -1495,10 +1490,7 @@ fn a_new_port_starts_without_an_item_and_an_unlinked_port_warns() {
         .selection()
         .and_then(Selection::single_workspace)
         .unwrap();
-    let catalog = editor(&mut harness).catalog().clone();
-    editor(&mut harness)
-        .document_mut()
-        .remove_node(&catalog, ore);
+    editor(&mut harness).document_mut().remove_node(ore);
     editor(&mut harness).show_level(Some(workspace));
     harness.run();
     harness.get_by_label("+ Input").click();
@@ -1603,7 +1595,6 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 #[test]
 fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
     let mut harness = harness(&aic_editor::testing::fixture_dir());
-    let strings = Strings::english();
     let dir = temp_dir("drafts");
     let drafts = dir.join("drafts");
     editor(&mut harness).set_drafts_dir(Some(drafts.clone()));
@@ -1621,7 +1612,7 @@ fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
     assert!(editor(&mut harness).title().starts_with("Untitled —"));
 
     let mine = dir.join("plan.aicm");
-    editor(&mut harness).save_to(&mine, &strings);
+    editor(&mut harness).save_to(&mine);
     harness.run();
     assert!(files_in(&drafts).is_empty(), "the draft is gone");
     assert!(!editor(&mut harness).document().is_draft());
@@ -1629,7 +1620,7 @@ fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
 
     // New saves the open file first, then starts a fresh draft.
     smelter(&mut harness, 300.0, 0.0);
-    editor(&mut harness).request(aic_app_egui::files::Pending::New, &strings);
+    editor(&mut harness).request(aic_app_egui::files::Pending::New);
     harness.run();
     let saved = Graph::from_json(
         editor(&mut harness).catalog(),
@@ -1644,19 +1635,18 @@ fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
 #[test]
 fn reopening_restores_the_graph_and_where_the_canvas_looked() {
     let mut harness = harness(&aic_editor::testing::fixture_dir());
-    let strings = Strings::english();
     let dir = temp_dir("reopen");
     let path = dir.join("plan.aicm");
     let node = smelter(&mut harness, 120.0, 80.0);
     harness.run();
     fit_view(&mut harness);
-    editor(&mut harness).save_to(&path, &strings);
+    editor(&mut harness).save_to(&path);
     let view = editor(&mut harness)
         .canvas_view()
         .expect("the canvas was drawn");
 
     let mut again = self::harness(&aic_editor::testing::fixture_dir());
-    editor(&mut again).reopen(&path, &strings);
+    editor(&mut again).reopen(&path);
     again.run();
     let ws = editor(&mut again);
     assert_eq!(ws.document().graph().nodes().len(), 1);
@@ -1675,7 +1665,6 @@ fn reopening_restores_the_graph_and_where_the_canvas_looked() {
 #[test]
 fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes() {
     let mut harness = harness(&aic_editor::testing::fixture_dir());
-    let strings = Strings::english();
     let dir = temp_dir("reopen-fit");
     let path = dir.join("far.aicm");
     let node = smelter(&mut harness, 3000.0, 2000.0);
@@ -1689,7 +1678,7 @@ fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes(
         .build_eframe(|cc| {
             aic_app_egui::theme::install(&cc.egui_ctx);
             let mut app = App::new(Strings::english(), Ok(catalog), None);
-            app.editor_mut().unwrap().reopen(&path, &strings);
+            app.editor_mut().unwrap().reopen(&path);
             app
         });
     again.run();
@@ -1708,17 +1697,16 @@ fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes(
 #[test]
 fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
     let mut harness = harness(&aic_editor::testing::fixture_dir());
-    let strings = Strings::english();
     let dir = temp_dir("broken");
     editor(&mut harness).set_drafts_dir(Some(dir.join("drafts")));
 
-    editor(&mut harness).reopen(&dir.join("gone.aicm"), &strings);
+    editor(&mut harness).reopen(&dir.join("gone.aicm"));
     harness.run();
     harness.get_by_label_contains("is gone. Started a new one.");
 
     let broken = dir.join("broken.aicm");
     std::fs::write(&broken, "{ not json").unwrap();
-    editor(&mut harness).reopen(&broken, &strings);
+    editor(&mut harness).reopen(&broken);
     harness.run();
     harness.get_by_label_contains("Could not open");
     smelter(&mut harness, 0.0, 0.0);
@@ -1803,7 +1791,7 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     harness.step();
     assert_eq!(
         editor(&mut harness).flashing(),
-        Some(aic_app_egui::edit::Shortcut::Undo),
+        Some(aic_editor::Command::Undo),
         "the key lights its button"
     );
     assert_eq!(node_count(&mut harness), 1);
@@ -2082,7 +2070,6 @@ fn downloads(harness: &mut Harness<'_, App>) -> Vec<(String, String)> {
 #[test]
 fn in_the_browser_save_as_keeps_the_file_in_storage_and_downloads_it() {
     let mut harness = browser_harness();
-    let strings = Strings::english();
     smelter(&mut harness, 0.0, 0.0);
     harness.run();
     assert!(
@@ -2095,7 +2082,7 @@ fn in_the_browser_save_as_keeps_the_file_in_storage_and_downloads_it() {
         "autosave downloads nothing"
     );
 
-    editor(&mut harness).save_as_named("plan", &strings);
+    editor(&mut harness).save_as_named("plan");
     harness.run();
     let saved = downloads(&mut harness);
     assert_eq!(saved.len(), 1);
@@ -2114,7 +2101,7 @@ fn in_the_browser_save_as_keeps_the_file_in_storage_and_downloads_it() {
 
     // Save downloads the file again, under the same name.
     smelter(&mut harness, 300.0, 0.0);
-    editor(&mut harness).save(&strings);
+    editor(&mut harness).save();
     let again = downloads(&mut harness);
     assert_eq!(again.len(), 1);
     assert_eq!(again[0].0, "plan.aicm");
@@ -2125,14 +2112,13 @@ fn in_the_browser_save_as_keeps_the_file_in_storage_and_downloads_it() {
 #[test]
 fn in_the_browser_an_uploaded_file_opens_and_is_kept() {
     let mut source = browser_harness();
-    let strings = Strings::english();
     smelter(&mut source, 0.0, 0.0);
     smelter(&mut source, 300.0, 0.0);
-    editor(&mut source).save_as_named("plan", &strings);
+    editor(&mut source).save_as_named("plan");
     let (name, text) = downloads(&mut source).remove(0);
 
     let mut harness = browser_harness();
-    editor(&mut harness).open_upload(&name, text.into_bytes(), &strings);
+    editor(&mut harness).open_upload(&name, text.into_bytes());
     harness.run();
     assert_eq!(node_count(&mut harness), 2);
     let ws = editor(&mut harness);
@@ -2142,7 +2128,7 @@ fn in_the_browser_an_uploaded_file_opens_and_is_kept() {
     assert!(ws.browser_files().unwrap().contains(&path));
     assert_eq!(ws.recent_files(), [path]);
 
-    editor(&mut harness).open_upload("broken.aicm", b"{ not json".to_vec(), &strings);
+    editor(&mut harness).open_upload("broken.aicm", b"{ not json".to_vec());
     harness.run();
     harness.get_by_label_contains("Could not open broken.aicm");
     assert_eq!(node_count(&mut harness), 2, "the open graph stays");

@@ -22,8 +22,8 @@ use crate::canvas::Canvas;
 use crate::document::DocView;
 use crate::editor::Editor;
 use crate::i18n::Strings;
-use crate::names;
 use crate::theme;
+use aic_editor::names;
 
 /// The storage key for the layout of the views.
 pub const STORAGE_KEY: &str = "views";
@@ -335,7 +335,7 @@ impl Editor {
                         );
                     });
                 if window.dock.find_tab(&self.views.focused).is_some() {
-                    self.keyboard(ui.ctx(), strings);
+                    self.keyboard(ui.ctx());
                     self.overlays_ui(ui.ctx(), strings);
                 }
             });
@@ -439,7 +439,7 @@ impl Editor {
                         .actions
                         .push(ViewAction::OpenBeside(key, workspace));
                 }
-                event => self.apply(event, strings),
+                event => self.apply(event),
             }
         }
         self.sync_view();

@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex};
 use aic_data::{Catalog, ImageKind, Recipe, RegionId};
 use eframe::egui::{self, Color32, FontId, Id, Painter, Pos2, Rect, TextureHandle, Ui, Vec2};
 
-use crate::format;
-use crate::names;
 use crate::settings::parse_amount;
+use aic_editor::format;
+use aic_editor::names;
 
 /// Colors with a meaning across the app.
 pub use crate::theme::color as colors;

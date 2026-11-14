@@ -96,32 +96,32 @@ impl Editor {
     }
 
     /// Saves the open graph, then runs `action`.
-    pub fn request(&mut self, action: Pending, strings: &Strings) {
-        self.save_now(strings);
+    pub fn request(&mut self, action: Pending) {
+        self.save_now();
         match action {
             Pending::New => {
                 self.session.start_new();
                 self.after_new_document();
             }
             Pending::Open if self.session.is_browser() => self.pick_upload(),
-            Pending::Open => self.pick_file(strings),
-            Pending::OpenPath(path) => self.open_file(&path, strings),
+            Pending::Open => self.pick_file(),
+            Pending::OpenPath(path) => self.open_file(&path),
         }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn pick_file(&mut self, strings: &Strings) {
+    fn pick_file(&mut self) {
         let picked = rfd::FileDialog::new()
             .add_filter("AIC Modeler", &[EXTENSION])
             .pick_file();
         if let Some(path) = picked {
-            self.open_file(&path, strings);
+            self.open_file(&path);
         }
     }
 
     /// The web build has no disk.
     #[cfg(target_arch = "wasm32")]
-    fn pick_file(&mut self, _strings: &Strings) {}
+    fn pick_file(&mut self) {}
 
     /// Asks the browser for a file to open; [`Self::poll_upload`] opens it once picked.
     fn pick_upload(&mut self) {
@@ -132,14 +132,14 @@ impl Editor {
     }
 
     /// Opens the file the player picked in the browser, once it has been read.
-    pub(crate) fn poll_upload(&mut self, ctx: &egui::Context, strings: &Strings) {
+    pub(crate) fn poll_upload(&mut self, ctx: &egui::Context) {
         let Some(receiver) = &self.upload else {
             return;
         };
         match receiver.try_recv() {
             Ok(upload) => {
                 self.upload = None;
-                self.open_upload(&upload.name, upload.bytes, strings);
+                self.open_upload(&upload.name, upload.bytes);
             }
             // The browser reads the file in the background; look again soon.
             Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -152,8 +152,8 @@ impl Editor {
 
     /// Opens a file uploaded to the browser, keeping it in the browser's storage under its name. A
     /// file that doesn't open isn't kept.
-    pub fn open_upload(&mut self, name: &str, bytes: Vec<u8>, strings: &Strings) {
-        self.save_now(strings);
+    pub fn open_upload(&mut self, name: &str, bytes: Vec<u8>) {
+        self.save_now();
         if let Some(opened) = self.session.open_upload(name, bytes) {
             self.show_opened(opened);
         }
@@ -161,7 +161,7 @@ impl Editor {
 
     /// Opens a save file in place of the current graph. A failure leaves the current graph open and
     /// says why in the status bar.
-    pub fn open_file(&mut self, path: &Path, _strings: &Strings) {
+    pub fn open_file(&mut self, path: &Path) {
         if let Some(opened) = self.session.open_file(path) {
             self.show_opened(opened);
         }
@@ -169,7 +169,7 @@ impl Editor {
 
     /// Reopens the document open when the app last closed. Whatever goes wrong, the app carries on
     /// with a new draft and the file is left as it is.
-    pub fn reopen(&mut self, path: &Path, _strings: &Strings) {
+    pub fn reopen(&mut self, path: &Path) {
         if let Some(opened) = self.session.reopen(path) {
             self.show_opened(opened);
         }
@@ -177,9 +177,9 @@ impl Editor {
 
     /// Cmd+S: saves now. A draft asks where to keep it instead, as Save As does. In the browser,
     /// also downloads the file.
-    pub fn save(&mut self, strings: &Strings) {
+    pub fn save(&mut self) {
         match self.session.save(Instant::now(), self.canvas.top_view()) {
-            Some(name) => self.ask_where_to_save(name, strings),
+            Some(name) => self.ask_where_to_save(name),
             None => {
                 if self.session.is_browser() {
                     self.download_document();
@@ -189,23 +189,23 @@ impl Editor {
     }
 
     /// Asks where to save: a file dialog on disk, a name in the browser.
-    pub fn save_as(&mut self, strings: &Strings) {
+    pub fn save_as(&mut self) {
         let name = self.session.offered_name();
-        self.ask_where_to_save(name, strings);
+        self.ask_where_to_save(name);
     }
 
-    fn ask_where_to_save(&mut self, name: String, strings: &Strings) {
+    fn ask_where_to_save(&mut self, name: String) {
         if self.session.is_browser() {
             let stem = name.strip_suffix(&format!(".{EXTENSION}")).unwrap_or(&name);
             self.save_as_prompt = Some(stem.to_owned());
             return;
         }
-        self.pick_save_path(name, strings);
+        self.pick_save_path(name);
     }
 
     /// Saves under `name` in the browser's storage, then downloads the file. The extension is
     /// added when missing.
-    pub fn save_as_named(&mut self, name: &str, _strings: &Strings) {
+    pub fn save_as_named(&mut self, name: &str) {
         if self
             .session
             .save_as_named(name, Instant::now(), self.canvas.top_view())
@@ -258,7 +258,7 @@ impl Editor {
                 keep &= !ui.input(|i| i.key_pressed(egui::Key::Escape));
             });
         if confirmed {
-            self.save_as_named(&name, strings);
+            self.save_as_named(&name);
         } else if keep {
             self.save_as_prompt = Some(name);
         }
@@ -272,10 +272,10 @@ impl Editor {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn pick_save_path(&mut self, _name: String, _strings: &Strings) {}
+    fn pick_save_path(&mut self, _name: String) {}
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn pick_save_path(&mut self, name: String, strings: &Strings) {
+    fn pick_save_path(&mut self, name: String) {
         let picked = rfd::FileDialog::new()
             .add_filter("AIC Modeler", &[EXTENSION])
             .set_file_name(name)
@@ -284,26 +284,26 @@ impl Editor {
             if path.extension().is_none() {
                 path.set_extension(EXTENSION);
             }
-            self.save_to(&path, strings);
+            self.save_to(&path);
         }
     }
 
     /// Writes the graph to `path`, which becomes the document's file from now on. Moving a draft
     /// to a file of the player's deletes the draft.
-    pub fn save_to(&mut self, path: &Path, _strings: &Strings) {
+    pub fn save_to(&mut self, path: &Path) {
         self.session
             .save_to(path, Instant::now(), self.canvas.top_view());
     }
 
     /// Saves now if anything changed: to the document's file, or to a new draft.
-    pub fn save_now(&mut self, _strings: &Strings) {
+    pub fn save_now(&mut self) {
         self.session
             .save_now(Instant::now(), self.canvas.top_view());
     }
 
     /// The autosave schedule: called every frame. Waits while the pointer is down or a field has
     /// focus, so a save never lands in the middle of a drag or of typing a number.
-    pub(crate) fn autosave(&mut self, ctx: &egui::Context, _strings: &Strings) {
+    pub(crate) fn autosave(&mut self, ctx: &egui::Context) {
         let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
         let now = Instant::now();
         if let Poll::Wait(when) = self.session.autosave(now, busy, self.canvas.top_view()) {
@@ -312,14 +312,14 @@ impl Editor {
     }
 
     /// Saves before the window closes.
-    pub(crate) fn handle_close_request(&mut self, ctx: &egui::Context, strings: &Strings) {
+    pub(crate) fn handle_close_request(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested()) {
-            self.save_now(strings);
+            self.save_now();
         }
     }
 
     /// The window title: the file's name, or Untitled for a draft, marked until it is saved.
-    pub(crate) fn update_title(&mut self, ctx: &egui::Context, _strings: &Strings) {
+    pub(crate) fn update_title(&mut self, ctx: &egui::Context) {
         let title = self.session.title();
         if title != self.last_title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));

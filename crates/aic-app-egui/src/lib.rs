@@ -2,7 +2,7 @@
 //! the window (or starts the web runner); everything else lives here so tests can drive the app
 //! headlessly.
 
-pub use aic_editor::{data, format, i18n, names, store, throttle};
+pub use aic_editor::{data, i18n, store};
 mod browser;
 pub mod canvas;
 pub mod document;
@@ -161,7 +161,7 @@ impl App {
     fn reopen_last(&mut self, storage: Option<&dyn eframe::Storage>) {
         let last = storage.and_then(|s| eframe::get_value::<PathBuf>(s, files::LAST_KEY));
         if let (State::Ready(editor), Some(last)) = (&mut self.state, last) {
-            editor.reopen(&last, &self.strings);
+            editor.reopen(&last);
         }
         let layout =
             storage.and_then(|s| eframe::get_value::<views::Layout>(s, views::STORAGE_KEY));
@@ -279,7 +279,7 @@ impl eframe::App for App {
     /// settings.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         if let State::Ready(editor) = &mut self.state {
-            editor.save_now(&self.strings);
+            editor.save_now();
             if let Some(last) = editor.last_document() {
                 eframe::set_value(storage, files::LAST_KEY, &last.to_path_buf());
             }
