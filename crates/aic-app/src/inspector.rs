@@ -601,7 +601,7 @@ fn warning_text(catalog: &Catalog, strings: &Strings, graph: &Graph, warning: &W
     }
 }
 
-fn issue_text(catalog: &Catalog, strings: &Strings, issue: &Issue) -> String {
+pub(crate) fn issue_text(catalog: &Catalog, strings: &Strings, issue: &Issue) -> String {
     match issue {
         Issue::BadLink { error, .. } => strings.format(
             "warning-issue-bad-link",

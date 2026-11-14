@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use aic_core::{NodeId, NodeKind, Side};
-use aic_data::{Catalog, ImageKind, ItemId, Recipe, RecipeId, RegionId};
+use aic_data::{Catalog, ImageKind, ItemId, Recipe, RecipeId};
 use eframe::egui::{self, Align2, Key, Pos2, Rect, Sense, Ui, Vec2, WidgetInfo, WidgetType};
 
 use crate::i18n::Strings;
@@ -85,13 +85,12 @@ pub fn builtins(origin: &Origin) -> Vec<Builtin> {
     end.into_iter().chain(LOGISTICS).collect()
 }
 
-/// The recipes offered for `origin`, in data order: those of the region, not hidden, that make
+/// The recipes offered for `origin`, in data order: those of every region, not hidden, that make
 /// (from an input port) or take (from an output port) the port's item, and match `query`.
 /// Settlement trades are offered as outpost orders, except from an input port: they make only
 /// coupons.
 pub fn recipes<'a>(
     catalog: &'a Catalog,
-    region: &RegionId,
     origin: &Origin,
     query: &str,
     matching: Matching,
@@ -115,7 +114,7 @@ pub fn recipes<'a>(
                         ..
                     }
                 );
-            (!recipe.hidden || trade_ok) && recipe.available_in(region)
+            !recipe.hidden || trade_ok
         })
         .filter(|recipe| match origin {
             Origin::Canvas => true,
@@ -198,6 +197,8 @@ const HEIGHT: f32 = 420.0;
 const LEFT_WIDTH: f32 = 160.0;
 const ROW_HEIGHT: f32 = 32.0;
 const BADGE: f32 = 32.0;
+/// Between a recipe's region badges and its name.
+const REGION_GAP: f32 = 6.0;
 
 impl Picker {
     pub fn new(origin: Origin, screen_pos: Pos2, graph_pos: Pos2) -> Self {
@@ -217,13 +218,7 @@ impl Picker {
         self.area
     }
 
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        catalog: &Catalog,
-        strings: &Strings,
-        region: &RegionId,
-    ) -> Outcome {
+    pub fn show(&mut self, ctx: &egui::Context, catalog: &Catalog, strings: &Strings) -> Outcome {
         let mut outcome = Outcome::Open;
         let area = egui::Area::new(self.area)
             .order(egui::Order::Foreground)
@@ -232,7 +227,7 @@ impl Picker {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(WIDTH);
-                    if let Some(choice) = self.contents(ui, catalog, strings, region) {
+                    if let Some(choice) = self.contents(ui, catalog, strings) {
                         outcome = Outcome::Chosen(choice);
                     }
                 });
@@ -247,13 +242,7 @@ impl Picker {
         outcome
     }
 
-    fn contents(
-        &mut self,
-        ui: &mut Ui,
-        catalog: &Catalog,
-        strings: &Strings,
-        region: &RegionId,
-    ) -> Option<Choice> {
+    fn contents(&mut self, ui: &mut Ui, catalog: &Catalog, strings: &Strings) -> Option<Choice> {
         let search = ui.add(
             egui::TextEdit::singleline(&mut self.query)
                 .hint_text(strings.get("picker-search-hint"))
@@ -275,7 +264,7 @@ impl Picker {
         });
         ui.separator();
 
-        let recipes = recipes(catalog, region, &self.origin, &self.query, self.matching);
+        let recipes = recipes(catalog, &self.origin, &self.query, self.matching);
         let enter = search.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
         let mut chosen = enter
             .then(|| {
@@ -384,13 +373,18 @@ fn recipe_row(ui: &mut Ui, catalog: &Catalog, recipe: &Recipe) -> egui::Response
         for (index, (item, _)) in recipe.outputs.iter().rev().enumerate() {
             paint_item(painter, catalog, item.as_str(), badge(index, true));
         }
-        painter.text(
+        let name = painter.text(
             rect.center(),
             Align2::CENTER_CENTER,
             &recipe.name,
             egui::TextStyle::Button.resolve(ui.style()),
             visuals.text_color(),
         );
+        let badges = widgets::RegionBadges::new(ui, catalog, recipe, 1.0);
+        if !badges.is_empty() {
+            let left = name.left() - REGION_GAP - badges.size().x;
+            badges.paint(painter, Pos2::new(left, rect.center().y));
+        }
     }
     response
 }
@@ -419,17 +413,11 @@ mod tests {
     }
 
     #[test]
-    fn canvas_lists_the_regions_visible_recipes_in_data_order() {
+    fn canvas_lists_every_regions_visible_recipes_in_data_order() {
         let catalog = catalog();
-        let tundra = ids(recipes(
-            &catalog,
-            &"tundra".into(),
-            &Origin::Canvas,
-            "",
-            Matching::default(),
-        ));
+        // Every region's recipes: one only Wuling has is offered too, with its badge.
         assert_eq!(
-            tundra,
+            ids(recipes(&catalog, &Origin::Canvas, "", Matching::default())),
             [
                 "iron_ore",
                 "iron_ingot",
@@ -438,20 +426,9 @@ mod tests {
                 "screw",
                 "reinforced_plate",
                 "modular_frame",
+                "iron_wire",
                 "coupon-iron_plate"
             ]
-        );
-        let wuling = ids(recipes(
-            &catalog,
-            &"jinlong".into(),
-            &Origin::Canvas,
-            "",
-            Matching::default(),
-        ));
-        assert!(wuling.contains(&"iron_wire"));
-        assert!(
-            wuling.contains(&"coupon-iron_plate"),
-            "a settlement trade is offered as an outpost order"
         );
     }
 
@@ -460,13 +437,7 @@ mod tests {
         let catalog = catalog();
         let origin = port(Side::Input, "iron_ore");
         assert_eq!(
-            ids(recipes(
-                &catalog,
-                &"tundra".into(),
-                &origin,
-                "",
-                Matching::default()
-            )),
+            ids(recipes(&catalog, &origin, "", Matching::default())),
             ["iron_ore"]
         );
         assert_eq!(builtins(&origin)[0], Builtin::Source);
@@ -477,14 +448,8 @@ mod tests {
         let catalog = catalog();
         let origin = port(Side::Output, "iron_ingot");
         assert_eq!(
-            ids(recipes(
-                &catalog,
-                &"tundra".into(),
-                &origin,
-                "",
-                Matching::default()
-            )),
-            ["iron_plate", "iron_rod"]
+            ids(recipes(&catalog, &origin, "", Matching::default())),
+            ["iron_plate", "iron_rod", "iron_wire"]
         );
         assert_eq!(builtins(&origin)[0], Builtin::Sink);
         assert!(!builtins(&Origin::Canvas).contains(&Builtin::Source));
@@ -493,20 +458,13 @@ mod tests {
     #[test]
     fn search_matches_the_chosen_parts_case_insensitively() {
         let catalog = catalog();
-        let region = "tundra".into();
         let by_name = Matching {
             name: true,
             inputs: false,
             outputs: false,
         };
         assert_eq!(
-            ids(recipes(
-                &catalog,
-                &region,
-                &Origin::Canvas,
-                "PLATE",
-                by_name
-            )),
+            ids(recipes(&catalog, &Origin::Canvas, "PLATE", by_name)),
             ["iron_plate", "reinforced_plate", "coupon-iron_plate"]
         );
         let by_inputs = Matching {
@@ -515,13 +473,7 @@ mod tests {
             outputs: false,
         };
         assert_eq!(
-            ids(recipes(
-                &catalog,
-                &region,
-                &Origin::Canvas,
-                "iron rod",
-                by_inputs
-            )),
+            ids(recipes(&catalog, &Origin::Canvas, "iron rod", by_inputs)),
             ["screw", "modular_frame"]
         );
     }

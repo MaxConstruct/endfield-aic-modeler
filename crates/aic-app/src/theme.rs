@@ -89,6 +89,32 @@ pub mod color {
         pub const LOGISTICS: Color32 = Color32::from_rgb(0x2E, 0x30, 0x36);
         pub const WORKSPACE: Color32 = Color32::from_rgb(0x3A, 0x30, 0x52);
     }
+
+    /// Region badges: one saturated tint per region, in the data's region order (Valley IV, then
+    /// Wuling), so a region reads the same everywhere and two regions tell apart without reading.
+    /// Yellow and teal; the yellow is a cooler lemon than the warning's amber.
+    pub mod region {
+        use eframe::egui::Color32;
+
+        pub struct Tint {
+            pub fill: Color32,
+            pub stroke: Color32,
+            pub text: Color32,
+        }
+
+        pub const TINTS: [Tint; 2] = [
+            Tint {
+                fill: Color32::from_rgb(0x3B, 0x36, 0x0E),
+                stroke: Color32::from_rgb(0x75, 0x6A, 0x1B),
+                text: Color32::from_rgb(0xF2, 0xE0, 0x5A),
+            },
+            Tint {
+                fill: Color32::from_rgb(0x12, 0x3D, 0x40),
+                stroke: Color32::from_rgb(0x23, 0x6E, 0x73),
+                text: Color32::from_rgb(0x74, 0xE0, 0xE4),
+            },
+        ];
+    }
 }
 
 /// Corner radii, in points.

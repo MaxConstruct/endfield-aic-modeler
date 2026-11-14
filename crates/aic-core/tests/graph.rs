@@ -519,14 +519,18 @@ fn the_canvas_view_is_saved_with_the_graph() {
 }
 
 #[test]
-fn only_an_empty_graph_changes_region() {
+fn a_graph_with_nodes_changes_region_and_warns_about_what_the_new_one_lacks() {
     let catalog = catalog();
-    let mut g = Graph::new(region(TUNDRA));
-    g.set_region(region(JINLONG)).unwrap();
-    assert_eq!(g.region(), &region(JINLONG));
-    add_recipe(&mut g, &catalog, "ingot", None);
+    let mut g = Graph::new(region(JINLONG));
+    let recipe = add_recipe(&mut g, &catalog, "wuling_recipe", None);
+    assert_eq!(g.validate(&catalog), vec![]);
+    g.set_region(region(TUNDRA));
+    assert_eq!(g.region(), &region(TUNDRA));
     assert_eq!(
-        g.set_region(region(TUNDRA)),
-        Err(aic_core::EditError::NotEmpty)
+        g.validate(&catalog),
+        vec![Issue::RecipeOutsideRegion {
+            node: recipe,
+            recipe: "wuling_recipe".into()
+        }]
     );
 }

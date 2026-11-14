@@ -368,11 +368,10 @@ impl Document {
         shown(&self.graph, self.level, node)
     }
 
-    /// Moves an empty graph to another region (see [`Graph::set_region`]).
-    pub fn set_region(&mut self, region: RegionId) -> Result<(), EditError> {
-        self.graph.set_region(region)?;
+    /// Moves the graph to another region (see [`Graph::set_region`]).
+    pub fn set_region(&mut self, region: RegionId) {
+        self.graph.set_region(region);
         self.changed();
-        Ok(())
     }
 
     /// Adds a node to the level shown, at `pos` in graph space.

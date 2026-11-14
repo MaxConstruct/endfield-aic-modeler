@@ -80,7 +80,6 @@ file-other-data-version = This file was made with data { $file }; the app uses {
 ## Top bar
 
 region-label = Region
-region-locked = A graph belongs to one region. Start a new graph (File > New) to pick another.
 data-version = Data { $version }
 settings-button = Settings…
 toggle-recipes = Recipes

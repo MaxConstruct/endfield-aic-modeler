@@ -318,10 +318,9 @@ impl Editor {
             .resizable(true)
             .default_size(240.0)
             .show_collapsible(ui, &mut show_browser, |ui| {
-                let region = self.doc.graph().region();
                 if let Some(kind) = self
                     .browser
-                    .ui(ui, &self.catalog, strings, region)
+                    .ui(ui, &self.catalog, strings)
                     .and_then(|id| recipe_node(&self.catalog, id))
                 {
                     let node = self.doc.add_node(kind, self.canvas.center());
@@ -540,8 +539,7 @@ impl Editor {
         let Some(picker) = &mut self.picker else {
             return;
         };
-        let region = self.doc.graph().region().clone();
-        match picker.show(ctx, &self.catalog, strings, &region) {
+        match picker.show(ctx, &self.catalog, strings) {
             picker::Outcome::Open => {}
             picker::Outcome::Close => self.picker = None,
             picker::Outcome::Chosen(Choice::Workspace) => {
@@ -649,30 +647,26 @@ impl Editor {
         });
     }
 
-    /// The graph's region, which only an empty graph can change: File > New, then pick.
+    /// The graph's region. It can change at any time: what the new region lacks shows as
+    /// warnings on the cards, and undo takes it back.
     fn region_picker(&mut self, ui: &mut Ui, strings: &Strings) {
         let current = self.doc.graph().region().clone();
-        let empty = self.doc.graph().nodes().is_empty();
         let mut chosen = None;
-        ui.add_enabled_ui(empty, |ui| {
-            let picker = egui::ComboBox::from_id_salt("region")
-                .selected_text(names::region(&self.catalog, current.as_str()))
-                .show_ui(ui, |ui| {
-                    for region in self.catalog.regions().keys() {
-                        let name = names::region(&self.catalog, region.as_str());
-                        if ui.selectable_label(*region == current, name).clicked() {
-                            chosen = Some(region.clone());
-                        }
+        let picker = egui::ComboBox::from_id_salt("region")
+            .selected_text(names::region(&self.catalog, current.as_str()))
+            .show_ui(ui, |ui| {
+                for region in self.catalog.regions().keys() {
+                    let name = names::region(&self.catalog, region.as_str());
+                    if ui.selectable_label(*region == current, name).clicked() {
+                        chosen = Some(region.clone());
                     }
-                });
-            let label = strings.get("region-label");
-            ui.ctx()
-                .accesskit_node_builder(picker.response.id, |node| node.set_label(label));
-        })
-        .response
-        .on_disabled_hover_text(strings.get("region-locked"));
+                }
+            });
+        let label = strings.get("region-label");
+        ui.ctx()
+            .accesskit_node_builder(picker.response.id, |node| node.set_label(label));
         if let Some(region) = chosen.filter(|r| *r != current) {
-            let _ = self.doc.set_region(region);
+            self.doc.set_region(region);
         }
     }
 

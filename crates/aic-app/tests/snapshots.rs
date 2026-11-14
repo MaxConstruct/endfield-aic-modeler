@@ -1701,7 +1701,7 @@ fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
 }
 
 #[test]
-fn the_region_can_change_until_the_first_node() {
+fn the_region_can_change_with_nodes_on_the_graph() {
     let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
     harness
         .get_by_role_and_label(eframe::egui::accesskit::Role::ComboBox, "Region")
@@ -1715,12 +1715,20 @@ fn the_region_can_change_until_the_first_node() {
     );
     smelter(&mut harness, 0.0, 0.0);
     harness.run();
-    assert!(
-        editor(&mut harness)
-            .document_mut()
-            .set_region("tundra".into())
-            .is_err()
-    );
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::ComboBox, "Region")
+        .click();
+    harness.run();
+    harness.get_by_label("Valley IV").click();
+    harness.run();
+    let ed = editor(&mut harness);
+    assert_eq!(ed.document().graph().region().as_str(), "tundra");
+    // A step of its own: undo takes the region back, nodes and all.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    let ed = editor(&mut harness);
+    assert_eq!(ed.document().graph().region().as_str(), "jinlong");
+    assert_eq!(ed.document().graph().nodes().len(), 1);
 }
 
 #[test]
@@ -2385,4 +2393,32 @@ fn a_tab_dragged_over_a_view_shows_where_it_lands_and_splits_there() {
     harness.run();
     assert_eq!(views(&mut harness).len(), 3, "moved, not closed");
     harness.snapshot("views_dropped");
+}
+
+// Recipes of every region, with region badges.
+
+#[test]
+fn a_recipe_of_another_region_is_offered_with_its_badge_and_warns_on_its_card() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    // The graph is in Valley IV; Iron Wire is Wuling's only.
+    harness.get_by_label_contains("Iron Wire").click();
+    harness.run();
+    let ed = editor(&mut harness);
+    let node = ed
+        .selection()
+        .and_then(Selection::single_node)
+        .expect("added");
+    assert!(
+        ed.document().solution().warnings.iter().any(|w| matches!(
+            w,
+            aic_core::Warning::Issue(aic_core::Issue::RecipeOutsideRegion { node: n, .. }) if *n == node
+        )),
+        "the solver says the region lacks it"
+    );
+    fit_view(&mut harness);
+    harness.snapshot("region_badges");
+
+    editor(&mut harness).open_picker(Origin::Canvas, pos2(300.0, 300.0));
+    harness.run();
+    harness.snapshot("region_badges_picker");
 }

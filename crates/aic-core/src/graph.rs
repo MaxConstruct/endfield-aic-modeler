@@ -301,8 +301,6 @@ pub enum EditError {
     InvalidShare(f64),
     #[error("workspace {0:?} does not exist")]
     UnknownWorkspace(WorkspaceId),
-    #[error("only an empty graph can change region")]
-    NotEmpty,
     #[error("a workspace made from a selection needs at least one member")]
     EmptyWorkspace,
     #[error("only nodes and workspaces in the same workspace can go in a new workspace together")]
@@ -325,14 +323,10 @@ impl Graph {
         &self.region
     }
 
-    /// Moves an empty graph to another region. A graph with nodes keeps its region: its recipes
-    /// belong to it.
-    pub fn set_region(&mut self, region: RegionId) -> Result<(), EditError> {
-        if !self.nodes.is_empty() {
-            return Err(EditError::NotEmpty);
-        }
+    /// Moves the graph to another region. Its nodes stay; a recipe or facility the new region
+    /// lacks is an issue ([`Issue::RecipeOutsideRegion`](crate::Issue)), not an error.
+    pub fn set_region(&mut self, region: RegionId) {
         self.region = region;
-        Ok(())
     }
 
     pub fn nodes(&self) -> &SlotMap<NodeId, Node> {

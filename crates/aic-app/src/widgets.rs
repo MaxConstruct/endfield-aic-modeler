@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use aic_data::{Catalog, ImageKind};
+use aic_data::{Catalog, ImageKind, Recipe, RegionId};
 use eframe::egui::{self, Color32, FontId, Id, Painter, Pos2, Rect, TextureHandle, Ui, Vec2};
 
 use crate::format;
@@ -258,6 +258,142 @@ fn initials(name: &str) -> String {
         .collect()
 }
 
+/// Space inside a region badge around its name, and between two badges, at 100%.
+const BADGE_PADDING: Vec2 = Vec2::new(5.0, 1.0);
+const BADGE_GAP: f32 = 4.0;
+
+/// The regions a recipe is limited to, for its badges; none when it exists in every region.
+pub fn recipe_regions<'a>(catalog: &Catalog, recipe: &'a Recipe) -> &'a [RegionId] {
+    let everywhere = catalog
+        .regions()
+        .keys()
+        .all(|region| recipe.available_in(region));
+    if everywhere { &[] } else { &recipe.regions }
+}
+
+/// A recipe's region badges, laid out: each region's name in a small pill, `Wuling` or
+/// `Valley IV`, set before the recipe's name. `scale` is how big 100% is where they are drawn (the
+/// canvas lays out at `VIEW_SCALE`); the text size comes from the `Ui`'s small style.
+pub struct RegionBadges {
+    names: Vec<(
+        Arc<egui::Galley>,
+        &'static crate::theme::color::region::Tint,
+    )>,
+    scale: f32,
+}
+
+impl RegionBadges {
+    pub fn new(ui: &Ui, catalog: &Catalog, recipe: &Recipe, scale: f32) -> Self {
+        let font = egui::TextStyle::Small.resolve(ui.style());
+        let tints = &colors::region::TINTS;
+        let names = recipe_regions(catalog, recipe)
+            .iter()
+            .map(|region| {
+                let index = catalog.regions().get_index_of(region).unwrap_or(0);
+                let tint = &tints[index % tints.len()];
+                let text = egui::RichText::new(names::region(catalog, region.as_str()))
+                    .font(font.clone())
+                    .color(tint.text)
+                    .strong();
+                let galley = egui::WidgetText::from(text).into_galley(
+                    ui,
+                    Some(egui::TextWrapMode::Extend),
+                    f32::INFINITY,
+                    font.clone(),
+                );
+                (galley, tint)
+            })
+            .collect();
+        Self { names, scale }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    fn pill_size(&self, name: &egui::Galley) -> Vec2 {
+        name.size() + 2.0 * BADGE_PADDING * self.scale
+    }
+
+    /// The space all of them take, side by side.
+    pub fn size(&self) -> Vec2 {
+        let gaps = self.names.len().saturating_sub(1) as f32 * BADGE_GAP * self.scale;
+        self.names
+            .iter()
+            .fold(Vec2::new(gaps, 0.0), |size, (name, _)| {
+                let pill = self.pill_size(name);
+                Vec2::new(size.x + pill.x, size.y.max(pill.y))
+            })
+    }
+
+    /// Paints them left to right from `left_center`, centred on its height.
+    pub fn paint(&self, painter: &Painter, left_center: Pos2) {
+        let mut x = left_center.x;
+        for (name, tint) in &self.names {
+            let size = self.pill_size(name);
+            let rect = Rect::from_min_size(Pos2::new(x, left_center.y - size.y / 2.0), size);
+            painter.rect(
+                rect,
+                f32::from(crate::theme::radius::SMALL) * self.scale,
+                tint.fill,
+                egui::Stroke::new(self.scale, tint.stroke),
+                egui::StrokeKind::Inside,
+            );
+            painter.galley(rect.center() - name.size() / 2.0, name.clone(), tint.text);
+            x = rect.right() + BADGE_GAP * self.scale;
+        }
+    }
+
+    /// Lays them out as one widget.
+    pub fn ui(&self, ui: &mut Ui) -> egui::Response {
+        let (rect, response) = ui.allocate_exact_size(self.size(), egui::Sense::hover());
+        if ui.is_rect_visible(rect) {
+            self.paint(ui.painter(), rect.left_center());
+        }
+        response
+    }
+}
+
+/// A warning sign: an amber triangle with a dark `!`, `size` points wide.
+pub fn warning_icon(ui: &mut Ui, size: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        paint_warning(ui.painter(), rect);
+    }
+    response
+}
+
+/// Paints a warning sign filling `rect`'s width.
+pub fn paint_warning(painter: &Painter, rect: Rect) {
+    let side = rect.width();
+    let height = side * 0.87;
+    let top = rect.center().y - height / 2.0;
+    let points = vec![
+        Pos2::new(rect.center().x, top),
+        Pos2::new(rect.right(), top + height),
+        Pos2::new(rect.left(), top + height),
+    ];
+    painter.add(egui::Shape::convex_polygon(
+        points,
+        colors::WARN,
+        egui::Stroke::NONE,
+    ));
+    let mark = egui::Stroke::new(side * 0.11, colors::CANVAS);
+    let x = rect.center().x;
+    painter.line_segment(
+        [
+            Pos2::new(x, top + height * 0.36),
+            Pos2::new(x, top + height * 0.66),
+        ],
+        mark,
+    );
+    painter.circle_filled(
+        Pos2::new(x, top + height * 0.82),
+        side * 0.06,
+        colors::CANVAS,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,5 +403,16 @@ mod tests {
         assert_eq!(initials("Cuprium Ore"), "CO");
         assert_eq!(initials("Yazhen"), "Y");
         assert_eq!(initials("LC Valley Battery"), "LV");
+    }
+
+    const DATA: &[u8] = include_bytes!("../tests/fixtures/satisfactory/vtest/data.json");
+    const EN: &[u8] = include_bytes!("../tests/fixtures/satisfactory/vtest/i18n/en.json");
+
+    #[test]
+    fn a_recipe_of_some_regions_names_them_and_one_of_every_region_none() {
+        let catalog = Catalog::from_bytes(DATA, EN, None).expect("fixture loads");
+        let regions = |id: &str| recipe_regions(&catalog, catalog.recipe(id).unwrap()).to_vec();
+        assert_eq!(regions("iron_wire"), ["jinlong".into()]);
+        assert!(regions("iron_plate").is_empty());
     }
 }

@@ -550,7 +550,8 @@ since the PNGs (from jambochen/endfield-calc) cover more of the game and are nam
 ### M6: Usability
 Done.
 - File menu: New, Open, Open Recent, Save, Save As (`rfd`). The region belongs to the graph and is saved
-  in it; the top bar's region picker works while the graph is empty, so File > New, then pick.
+  in it; the top bar's region picker changes it at any time (an undo step), and what the new region
+  lacks shows as warnings on the cards.
 - Autosave (changed after M6/M7): every document is saved somewhere, at most 5 s after a change. The
   throttle fires on both edges, like VueUse's `useThrottleFn`: the first change after a quiet spell saves
   at once, then at most one save per 5 s, and the last change always lands. It waits while the pointer
@@ -614,6 +615,11 @@ Done, except where noted.
   the same port keep their flows in proportion. Typed in the port menu, which lists the port's links when
   it has several; blank links stay free and share the rest evenly. A lock holds even when it costs
   throughput.
+- **Every region's recipes:** the recipe browser and the node picker list the recipes of every
+  region, not only the graph's. A recipe only some regions have shows their names as badges
+  ("Wuling", "Valley IV") before its name there and on its card. A card whose recipe or facility the
+  graph's region lacks shows a warning sign before its title, from the solver's region warnings.
+  Hidden recipes (cross-region transfers) stay hidden.
 - **Outpost orders:** `NodeKind::OutpostOrder`, a sink for a settlement trade (`Recipe::is_trade`: the
   `hideProducer` recipes). Offered in the picker from an output port and in the recipe browser. The
   coupons earned show on the card, in the inspector and in a Coupons total; they never go to the depot.

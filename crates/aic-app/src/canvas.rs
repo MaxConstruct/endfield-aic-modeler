@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use aic_core::{
-    Graph, LinkId, Member, NodeId, NodeKind, Port, PortRef, RoundUp, Side, Solution, WorkspaceId,
+    Graph, Issue, LinkId, Member, NodeId, NodeKind, Port, PortRef, RoundUp, Side, Solution,
+    Warning, WorkspaceId,
 };
 use aic_data::{Catalog, FacilityId, ImageKind, ItemId, RecipeId};
 use eframe::egui::{
@@ -33,6 +34,8 @@ use crate::theme;
 use crate::widgets::{self, ItemPicture, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
 
 const CANVAS_ID: &str = "aic-canvas";
+/// The warning sign before a card's title, at 100%.
+const WARNING_ICON: f32 = 13.0;
 // Sizes below are in points at 100%. Inside the canvas everything is laid out at the largest zoom
 // (egui-snarl's crisp mode, so text stays sharp when zoomed in) and drawn shrunk; `crisp` turns a
 // size into view space there. Text styles and egui's spacing are scaled by snarl itself.
@@ -1014,6 +1017,47 @@ impl Viewer<'_> {
         }
     }
 
+    /// A node's title, after a warning sign when the region lacks its recipe or facility, and the
+    /// recipe's region badges when only some regions have it.
+    fn title_row(&self, ui: &mut Ui, id: NodeId, kind: &NodeKind, title: RichText) {
+        let catalog = self.catalog;
+        let badges = match kind {
+            NodeKind::Recipe { recipe, .. } => catalog
+                .recipe(recipe.as_str())
+                .map(|recipe| widgets::RegionBadges::new(ui, catalog, recipe, VIEW_SCALE)),
+            _ => None,
+        }
+        .filter(|badges| !badges.is_empty());
+        let warnings: Vec<String> = self
+            .solution
+            .warnings
+            .iter()
+            .filter_map(|warning| match warning {
+                Warning::Issue(
+                    issue @ (Issue::RecipeOutsideRegion { node, .. }
+                    | Issue::FacilityOutsideRegion { node, .. }),
+                ) if *node == id => {
+                    Some(crate::inspector::issue_text(catalog, self.strings, issue))
+                }
+                _ => None,
+            })
+            .collect();
+        if badges.is_none() && warnings.is_empty() {
+            title_label(ui, title);
+            return;
+        }
+        ui.set_max_width(title_width(ui));
+        ui.horizontal(|ui| {
+            if !warnings.is_empty() {
+                widgets::warning_icon(ui, crisp(WARNING_ICON)).on_hover_text(warnings.join("\n"));
+            }
+            if let Some(badges) = &badges {
+                badges.ui(ui);
+            }
+            ui.add(egui::Label::new(title).truncate());
+        });
+    }
+
     fn kind(&self, id: NodeId) -> Option<&NodeKind> {
         self.graph.node(id).map(|node| &node.kind)
     }
@@ -1257,10 +1301,13 @@ impl Viewer<'_> {
 
 /// A card's title, cut short with an ellipsis to fit the card; the whole title shows on hover.
 fn title_label(ui: &mut Ui, text: RichText) {
-    let width =
-        crisp(CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN)) - 2.0 * ui.spacing().window_margin.leftf();
-    ui.set_max_width(width);
+    ui.set_max_width(title_width(ui));
     ui.add(egui::Label::new(text).truncate());
+}
+
+/// How wide a card's title can be.
+fn title_width(ui: &Ui) -> f32 {
+    crisp(CARD_WIDTH - 2.0 * f32::from(NODE_MARGIN)) - 2.0 * ui.spacing().window_margin.leftf()
 }
 
 /// The width left for a card's body between its port columns, so every card is `CARD_WIDTH` wide.
@@ -1442,7 +1489,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                 );
             }
             let subject = names::node_subject(self.catalog, self.strings, kind);
-            title_label(ui, theme::strong(subject));
+            self.title_row(ui, id, kind, theme::strong(subject));
             if let NodeKind::Recipe {
                 recipe, facility, ..
             } = kind

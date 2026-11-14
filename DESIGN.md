@@ -34,6 +34,12 @@ colors:
   node-missing: "#522426"
   node-logistics: "#2E3036"
   node-workspace: "#3A3052"
+  region-1-fill: "#3B360E"
+  region-1-stroke: "#756A1B"
+  region-1-text: "#F2E05A"
+  region-2-fill: "#123D40"
+  region-2-stroke: "#236E73"
+  region-2-text: "#74E0E4"
 typography:
   label:
     fontFamily: "Inter Display"
