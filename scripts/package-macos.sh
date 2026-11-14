@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds "AIC Modeler.app" and a .dmg holding it, in target/dist/. The game data is built into the
-# binary (crates/aic-app-egui/build.rs), so the app needs nothing beside it.
+# binary (crates/aic-editor/build.rs), so the app needs nothing beside it.
 #
 #   scripts/package-macos.sh              # for this Mac's architecture
 #   scripts/package-macos.sh --universal  # Apple silicon + Intel; needs

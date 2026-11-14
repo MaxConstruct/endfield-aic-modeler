@@ -9,15 +9,14 @@ publish.workspace = true
 [dependencies]
 aic-core.workspace = true
 aic-data.workspace = true
+aic-editor.workspace = true
 eframe = { version = "0.36", features = ["persistence"] }
 egui-snarl = "0.12"
 egui_dock = { version = "0.21.1", features = ["serde"] }
-fluent-bundle = "0.16.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 indexmap = "2"
 rfd = "0.18.0"
 serde = { version = "1.0.229", features = ["derive"] }
-unic-langid = "0.9.6"
 web-time = "1.1"
 
 # The web build (M9): eframe's web runner, fetching data/ from the site, and file downloads.
@@ -38,4 +37,5 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
+aic-editor = { workspace = true, features = ["testing"] }
 egui_kittest = { version = "0.36", features = ["wgpu", "snapshot", "eframe"] }

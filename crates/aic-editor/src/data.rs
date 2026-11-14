@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn without_a_data_folder_the_built_in_data_is_used() {
-        // Tests run in crates/aic-app-egui from target/…/deps: no data/ folder in either.
+        // Tests run in crates/aic-editor from target/…/deps: no data/ folder in either.
         if std::env::var_os(aic_data::DATA_DIR_ENV).is_some() {
             return;
         }

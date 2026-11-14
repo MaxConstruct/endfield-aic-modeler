@@ -889,6 +889,17 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 - (2026-11-15, plan) The iced app keeps its own drafts and settings (6.5), so it doesn't reopen the
   egui app's last document. Files themselves are shared.
 - (2026-11-15, plan) No web build for iced (decision 4).
+- (2026-11-15, A2) `recipe_node` (editor.rs) moved to `aic_editor::picker` rather than `session`:
+  it turns a picker choice into a `NodeKind` and needs no session. A5's `Session` calls it.
+- (2026-11-15, A2) `aic_editor::embedded` exposes `bundle()` on native and `paths()` on wasm
+  (the paths-only table that egui's `web.rs` fetches), instead of a public table.
+- (2026-11-15, A2) `aic_editor::testing` also has `fixture_dir()` (the fixture version folder), since
+  the egui snapshot tests load the fixture from disk with `aic_data::load`.
+- (2026-11-15, A2, unrelated bug) The egui kittest snapshots are flaky on this machine: with no
+  change at all, `a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports`
+  (`workspace_inside`, ~500 differing pixels) and sometimes `a_view_of_a_dissolved_workspace_goes_back_to_the_top`
+  and `a_new_port_starts_without_an_item_and_an_unlinked_port_warns` fail on some runs and pass on
+  others. Seen on the A1 commit too. Not touched; a re-run passes. Never re-recorded.
 
 ---
 
@@ -898,7 +909,7 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 |---|---|---|---|
 | T0 | ADR 0009 and plan updates | — | done 2026-11-15 |
 | A1 | Rename `aic-app` → `aic-app-egui` | T0 | done 2026-11-15 |
-| A2 | `aic-editor` with the pure modules | A1 | todo |
+| A2 | `aic-editor` with the pure modules | A1 | done 2026-11-15 |
 | A3 | Design tokens and fonts in `aic_editor::style` | A2 | todo |
 | A4 | Split the document | A2 | todo |
 | A5 | `Session`: selection, editing, `Command` | A4 | todo |

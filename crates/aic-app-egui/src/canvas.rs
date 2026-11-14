@@ -1036,9 +1036,11 @@ impl Viewer<'_> {
                 Warning::Issue(
                     issue @ (Issue::RecipeOutsideRegion { node, .. }
                     | Issue::FacilityOutsideRegion { node, .. }),
-                ) if *node == id => {
-                    Some(crate::inspector::issue_text(catalog, self.strings, issue))
-                }
+                ) if *node == id => Some(aic_editor::messages::issue_text(
+                    catalog,
+                    self.strings,
+                    issue,
+                )),
                 _ => None,
             })
             .collect();

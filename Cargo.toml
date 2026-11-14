@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/aic-data", "crates/aic-core", "crates/aic-app-egui"]
+members = ["crates/aic-data", "crates/aic-core", "crates/aic-editor", "crates/aic-app-egui"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,3 +11,4 @@ publish = false
 [workspace.dependencies]
 aic-data = { path = "crates/aic-data" }
 aic-core = { path = "crates/aic-core" }
+aic-editor = { path = "crates/aic-editor" }

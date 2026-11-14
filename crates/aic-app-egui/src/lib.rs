@@ -2,26 +2,19 @@
 //! the window (or starts the web runner); everything else lives here so tests can drive the app
 //! headlessly.
 
+pub use aic_editor::{data, format, i18n, names, store, throttle};
 mod browser;
 pub mod canvas;
-pub mod data;
 pub mod document;
 pub mod edit;
 pub mod editor;
-#[cfg(not(target_arch = "wasm32"))]
-mod embedded;
 mod export;
 pub mod files;
-pub mod format;
-pub mod i18n;
 mod inspector;
-pub mod names;
 pub mod picker;
 mod port_menu;
 pub mod settings;
-pub mod store;
 pub mod theme;
-mod throttle;
 mod toolbar;
 pub mod views;
 #[cfg(target_arch = "wasm32")]

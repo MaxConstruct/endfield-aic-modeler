@@ -1,5 +1,5 @@
 # Builds a portable AIC Modeler .exe in target\dist\. The game data is built into the binary
-# (crates\aic-app-egui\build.rs) and the C runtime is linked in, so the .exe runs on its own: no data
+# (crates\aic-editor\build.rs) and the C runtime is linked in, so the .exe runs on its own: no data
 # folder, no Visual C++ redistributable, no console window.
 #
 #   pwsh scripts\package-windows.ps1

@@ -6,7 +6,6 @@ use aic_data::{Catalog, CategoryId, RecipeId};
 use eframe::egui::{self, Ui};
 
 use crate::i18n::Strings;
-use crate::picker::{self, Matching, Origin};
 use crate::widgets;
 
 /// Size of the icon beside each recipe.
@@ -38,29 +37,22 @@ impl Browser {
             .width(ui.available_width())
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut self.category, None, all);
-                for (id, category) in catalog.categories() {
-                    ui.selectable_value(&mut self.category, Some(id.clone()), &category.name);
+                for category in aic_editor::browser::categories(catalog) {
+                    ui.selectable_value(
+                        &mut self.category,
+                        Some(category.id.clone()),
+                        &category.name,
+                    );
                 }
             });
         ui.separator();
-        let by_name = Matching {
-            name: true,
-            inputs: false,
-            outputs: false,
-        };
         let mut clicked = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
             // One line per recipe; a long name is cut short and shown whole on hover.
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-            let recipes = picker::recipes(catalog, &Origin::Canvas, &self.query, by_name);
+            let recipes =
+                aic_editor::browser::recipes(catalog, &self.query, self.category.as_ref());
             for recipe in recipes {
-                if self
-                    .category
-                    .as_ref()
-                    .is_some_and(|c| *c != recipe.category)
-                {
-                    continue;
-                }
                 let image = catalog
                     .recipe_image(recipe.id.as_str())
                     .and_then(|(kind, id)| widgets::image_atom(ui.ctx(), catalog, kind, id, ICON));

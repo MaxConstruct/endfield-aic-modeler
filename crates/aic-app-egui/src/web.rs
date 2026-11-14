@@ -12,10 +12,6 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::files::{Download, Upload};
 
-mod table {
-    include!(concat!(env!("OUT_DIR"), "/embedded_data.rs"));
-}
-
 /// Where the site serves the repository's `data/` folder, next to the page.
 const DATA_URL: &str = "data";
 
@@ -50,7 +46,7 @@ pub enum Fetched {
 impl DataDownload {
     pub fn start(ctx: &egui::Context) -> Self {
         let progress = Rc::new(RefCell::new(Progress::default()));
-        for &path in table::FILES {
+        for &path in aic_editor::embedded::paths() {
             let progress = Rc::clone(&progress);
             let ctx = ctx.clone();
             wasm_bindgen_futures::spawn_local(async move {
@@ -67,7 +63,7 @@ impl DataDownload {
         }
         Self {
             progress,
-            total: table::FILES.len(),
+            total: aic_editor::embedded::paths().len(),
         }
     }
 

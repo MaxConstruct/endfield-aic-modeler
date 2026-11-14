@@ -15,7 +15,7 @@ impl Strings {
         let resource = FluentResource::try_new(EN_FTL.to_owned())
             .unwrap_or_else(|(_, errors)| panic!("en.ftl does not parse: {errors:?}"));
         let mut bundle = FluentBundle::new(vec![lang]);
-        // Fluent wraps arguments in Unicode isolation marks by default; egui draws them as boxes.
+        // Fluent wraps arguments in Unicode isolation marks by default; UIs draw them as boxes.
         bundle.set_use_isolating(false);
         bundle
             .add_resource(resource)

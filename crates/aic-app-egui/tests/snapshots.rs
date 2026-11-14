@@ -185,13 +185,13 @@ fn load_error_screen() {
 
 #[test]
 fn empty_graph() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     harness.snapshot("empty_graph");
 }
 
 #[test]
 fn canvas_picker_lists_logistics_and_recipes() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     editor(&mut harness).open_picker(Origin::Canvas, eframe::egui::pos2(0.0, 0.0));
     harness.run();
     harness.get_by_label("Splitter");
@@ -202,7 +202,7 @@ fn canvas_picker_lists_logistics_and_recipes() {
 // browser, then every upstream node through the picker from an input port, one click each.
 #[test]
 fn rebuild_golden_07_through_the_picker() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     harness.get_by_label("Modular Frame").click();
     harness.run();
     let frame = selected(&mut harness);
@@ -360,7 +360,7 @@ fn add_from_browser(harness: &mut Harness<'_, App>, label: &str) -> NodeId {
 
 #[test]
 fn right_click_on_canvas_opens_the_picker() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let center = editor(&mut harness).canvas_center_on_screen();
     secondary_click_at(&mut harness, center);
     assert_eq!(editor(&mut harness).picker_origin(), Some(&Origin::Canvas));
@@ -371,7 +371,7 @@ fn right_click_on_canvas_opens_the_picker() {
 
 #[test]
 fn right_click_on_an_open_port_adds_a_producer_of_its_item() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let plate = add_from_browser(&mut harness, "Iron Plate");
     let pin = editor(&mut harness)
         .port_on_screen(plate, Side::Input, "iron_ingot")
@@ -389,7 +389,7 @@ fn right_click_on_an_open_port_adds_a_producer_of_its_item() {
 
 #[test]
 fn dragging_a_link_onto_empty_canvas_picks_and_links_in_one_click() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let plate = add_from_browser(&mut harness, "Iron Plate");
     let pin = editor(&mut harness)
         .port_on_screen(plate, Side::Input, "iron_ingot")
@@ -459,7 +459,7 @@ fn link_any(harness: &mut Harness<'_, App>, from: PortRef, to: PortRef) {
 // a control port into storage, which fills because the sink takes less.
 #[test]
 fn logistics_nodes_and_a_throttled_node() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let ore = add(
         &mut harness,
         NodeKind::Source {
@@ -530,7 +530,7 @@ fn logistics_nodes_and_a_throttled_node() {
 
 #[test]
 fn going_over_a_raw_resource_shows_a_warning() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     add(
         &mut harness,
         NodeKind::Recipe {
@@ -599,7 +599,7 @@ fn double_click_at(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) {
 
 #[test]
 fn the_facility_count_limit_is_typed_on_the_card() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let frame = add_from_browser(&mut harness, "Modular Frame");
     type_into(&mut harness, "Node limit", "1.25");
     assert_eq!(limit_of(&mut harness, frame), Some(1.25));
@@ -610,7 +610,7 @@ fn the_facility_count_limit_is_typed_on_the_card() {
 
 #[test]
 fn double_clicking_a_port_sets_the_limit_as_a_rate() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     // Iron Plate: 20 plate per minute per facility.
     let plate = add_from_browser(&mut harness, "Iron Plate");
     let pin = editor(&mut harness)
@@ -678,7 +678,7 @@ fn graph_point(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) -> efram
 
 #[test]
 fn the_mouse_wheel_zooms_the_canvas_around_the_pointer() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     add_from_browser(&mut harness, "Iron Plate");
     let at = editor(&mut harness).canvas_center_on_screen() + eframe::egui::vec2(100.0, 50.0);
     let before = editor(&mut harness).canvas_view().expect("canvas is shown");
@@ -711,7 +711,7 @@ fn the_mouse_wheel_zooms_the_canvas_around_the_pointer() {
 
 #[test]
 fn the_canvas_sits_on_whole_pixels_so_its_text_is_sharp() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     add_from_browser(&mut harness, "Iron Plate");
     // A zoom around a point between pixels would leave the canvas between pixels too.
     let at = editor(&mut harness).canvas_center_on_screen() + eframe::egui::vec2(100.3, 50.7);
@@ -733,7 +733,7 @@ fn the_canvas_sits_on_whole_pixels_so_its_text_is_sharp() {
 
 #[test]
 fn small_scrolls_add_up_to_5_percent_steps() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     add_from_browser(&mut harness, "Iron Plate");
     let at = editor(&mut harness).canvas_center_on_screen();
     let before = editor(&mut harness).canvas_view().expect("canvas is shown");
@@ -758,7 +758,7 @@ fn small_scrolls_add_up_to_5_percent_steps() {
 #[test]
 fn the_status_bar_shows_the_zoom_and_sets_it() {
     use eframe::egui::accesskit::Role;
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     add_from_browser(&mut harness, "Iron Plate");
     let zoom = |harness: &mut Harness<'_, App>| {
         editor(harness).canvas_view().expect("canvas is shown").zoom
@@ -816,7 +816,7 @@ fn the_status_bar_shows_the_zoom_and_sets_it() {
 #[test]
 fn a_scroll_in_pixels_zooms_too() {
     // A Magic Mouse, or a wheel with smooth scrolling, reports points rather than lines.
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     add_from_browser(&mut harness, "Iron Plate");
     let at = editor(&mut harness).canvas_center_on_screen();
     let before = editor(&mut harness).canvas_view().expect("canvas is shown");
@@ -832,7 +832,7 @@ fn a_scroll_in_pixels_zooms_too() {
 
 #[test]
 fn double_clicking_a_ports_icon_opens_its_menu() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let plate = add_from_browser(&mut harness, "Iron Plate");
     let pin = editor(&mut harness)
         .port_on_screen(plate, Side::Output, "iron_plate")
@@ -850,7 +850,7 @@ fn double_clicking_a_ports_icon_opens_its_menu() {
 
 #[test]
 fn the_port_menu_clears_the_ports_links() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let plate = add_from_browser(&mut harness, "Iron Plate");
     let smelter = pick(
         &mut harness,
@@ -877,8 +877,7 @@ fn the_port_menu_clears_the_ports_links() {
 
 #[test]
 fn inspector_starts_closed() {
-    let catalog =
-        aic_data::load(&fixture("tests/fixtures/satisfactory/vtest"), "en").expect("data loads");
+    let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").expect("data loads");
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
@@ -891,7 +890,7 @@ fn inspector_starts_closed() {
 
 #[test]
 fn side_panels_collapse() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     harness.get_by_label("Modular Frame");
     harness
         .get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Recipes")
@@ -1010,7 +1009,7 @@ fn node_rect(harness: &mut Harness<'_, App>, node: NodeId) -> eframe::egui::Rect
 
 #[test]
 fn delete_a_selection_then_undo_and_redo_it() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     smelter(&mut harness, 0.0, 0.0);
     smelter(&mut harness, 300.0, 0.0);
     harness.run();
@@ -1032,7 +1031,7 @@ fn delete_a_selection_then_undo_and_redo_it() {
 
 #[test]
 fn shift_drag_on_the_canvas_selects_a_box_of_nodes() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let a = smelter(&mut harness, 0.0, 0.0);
     let b = smelter(&mut harness, 300.0, 0.0);
     let far = smelter(&mut harness, 300.0, 400.0);
@@ -1054,7 +1053,7 @@ fn shift_drag_on_the_canvas_selects_a_box_of_nodes() {
 
 #[test]
 fn dragging_a_selected_node_moves_the_whole_selection() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let a = smelter(&mut harness, 0.0, 0.0);
     let b = smelter(&mut harness, 300.0, 0.0);
     let alone = smelter(&mut harness, 0.0, 300.0);
@@ -1093,7 +1092,7 @@ fn dragging_a_selected_node_moves_the_whole_selection() {
 
 #[test]
 fn copy_and_paste_keep_links_inside_the_copy() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let ingot = smelter(&mut harness, 0.0, 0.0);
     let plate = add(
         &mut harness,
@@ -1129,7 +1128,7 @@ fn copy_and_paste_keep_links_inside_the_copy() {
 
 #[test]
 fn save_then_open_the_file_again() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let strings = Strings::english();
     let path = std::env::temp_dir().join(format!("aic-save-{}.aicm", std::process::id()));
     smelter(&mut harness, 0.0, 0.0);
@@ -1159,7 +1158,7 @@ fn save_then_open_the_file_again() {
 
 #[test]
 fn round_up_shows_whole_facilities_and_how_busy_they_are() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let frame = add_from_browser(&mut harness, "Modular Frame");
     type_into(&mut harness, "Node limit", "1.25");
     editor(&mut harness).set_round_up(true);
@@ -1224,7 +1223,7 @@ fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
 
 #[test]
 fn an_outpost_order_from_an_output_port_earns_coupons() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let plate = add_from_browser(&mut harness, "Iron Plate");
     type_into(&mut harness, "Node limit", "1");
     let order = pick(
@@ -1249,7 +1248,7 @@ fn an_outpost_order_from_an_output_port_earns_coupons() {
 
 #[test]
 fn a_ratio_lock_is_typed_in_the_port_menu() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let ore = add(
         &mut harness,
         NodeKind::Source {
@@ -1352,7 +1351,7 @@ fn plate_chain(harness: &mut Harness<'_, App>) -> [NodeId; 4] {
 
 #[test]
 fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let [_, ingot, plate, _] = plate_chain(&mut harness);
     let before = editor(&mut harness).document().solution().clone();
     editor(&mut harness).select_nodes(vec![ingot, plate]);
@@ -1486,7 +1485,7 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
 
 #[test]
 fn a_new_port_starts_without_an_item_and_an_unlinked_port_warns() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let [ore, ingot, plate, _] = plate_chain(&mut harness);
     editor(&mut harness).select_nodes(vec![ingot, plate]);
     harness.run();
@@ -1527,7 +1526,7 @@ fn a_new_port_starts_without_an_item_and_an_unlinked_port_warns() {
 
 #[test]
 fn dragging_with_the_right_button_selects_a_box_of_nodes() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let left = smelter(&mut harness, 0.0, 0.0);
     let middle = smelter(&mut harness, 400.0, 0.0);
     let right = smelter(&mut harness, 800.0, 0.0);
@@ -1568,7 +1567,7 @@ fn dragging_with_the_right_button_selects_a_box_of_nodes() {
 
 #[test]
 fn export_saves_the_canvas_as_a_png() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     add_from_browser(&mut harness, "Iron Plate");
     let path = std::env::temp_dir().join(format!("aic-export-{}.png", std::process::id()));
     editor(&mut harness).request_export(path.clone());
@@ -1603,7 +1602,7 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let strings = Strings::english();
     let dir = temp_dir("drafts");
     let drafts = dir.join("drafts");
@@ -1644,7 +1643,7 @@ fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
 
 #[test]
 fn reopening_restores_the_graph_and_where_the_canvas_looked() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let strings = Strings::english();
     let dir = temp_dir("reopen");
     let path = dir.join("plan.aicm");
@@ -1656,7 +1655,7 @@ fn reopening_restores_the_graph_and_where_the_canvas_looked() {
         .canvas_view()
         .expect("the canvas was drawn");
 
-    let mut again = self::harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut again = self::harness(&aic_editor::testing::fixture_dir());
     editor(&mut again).reopen(&path, &strings);
     again.run();
     let ws = editor(&mut again);
@@ -1675,7 +1674,7 @@ fn reopening_restores_the_graph_and_where_the_canvas_looked() {
 
 #[test]
 fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let strings = Strings::english();
     let dir = temp_dir("broken");
     editor(&mut harness).set_drafts_dir(Some(dir.join("drafts")));
@@ -1702,7 +1701,7 @@ fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
 
 #[test]
 fn the_region_can_change_with_nodes_on_the_graph() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     harness
         .get_by_role_and_label(eframe::egui::accesskit::Role::ComboBox, "Region")
         .click();
@@ -1738,7 +1737,7 @@ fn the_save_state_does_not_move_the_zoom_control() {
             .get_by_role_and_label(eframe::egui::accesskit::Role::Slider, "Zoom")
             .rect()
     };
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let dir = temp_dir("save-state-width");
     editor(&mut harness).set_drafts_dir(Some(dir.clone()));
     harness.get_by_label("Nothing to save yet");
@@ -1752,7 +1751,7 @@ fn the_save_state_does_not_move_the_zoom_control() {
 
 #[test]
 fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let dir = temp_dir("toolbar");
     editor(&mut harness).set_drafts_dir(Some(dir.clone()));
     harness.get_by_label("Nothing to save yet");
@@ -2000,7 +1999,7 @@ fn picker_rect(harness: &mut Harness<'_, App>) -> eframe::egui::Rect {
 
 #[test]
 fn the_picker_opens_at_the_click_after_the_window_was_resized() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     // Far from the origin, so the canvas is panned and zoomed: graph space is not screen space.
     smelter(&mut harness, 2000.0, 1500.0);
     smelter(&mut harness, 2600.0, 1900.0);
@@ -2034,7 +2033,7 @@ fn the_picker_opens_at_the_click_after_the_window_was_resized() {
 // The web build's files: kept in the browser's storage, downloaded on Save, uploaded on Open.
 
 fn browser_harness() -> Harness<'static, App> {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     editor(&mut harness).use_browser_files(BrowserFiles::default());
     harness
 }
@@ -2147,7 +2146,7 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
     let mut storage = MemoryStorage::default();
     eframe::App::save(harness.state_mut(), &mut storage);
 
-    let catalog = aic_data::load(&fixture("tests/fixtures/satisfactory/vtest"), "en").unwrap();
+    let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
     let mut again = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
@@ -2161,7 +2160,7 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
 
 #[test]
 fn the_status_bar_shows_the_frame_rate_and_solve_time_until_turned_off() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     editor(&mut harness).set_show_performance(true);
     smelter(&mut harness, 0.0, 0.0);
     harness.run();
@@ -2198,14 +2197,14 @@ fn view_menu(harness: &mut Harness<'_, App>, item: &str) {
 
 #[test]
 fn one_view_has_no_tab_bar() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     assert_eq!(views(&mut harness).len(), 1);
     assert!(harness.query_by_label("Close view").is_none());
 }
 
 #[test]
 fn split_right_shows_the_graph_twice_and_an_edit_in_one_view_shows_in_the_other() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let ingot = smelter(&mut harness, 0.0, 0.0);
     let first = focused(&mut harness);
     view_menu(&mut harness, "Split right");
@@ -2253,7 +2252,7 @@ fn split_right_shows_the_graph_twice_and_an_edit_in_one_view_shows_in_the_other(
 
 #[test]
 fn the_keys_split_a_view_down_and_close_it_again() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Backslash);
     harness.run();
     assert_eq!(views(&mut harness).len(), 2);
@@ -2273,7 +2272,7 @@ fn the_keys_split_a_view_down_and_close_it_again() {
 
 #[test]
 fn a_view_of_a_dissolved_workspace_goes_back_to_the_top() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     let [_, ingot, plate, _] = plate_chain(&mut harness);
     editor(&mut harness).select_nodes(vec![ingot, plate]);
     harness.run();
@@ -2305,7 +2304,7 @@ fn a_view_of_a_dissolved_workspace_goes_back_to_the_top() {
 
 #[test]
 fn a_view_moves_to_a_window_of_its_own() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     smelter(&mut harness, 0.0, 0.0);
     view_menu(&mut harness, "Split right");
     let moved = focused(&mut harness);
@@ -2342,7 +2341,7 @@ fn the_layout_of_the_views_is_kept_with_the_settings() {
     let mut storage = MemoryStorage::default();
     eframe::App::save(harness.state_mut(), &mut storage);
 
-    let catalog = aic_data::load(&fixture("tests/fixtures/satisfactory/vtest"), "en").unwrap();
+    let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
     let mut again = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
@@ -2361,7 +2360,7 @@ fn the_layout_of_the_views_is_kept_with_the_settings() {
 
 #[test]
 fn a_tab_dragged_over_a_view_shows_where_it_lands_and_splits_there() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     smelter(&mut harness, 0.0, 0.0);
     view_menu(&mut harness, "Split right");
     view_menu(&mut harness, "Duplicate view");
@@ -2399,7 +2398,7 @@ fn a_tab_dragged_over_a_view_shows_where_it_lands_and_splits_there() {
 
 #[test]
 fn a_recipe_of_another_region_is_offered_with_its_badge_and_warns_on_its_card() {
-    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
     // The graph is in Valley IV; Iron Wire is Wuling's only.
     harness.get_by_label_contains("Iron Wire").click();
     harness.run();

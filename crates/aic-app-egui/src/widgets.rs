@@ -405,8 +405,8 @@ mod tests {
         assert_eq!(initials("LC Valley Battery"), "LV");
     }
 
-    const DATA: &[u8] = include_bytes!("../tests/fixtures/satisfactory/vtest/data.json");
-    const EN: &[u8] = include_bytes!("../tests/fixtures/satisfactory/vtest/i18n/en.json");
+    const DATA: &[u8] = include_bytes!("../../aic-editor/fixtures/satisfactory/vtest/data.json");
+    const EN: &[u8] = include_bytes!("../../aic-editor/fixtures/satisfactory/vtest/i18n/en.json");
 
     #[test]
     fn a_recipe_of_some_regions_names_them_and_one_of_every_region_none() {

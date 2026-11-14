@@ -4,10 +4,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use aic_core::{
-    CanvasView, Graph, LinkError, Member, NodeId, NodeKind, PortRef, Side, WorkspaceId,
-};
-use aic_data::{Catalog, RecipeId, RegionId};
+use aic_core::{CanvasView, Graph, Member, NodeId, PortRef, Side, WorkspaceId};
+use aic_data::{Catalog, RegionId};
 use eframe::egui::{self, Pos2, RichText, Ui, vec2};
 
 use crate::canvas::{self, Canvas, CanvasEvent, Selection};
@@ -25,6 +23,8 @@ use crate::store::FileStore;
 use crate::throttle::Throttle;
 use crate::views::Views;
 use crate::widgets::colors;
+use aic_editor::messages::link_error;
+use aic_editor::picker::recipe_node;
 
 /// A solve slower than this is reported in the status bar.
 const SLOW_SOLVE: Duration = Duration::from_millis(16);
@@ -835,38 +835,4 @@ fn port_menu_pos(pin: Pos2, side: Side) -> Pos2 {
         Side::Output => pin.x + PORT_MENU_GAP,
     };
     Pos2::new(x, pin.y - PORT_MENU_GAP)
-}
-
-/// A new recipe node: on the recipe's first facility, with no limit, so the solver sizes it from the
-/// rest of the graph. A settlement trade becomes an outpost order.
-fn recipe_node(catalog: &Catalog, recipe: RecipeId) -> Option<NodeKind> {
-    if let Some(order) = NodeKind::outpost_order(catalog, &recipe) {
-        return Some(order);
-    }
-    let facility = catalog.recipe(recipe.as_str())?.facilities.first()?.clone();
-    Some(NodeKind::Recipe {
-        recipe,
-        facility,
-        limit: None,
-    })
-}
-
-/// Why a link was refused, in the player's words.
-pub(crate) fn link_error(catalog: &Catalog, strings: &Strings, error: &LinkError) -> String {
-    let item = |id: &aic_data::ItemId| names::item(catalog, id.as_str()).to_owned();
-    match error {
-        LinkError::ItemMismatch { from, to } => strings.format(
-            "link-error-mismatch",
-            &[("from", &item(from)), ("to", &item(to))],
-        ),
-        LinkError::SolidFluid { from, to } => strings.format(
-            "link-error-solid-fluid",
-            &[("from", &item(from)), ("to", &item(to))],
-        ),
-        LinkError::NoItem => strings.get("link-error-no-item"),
-        LinkError::SelfLink => strings.get("link-error-self"),
-        LinkError::Duplicate => strings.get("link-error-duplicate"),
-        LinkError::AcrossWorkspaces => strings.get("link-error-across-workspaces"),
-        LinkError::UnknownNode(_) | LinkError::NoSuchPort { .. } => strings.get("link-error-other"),
-    }
 }

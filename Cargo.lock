@@ -159,17 +159,16 @@ version = "0.1.0"
 dependencies = [
  "aic-core",
  "aic-data",
+ "aic-editor",
  "eframe",
  "egui-snarl",
  "egui_dock",
  "egui_kittest",
- "fluent-bundle",
  "image",
  "indexmap",
  "js-sys",
  "rfd",
  "serde",
- "unic-langid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -199,6 +198,18 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "aic-editor"
+version = "0.1.0"
+dependencies = [
+ "aic-core",
+ "aic-data",
+ "fluent-bundle",
+ "serde",
+ "unic-langid",
+ "web-time",
 ]
 
 [[package]]
