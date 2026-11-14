@@ -22,16 +22,23 @@ impl Editor {
     pub(crate) fn inspector(&mut self, ui: &mut Ui, strings: &Strings) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(strings.get("inspector-title"));
-            match self.selection.clone() {
-                Some(Selection::Link(link)) if self.doc.graph().link(link).is_some() => {
+            match self.session.selection().cloned() {
+                Some(Selection::Link(link))
+                    if self.session.document().graph().link(link).is_some() =>
+                {
                     self.link_details(ui, strings, link);
                 }
                 Some(selection) => match (selection.single_node(), selection.single_workspace()) {
-                    (Some(node), _) if self.doc.graph().node(node).is_some() => {
+                    (Some(node), _) if self.session.document().graph().node(node).is_some() => {
                         self.node_details(ui, strings, node);
                     }
                     (_, Some(workspace))
-                        if self.doc.graph().workspace_info(workspace).is_some() =>
+                        if self
+                            .session
+                            .document()
+                            .graph()
+                            .workspace_info(workspace)
+                            .is_some() =>
                     {
                         self.workspace_details(ui, strings, workspace);
                     }
@@ -49,8 +56,8 @@ impl Editor {
     }
 
     fn workspace_details(&mut self, ui: &mut Ui, strings: &Strings, workspace: WorkspaceId) {
-        let catalog = &self.catalog;
-        let graph = self.doc.graph();
+        let catalog = self.session.catalog();
+        let graph = self.session.document().graph();
         let info = graph
             .workspace_info(workspace)
             .expect("checked by caller")
@@ -67,7 +74,7 @@ impl Editor {
             .filter(|&node| !matches!(graph.nodes()[node].kind, NodeKind::WorkspacePort { .. }))
             .count();
         ui.label(names::node_count(strings, count));
-        let solution = self.doc.solution();
+        let solution = self.session.document().solution();
         ui.add_space(4.0);
         ui.label(theme::strong(strings.get("inspector-ports")));
         egui::Grid::new("workspace-ports")
@@ -99,14 +106,14 @@ impl Editor {
         });
         let remove = ui.button(strings.get("workspace-remove")).clicked();
         if response.changed() && !name.trim().is_empty() {
-            let _ = self.doc.rename_workspace(workspace, name.trim());
+            let _ = self.session.rename_workspace(workspace, name.trim());
         }
         if open {
             self.show_level(Some(workspace));
         } else if dissolve {
             self.dissolve_selection();
         } else if remove {
-            self.doc.remove_workspace(&self.catalog, workspace);
+            self.session.remove_workspace(workspace);
             self.select(None);
         }
     }
@@ -129,9 +136,9 @@ impl Editor {
     }
 
     fn node_details(&mut self, ui: &mut Ui, strings: &Strings, node: NodeId) {
-        let catalog = &self.catalog;
-        let graph = self.doc.graph();
-        let solution = self.doc.solution();
+        let catalog = self.session.catalog();
+        let graph = self.session.document().graph();
+        let solution = self.session.document().solution();
         let kind = graph.node(node).expect("checked by caller").kind.clone();
         ui.label(
             RichText::new(names::node_title(catalog, strings, &kind))
@@ -208,14 +215,14 @@ impl Editor {
                 }
             });
         if let Some(facility) = facility_choice {
-            let _ = self.doc.set_facility(node, facility);
+            let _ = self.session.set_facility(node, facility);
         }
 
         self.limit_field(ui, strings, node, &kind);
         self.throttle_reason(ui, strings, node);
         self.port_list(ui, strings, node, &kind);
         if ui.button(strings.get("node-remove")).clicked() {
-            self.remove_node(node);
+            self.session.remove_node(node);
         }
     }
 
@@ -256,15 +263,15 @@ impl Editor {
         if let Some(limit) = typed
             && (limit.is_some() || !required)
         {
-            let _ = self.doc.set_limit(node, limit);
+            let _ = self.session.set_limit(node, limit);
         }
     }
 
     fn throttle_reason(&self, ui: &mut Ui, strings: &Strings, node: NodeId) {
-        let Some(reason) = self.doc.solution().throttle.get(&node) else {
+        let Some(reason) = self.session.document().solution().throttle.get(&node) else {
             return;
         };
-        let catalog = &self.catalog;
+        let catalog = self.session.catalog();
         let item = names::item(catalog, reason.item.as_str());
         let key = match reason.side {
             Side::Input => "inspector-throttle-input",
@@ -277,16 +284,19 @@ impl Editor {
                 .strong(),
         );
         ui.label(strings.format(key, &[("item", item)]));
-        if let Some(by) = reason.limited_by.and_then(|id| self.doc.graph().node(id)) {
+        if let Some(by) = reason
+            .limited_by
+            .and_then(|id| self.session.document().graph().node(id))
+        {
             let title = names::node_title(catalog, strings, &by.kind);
             ui.label(strings.format("inspector-limited-by", &[("node", &title)]));
         }
     }
 
     fn port_list(&self, ui: &mut Ui, strings: &Strings, node: NodeId, kind: &NodeKind) {
-        let catalog = &self.catalog;
-        let graph = self.doc.graph();
-        let solution = self.doc.solution();
+        let catalog = self.session.catalog();
+        let graph = self.session.document().graph();
+        let solution = self.session.document().solution();
         ui.add_space(4.0);
         ui.label(theme::strong(strings.get("inspector-ports")));
         egui::Grid::new("node-ports")
@@ -329,9 +339,9 @@ impl Editor {
     }
 
     fn link_details(&mut self, ui: &mut Ui, strings: &Strings, link: LinkId) {
-        let catalog = &self.catalog;
-        let graph = self.doc.graph();
-        let solution = self.doc.solution();
+        let catalog = self.session.catalog();
+        let graph = self.session.document().graph();
+        let solution = self.session.document().solution();
         let item = &graph.link(link).expect("checked by caller").item;
         let fluid = catalog.item(item.as_str()).is_some_and(|i| i.is_fluid);
         ui.horizontal(|ui| {
@@ -376,17 +386,17 @@ impl Editor {
                 }
             });
         if ui.button(strings.get("inspector-remove-link")).clicked() {
-            self.doc.remove_link(&self.catalog, link);
+            self.session.disconnect(link);
             self.select(None);
         }
     }
 
     fn totals(&self, ui: &mut Ui, strings: &Strings) {
-        let catalog = &self.catalog;
-        let totals = &self.doc.solution().totals;
-        let region = self.doc.graph().region();
+        let catalog = self.session.catalog();
+        let totals = &self.session.document().solution().totals;
+        let region = self.session.document().graph().region();
         ui.heading(strings.get("totals-title"));
-        if !totals.complete && !self.doc.graph().nodes().is_empty() {
+        if !totals.complete && !self.session.document().graph().nodes().is_empty() {
             ui.label(
                 RichText::new(strings.get("totals-incomplete"))
                     .weak()
@@ -462,7 +472,7 @@ impl Editor {
                         widgets::item_icon(ui, catalog, item.as_str(), 16.0);
                         ui.label(names::item(catalog, item.as_str()));
                         let used_text = format::short(Some(*used));
-                        let text = match self.availability.get(region, item) {
+                        let text = match self.session.availability().get(region, item) {
                             Some(available) => {
                                 let over = *used > available + 1e-9;
                                 let text = strings.format(
@@ -490,17 +500,20 @@ impl Editor {
     }
 
     fn warnings(&self, ui: &mut Ui, strings: &Strings) {
-        let solution = self.doc.solution();
-        let graph = self.doc.graph();
+        let solution = self.session.document().solution();
+        let graph = self.session.document().graph();
         let region = graph.region();
-        let resources = check_resources(&solution.totals, &self.availability.region(region));
+        let resources = check_resources(
+            &solution.totals,
+            &self.session.availability().region(region),
+        );
         let all: Vec<&Warning> = solution.warnings.iter().chain(&resources).collect();
         ui.heading(strings.get("warnings-title"));
         if all.is_empty() {
             ui.weak(strings.get("totals-none"));
         }
         for warning in all {
-            let text = warning_text(&self.catalog, strings, graph, warning);
+            let text = warning_text(self.session.catalog(), strings, graph, warning);
             ui.label(RichText::new(text).color(colors::WARN));
         }
     }

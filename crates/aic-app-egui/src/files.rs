@@ -19,11 +19,11 @@ use aic_core::Graph;
 use eframe::egui;
 use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
-use crate::document::Document;
 use crate::editor::Editor;
 use crate::i18n::Strings;
 use crate::store::{BrowserFiles, FileStore};
 use crate::throttle::Poll;
+use aic_editor::Document;
 
 /// The storage key for the recent files list.
 pub const RECENT_KEY: &str = "recent-files";
@@ -105,7 +105,7 @@ impl Editor {
 
     /// The document to reopen next time: the open file or draft, once it has been saved.
     pub fn last_document(&self) -> Option<&Path> {
-        self.doc.path()
+        self.session.document().path()
     }
 
     /// Saves the open graph, then runs `action`.
@@ -169,16 +169,18 @@ impl Editor {
             Ok(text) => text,
             Err(error) => {
                 let error = error.to_string();
-                self.status =
-                    Some(strings.format("file-open-failed", &[("file", name), ("error", &error)]));
+                self.session.set_status(Some(
+                    strings.format("file-open-failed", &[("file", name), ("error", &error)]),
+                ));
                 return;
             }
         };
         let had = self.store.read(&path).ok();
         if let Err(error) = self.store.write(&path, &text) {
             let error = error.to_string();
-            self.status =
-                Some(strings.format("file-open-failed", &[("file", name), ("error", &error)]));
+            self.session.set_status(Some(
+                strings.format("file-open-failed", &[("file", name), ("error", &error)]),
+            ));
             return;
         }
         let opened = self.read_file(&path, strings);
@@ -189,16 +191,16 @@ impl Editor {
                 }
                 None => self.store.remove(&path),
             }
-            self.status = Some(message);
+            self.session.set_status(Some(message));
         } else {
-            self.status = None;
+            self.session.set_status(None);
         }
     }
 
     /// Starts an empty draft in the current region. A draft left empty is deleted.
     fn start_new(&mut self) {
         self.drop_empty_draft();
-        let region = self.doc.graph().region().clone();
+        let region = self.session.document().graph().region().clone();
         self.new_graph(region);
     }
 
@@ -206,8 +208,8 @@ impl Editor {
     /// says why in the status bar.
     pub fn open_file(&mut self, path: &Path, strings: &Strings) {
         match self.read_file(path, strings) {
-            Ok(()) => self.status = None,
-            Err(message) => self.status = Some(message),
+            Ok(()) => self.session.set_status(None),
+            Err(message) => self.session.set_status(Some(message)),
         }
     }
 
@@ -216,7 +218,9 @@ impl Editor {
     pub fn reopen(&mut self, path: &Path, strings: &Strings) {
         if !self.store.exists(path) {
             let file = self.store.label(path);
-            self.status = Some(strings.format("file-last-missing", &[("file", &file)]));
+            self.session.set_status(Some(
+                strings.format("file-last-missing", &[("file", &file)]),
+            ));
             self.forget_recent(path);
             return;
         }
@@ -230,16 +234,19 @@ impl Editor {
             .read(path)
             .map_err(|e| (name.clone(), e.to_string()));
         let loaded = text.and_then(|text| {
-            Graph::from_json(&self.catalog, &text).map_err(|e| (name.clone(), e.to_string()))
+            Graph::from_json(self.session.catalog(), &text)
+                .map_err(|e| (name.clone(), e.to_string()))
         });
         let loaded = loaded.map_err(|(file, error)| {
             self.forget_recent(path);
             strings.format("file-open-failed", &[("file", &file), ("error", &error)])
         })?;
         self.drop_empty_draft();
-        self.other_data_version =
-            (loaded.data_version != self.catalog.version()).then_some(loaded.data_version);
-        let mut doc = Document::from_graph(&self.catalog, loaded.graph, Some(path.to_owned()));
+        self.session.set_other_data_version(
+            (loaded.data_version != self.session.catalog().version())
+                .then_some(loaded.data_version),
+        );
+        let mut doc = Document::from_graph(loaded.graph, Some(path.to_owned()));
         let draft = self.is_in_drafts(path);
         doc.set_draft(draft);
         self.set_document(doc);
@@ -256,7 +263,7 @@ impl Editor {
     /// Cmd+S: saves now. A draft asks where to keep it instead, as Save As does. In the browser,
     /// also downloads the file.
     pub fn save(&mut self, strings: &Strings) {
-        if self.doc.is_draft() || self.doc.path().is_none() {
+        if self.session.document().is_draft() || self.session.document().path().is_none() {
             self.save_as(strings);
         } else {
             self.save_now(strings);
@@ -268,9 +275,10 @@ impl Editor {
 
     /// The name Save As offers: the file's own, or Untitled for a draft.
     fn offered_name(&self, strings: &Strings) -> String {
-        self.doc
+        self.session
+            .document()
             .path()
-            .filter(|_| !self.doc.is_draft())
+            .filter(|_| !self.session.document().is_draft())
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| format!("{}.{EXTENSION}", strings.get("file-untitled")))
@@ -292,7 +300,7 @@ impl Editor {
     pub fn save_as_named(&mut self, name: &str, strings: &Strings) {
         let path = Path::new(BROWSER_FILES).join(file_name(name));
         self.save_to(&path, strings);
-        if self.doc.path() == Some(path.as_path()) && !self.save_failed {
+        if self.session.document().path() == Some(path.as_path()) && !self.save_failed {
             self.download_document();
         }
     }
@@ -352,7 +360,7 @@ impl Editor {
 
     /// Queues the open document, as saved, for the browser to download.
     fn download_document(&mut self) {
-        let Some(path) = self.doc.path() else {
+        let Some(path) = self.session.document().path() else {
             return;
         };
         if let Ok(text) = self.store.read(path) {
@@ -384,16 +392,17 @@ impl Editor {
     /// to a file of the player's deletes the draft.
     pub fn save_to(&mut self, path: &Path, strings: &Strings) {
         let old_draft = self
-            .doc
+            .session
+            .document()
             .path()
-            .filter(|_| self.doc.is_draft())
+            .filter(|_| self.session.document().is_draft())
             .map(Path::to_owned);
         let draft = self.is_in_drafts(path);
         if self.write(path, draft, strings) {
             if let Some(old) = old_draft.filter(|old| old != path) {
                 self.store.remove(&old);
             }
-            self.other_data_version = None;
+            self.session.set_other_data_version(None);
             if !draft {
                 self.remember_recent(path);
             }
@@ -405,8 +414,8 @@ impl Editor {
         if !self.needs_saving() {
             return;
         }
-        let target = match self.doc.path() {
-            Some(path) => Some((path.to_owned(), self.doc.is_draft())),
+        let target = match self.session.document().path() {
+            Some(path) => Some((path.to_owned(), self.session.document().is_draft())),
             None => self.new_draft_path().map(|path| (path, true)),
         };
         if let Some((path, draft)) = target {
@@ -432,24 +441,25 @@ impl Editor {
     /// Whether the graph or the view changed since the last save. An empty new graph doesn't need
     /// a draft.
     fn needs_saving(&self) -> bool {
-        let view_moved = self.doc.path().is_some()
+        let view_moved = self.session.document().path().is_some()
             && self
                 .canvas
                 .top_view()
                 .is_some_and(|view| Some(view) != self.saved_view);
-        self.doc.is_modified() || view_moved
+        self.session.document().is_modified() || view_moved
     }
 
     /// Writes the file. Returns whether it worked; if not, the status bar says why.
     fn write(&mut self, path: &Path, draft: bool, strings: &Strings) -> bool {
         let view = self.canvas.top_view();
         let json = self
-            .doc
+            .session
+            .document()
             .graph()
-            .to_json_with_view(self.catalog.version(), view);
+            .to_json_with_view(self.session.catalog().version(), view);
         match self.store.write(path, &json) {
             Ok(()) => {
-                self.doc.mark_saved(path.to_owned(), draft);
+                self.session.mark_saved(path.to_owned(), draft);
                 self.saved_view = view;
                 self.last_saved = Some(Instant::now());
                 self.save_failed = false;
@@ -458,10 +468,10 @@ impl Editor {
             Err(error) => {
                 self.save_failed = true;
                 let file = self.store.label(path);
-                self.status = Some(strings.format(
+                self.session.set_status(Some(strings.format(
                     "file-save-failed",
                     &[("file", &file), ("error", &error.to_string())],
-                ));
+                )));
                 false
             }
         }
@@ -483,9 +493,9 @@ impl Editor {
 
     /// Deletes the open draft's file when its graph is empty: nothing worth keeping.
     fn drop_empty_draft(&mut self) {
-        if self.doc.is_draft()
-            && self.doc.graph().nodes().is_empty()
-            && let Some(path) = self.doc.path()
+        if self.session.document().is_draft()
+            && self.session.document().graph().nodes().is_empty()
+            && let Some(path) = self.session.document().path()
         {
             let path = path.to_owned();
             self.store.remove(&path);
@@ -512,13 +522,14 @@ impl Editor {
     /// The window title: the file's name, or Untitled for a draft, marked until it is saved.
     pub(crate) fn update_title(&mut self, ctx: &egui::Context, strings: &Strings) {
         let file = self
-            .doc
+            .session
+            .document()
             .path()
-            .filter(|_| !self.doc.is_draft())
+            .filter(|_| !self.session.document().is_draft())
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| strings.get("file-untitled"));
-        let key = if self.doc.is_modified() {
+        let key = if self.session.document().is_modified() {
             "window-title-modified"
         } else {
             "window-title"

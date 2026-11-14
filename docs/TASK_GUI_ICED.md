@@ -905,6 +905,21 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
   what the view was last brought in line with, so a drag not yet handed to the graph isn't undone by
   an unrelated edit (the old incremental edits behaved so). Full rebuilds remain for `set_level`,
   `rebind`, a stale view swapped in and `from_graph`.
+- (2026-11-15, A5) The egui view layer no longer wraps the document: the `Session` owns the
+  `aic_editor::Document`, so egui's `DocView` keeps only the snarl view and is brought in line
+  lazily (`DocView::sync` compares `Document::generation`) at the start of a canvas draw, before
+  `sync_from_view` and at the end of a frame. `A4`'s wrapper methods are gone; `Editor::document()`
+  / `document_mut()` return small façades (`DocumentRef`, `DocumentMut`) so the tests keep their
+  calls (`DocumentMut::connect` ignores its catalog argument).
+- (2026-11-15, A5) `Outcome` is `Done | File(FileCommand) | WriteClipboard(String) |
+  View(ViewCommand) | Nothing` (no `PickOpenPath`/`ReadClipboard`: files move in A6, and pasting uses
+  the app clipboard). egui ignores `WriteClipboard` from a menu click, as it always did; keys still
+  copy to the system clipboard through egui's clipboard events.
+- (2026-11-15, A5) `Session` makes its own `Strings::english()`; the egui `App` keeps passing its own
+  `&Strings` to widgets (two small English tables, same file).
+- (2026-11-15, A5) `Session::disconnect` also clears a selected link; egui's `sync_from_view` uses
+  it for a wire lost to Cmd+drag, which before left a stale `Selection::Link` (the inspector
+  already ignored it).
 - (2026-11-15, A2, unrelated bug) The egui kittest snapshots are flaky on this machine: with no
   change at all, `a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports`
   (`workspace_inside`, ~500 differing pixels) and sometimes `a_view_of_a_dissolved_workspace_goes_back_to_the_top`
@@ -922,7 +937,7 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 | A2 | `aic-editor` with the pure modules | A1 | done 2026-11-15 |
 | A3 | Design tokens and fonts in `aic_editor::style` | A2 | done 2026-11-15 |
 | A4 | Split the document | A2 | done 2026-11-15 |
-| A5 | `Session`: selection, editing, `Command` | A4 | todo |
+| A5 | `Session`: selection, editing, `Command` | A4 | done 2026-11-15 |
 | A6 | `Session`: files, autosave, settings | A5 | todo |
 | A7 | `scripts/check-frontends.sh` | A2 | todo |
 | B1 | `aic-app-iced` skeleton | A3, A6, A7 | todo |

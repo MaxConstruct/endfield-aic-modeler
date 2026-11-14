@@ -231,7 +231,7 @@ impl App {
             if let Err(error) = web::download(&file) {
                 let message =
                     strings.format("export-failed", &[("file", &file.name), ("error", &error)]);
-                editor.status = Some(message);
+                editor.session.set_status(Some(message));
             }
         }
     }

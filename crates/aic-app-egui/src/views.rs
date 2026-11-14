@@ -157,7 +157,7 @@ impl Editor {
     /// The level a view shows.
     pub fn view_level(&self, key: ViewKey) -> Option<WorkspaceId> {
         if key == self.views.focused {
-            self.doc.level()
+            self.view.level()
         } else {
             self.views.parked.get(&key).and_then(|p| p.level.level())
         }
@@ -188,7 +188,11 @@ impl Editor {
             .get_mut(&key)
             .expect("every view but the focused one is parked");
         std::mem::swap(&mut self.canvas, &mut parked.canvas);
-        self.doc.swap_level(&self.catalog, &mut parked.level);
+        self.view.swap(
+            self.session.document(),
+            self.session.catalog(),
+            &mut parked.level,
+        );
     }
 
     /// Gives `key` the focus: its canvas and level move into the editor.
@@ -248,9 +252,14 @@ impl Editor {
     pub fn view_title(&self, key: ViewKey, strings: &Strings) -> String {
         let level = self.view_level(key);
         let title = match level {
-            None => names::region(&self.catalog, self.doc.graph().region().as_str()).to_owned(),
+            None => names::region(
+                self.session.catalog(),
+                self.session.document().graph().region().as_str(),
+            )
+            .to_owned(),
             Some(id) => self
-                .doc
+                .session
+                .document()
                 .graph()
                 .workspace_info(id)
                 .map(|w| w.name.clone())
@@ -415,14 +424,7 @@ impl Editor {
         if !focused {
             self.swap(key);
         }
-        let events = self.canvas.show(
-            ui,
-            &mut self.doc,
-            &self.catalog,
-            strings,
-            self.selection.as_ref(),
-            self.round_up,
-        );
+        let events = self.canvas.show(ui, &mut self.view, &self.session, strings);
         let rect = self.canvas.rect;
         let pressed = ui.input(|i| {
             i.pointer.any_pressed() && i.pointer.press_origin().is_some_and(|p| rect.contains(p))
@@ -438,7 +440,8 @@ impl Editor {
                 event => self.apply(event, strings),
             }
         }
-        self.doc.sync_from_view(&self.catalog);
+        self.sync_view();
+        self.view.sync_from_view(&mut self.session);
         if !focused {
             self.swap(key);
             if pressed {
@@ -561,7 +564,13 @@ impl Editor {
 
     /// The layout to keep: see [`Layout`].
     pub fn layout(&self) -> Layout {
-        let workspaces: Vec<WorkspaceId> = self.doc.graph().workspaces().keys().collect();
+        let workspaces: Vec<WorkspaceId> = self
+            .session
+            .document()
+            .graph()
+            .workspaces()
+            .keys()
+            .collect();
         let place = |level: Option<WorkspaceId>| {
             level.and_then(|id| workspaces.iter().position(|w| *w == id))
         };
@@ -616,7 +625,13 @@ impl Editor {
         {
             return;
         }
-        let workspaces: Vec<WorkspaceId> = self.doc.graph().workspaces().keys().collect();
+        let workspaces: Vec<WorkspaceId> = self
+            .session
+            .document()
+            .graph()
+            .workspaces()
+            .keys()
+            .collect();
         let level_at = |place: Option<usize>| place.and_then(|i| workspaces.get(i).copied());
         let canvas_for = |key: ViewKey, level, camera: Option<CanvasView>| {
             let mut canvas = Canvas::new(key.0);
@@ -631,7 +646,8 @@ impl Editor {
             let level = level_at(place);
             if *key == focused {
                 self.canvas = canvas_for(*key, level, camera);
-                self.doc.set_level(&self.catalog, level);
+                self.view
+                    .set_level(self.session.document(), self.session.catalog(), level);
             } else {
                 parked.insert(
                     *key,

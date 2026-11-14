@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use eframe::egui::{self, RichText, Ui, vec2};
 
-use crate::canvas::Selection;
 use crate::edit::Shortcut;
 use crate::editor::Editor;
 use crate::i18n::Strings;
@@ -41,87 +40,37 @@ const LAYOUT: [Option<Shortcut>; 12] = [
     Some(Shortcut::Dissolve),
 ];
 
-impl Shortcut {
-    /// The button's picture: a symbol egui's built-in fonts draw (checked by eye in a snapshot;
-    /// many symbols, such as 📋 and ⧉, are missing from them).
-    fn icon(self) -> &'static str {
-        match self {
-            Self::New => "🗋",
-            Self::Open => "🗁",
-            Self::Save => "💾",
-            Self::SaveAs => "🖹",
-            Self::Undo => "⟲",
-            Self::Redo => "⟳",
-            Self::Cut => "✂",
-            Self::Copy => "🗐",
-            Self::Paste => "🗊",
-            Self::Duplicate => "✚",
-            Self::Delete => "🗑",
-            Self::SelectAll => "⛶",
-            Self::MakeWorkspace => "⊞",
-            Self::Dissolve => "⊟",
-            // Not on the toolbar: in the View menu and the tab menus only.
-            Self::SplitRight
-            | Self::SplitDown
-            | Self::DuplicateView
-            | Self::MoveToWindow
-            | Self::CloseView => "",
-        }
-    }
-
-    /// The Fluent key of its name, shared with the menus.
-    pub(crate) fn name_key(self) -> &'static str {
-        match self {
-            Self::New => "menu-new",
-            Self::Open => "menu-open",
-            Self::Save => "menu-save",
-            Self::SaveAs => "menu-save-as",
-            Self::Undo => "menu-undo",
-            Self::Redo => "menu-redo",
-            Self::Cut => "menu-cut",
-            Self::Copy => "menu-copy",
-            Self::Paste => "menu-paste",
-            Self::Duplicate => "menu-duplicate",
-            Self::Delete => "menu-delete",
-            Self::SelectAll => "menu-select-all",
-            Self::MakeWorkspace => "menu-make-workspace",
-            Self::Dissolve => "menu-dissolve-workspace",
-            Self::SplitRight => "view-split-right",
-            Self::SplitDown => "view-split-down",
-            Self::DuplicateView => "view-duplicate",
-            Self::MoveToWindow => "view-move-to-window",
-            Self::CloseView => "view-close",
-        }
+/// The button's picture: a symbol egui's built-in fonts draw (checked by eye in a snapshot;
+/// many symbols, such as 📋 and ⧉, are missing from them).
+fn icon(command: Shortcut) -> &'static str {
+    match command {
+        Shortcut::New => "🗋",
+        Shortcut::Open => "🗁",
+        Shortcut::Save => "💾",
+        Shortcut::SaveAs => "🖹",
+        Shortcut::Undo => "⟲",
+        Shortcut::Redo => "⟳",
+        Shortcut::Cut => "✂",
+        Shortcut::Copy => "🗐",
+        Shortcut::Paste => "🗊",
+        Shortcut::Duplicate => "✚",
+        Shortcut::Delete => "🗑",
+        Shortcut::SelectAll => "⛶",
+        Shortcut::MakeWorkspace => "⊞",
+        Shortcut::Dissolve => "⊟",
+        // Not on the toolbar: in the View menu and the tab menus only.
+        Shortcut::SplitRight
+        | Shortcut::SplitDown
+        | Shortcut::DuplicateView
+        | Shortcut::MoveToWindow
+        | Shortcut::CloseView => "",
     }
 }
 
 impl Editor {
     /// Whether a command can do anything right now; the toolbar and the Edit menu grey it out if not.
     pub(crate) fn can_run(&self, shortcut: Shortcut) -> bool {
-        match shortcut {
-            Shortcut::Undo => self.doc.can_undo(),
-            Shortcut::Redo => self.doc.can_redo(),
-            Shortcut::Cut | Shortcut::Copy | Shortcut::Duplicate | Shortcut::MakeWorkspace => {
-                self.has_selected_nodes()
-            }
-            Shortcut::Paste => self.clipboard.is_some(),
-            Shortcut::Delete => self.selection.is_some(),
-            Shortcut::Dissolve => self
-                .selection
-                .as_ref()
-                .and_then(Selection::single_workspace)
-                .is_some(),
-            Shortcut::New
-            | Shortcut::Open
-            | Shortcut::Save
-            | Shortcut::SaveAs
-            | Shortcut::SelectAll
-            | Shortcut::SplitRight
-            | Shortcut::SplitDown
-            | Shortcut::DuplicateView => true,
-            Shortcut::MoveToWindow => crate::views::WINDOWS,
-            Shortcut::CloseView => self.views.len() > 1,
-        }
+        self.session.can_run(shortcut)
     }
 
     /// The shortcut whose button is lit, if its moment isn't over.
@@ -143,11 +92,11 @@ impl Editor {
                     ui.separator();
                     continue;
                 };
-                let keys = ui.ctx().format_shortcut(&shortcut.keys());
-                let name = strings.get(shortcut.name_key());
+                let keys = ui.ctx().format_shortcut(&crate::edit::keys(shortcut));
+                let name = strings.get(shortcut.label_key());
                 let button = egui::Button::selectable(
                     lit == Some(shortcut),
-                    RichText::new(shortcut.icon()).size(16.0),
+                    RichText::new(icon(shortcut)).size(16.0),
                 )
                 .min_size(BUTTON);
                 let response = ui
@@ -172,15 +121,15 @@ impl Editor {
     pub(crate) fn save_indicator(&self, ui: &mut Ui, strings: &Strings) {
         let (text, color) = if self.save_failed {
             (strings.get("save-state-failed"), colors::NEGATIVE)
-        } else if self.doc.is_modified() {
-            let key = if self.doc.path().is_some() || self.drafts_dir.is_some() {
+        } else if self.session.document().is_modified() {
+            let key = if self.session.document().path().is_some() || self.drafts_dir.is_some() {
                 "save-state-saving"
             } else {
                 "save-state-unsaved"
             };
             (strings.get(key), colors::WARN)
-        } else if self.doc.path().is_some() {
-            let key = if self.doc.is_draft() {
+        } else if self.session.document().path().is_some() {
+            let key = if self.session.document().is_draft() {
                 "save-state-draft"
             } else {
                 "save-state-saved"
@@ -220,7 +169,8 @@ impl Editor {
             )
             .inner;
         let file = self
-            .doc
+            .session
+            .document()
             .path()
             .map(|path| self.store.label(path))
             .unwrap_or_else(|| strings.get("file-untitled"));

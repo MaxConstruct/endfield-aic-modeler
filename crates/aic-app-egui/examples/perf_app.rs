@@ -175,7 +175,7 @@ fn build(app: &mut App, target: usize) -> Option<NodeId> {
         }
     }
 
-    let doc = editor.document_mut();
+    let mut doc = editor.document_mut();
     let mut nodes = Vec::new();
     for (index, recipe) in planned.iter().enumerate() {
         let facility = catalog.recipe(recipe.as_str())?.facilities.first()?.clone();

@@ -72,12 +72,12 @@ impl Editor {
             } else {
                 "export-done"
             };
-            self.status = Some(match result {
+            self.session.set_status(Some(match result {
                 Ok(()) => strings.format(done, &[("file", &file)]),
                 Err(error) => {
                     strings.format("export-failed", &[("file", &file), ("error", &error)])
                 }
-            });
+            }));
         }
     }
 }

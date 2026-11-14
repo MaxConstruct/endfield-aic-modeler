@@ -4,13 +4,13 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use aic_core::{CanvasView, Graph, Member, NodeId, PortRef, Side, WorkspaceId};
+use aic_core::{CanvasView, Member, NodeId, Side, WorkspaceId};
 use aic_data::{Catalog, RegionId};
-use eframe::egui::{self, Pos2, RichText, Ui, vec2};
+use eframe::egui::{self, Pos2, RichText, Ui};
 
 use crate::canvas::{self, Canvas, CanvasEvent, Selection};
 use crate::data::{DataChoice, DataFolder};
-use crate::document::{Anchor, Document, port_ref};
+use crate::document::{DocView, DocumentMut, DocumentRef, to_pos};
 use crate::edit::Shortcut;
 use crate::files::{Download, Pending, Upload};
 use crate::format;
@@ -23,7 +23,8 @@ use crate::store::FileStore;
 use crate::throttle::Throttle;
 use crate::views::Views;
 use crate::widgets::colors;
-use aic_editor::messages::link_error;
+use aic_editor::Document;
+use aic_editor::Session;
 use aic_editor::picker::recipe_node;
 
 /// A solve slower than this is reported in the status bar.
@@ -38,14 +39,14 @@ const ZOOM_SLIDER_WIDTH: f32 = 96.0;
 const PORT_MENU_GAP: f32 = 12.0;
 
 pub struct Editor {
-    pub(crate) catalog: Catalog,
-    pub(crate) doc: Document,
+    /// The catalog, the document, the selection, the clipboard and every edit that isn't drawing.
+    pub(crate) session: Session,
+    /// The egui-snarl view of the focused view's level of the document.
+    pub(crate) view: DocView,
     /// The focused view's canvas; the other views' wait in `views`.
     pub(crate) canvas: Canvas,
     pub(crate) views: Views,
     pub(crate) picker: Option<Picker>,
-    pub(crate) selection: Option<Selection>,
-    pub(crate) availability: Availability,
     pub(crate) settings: SettingsWindow,
     pub(crate) browser: crate::browser::Browser,
     /// What the player is typing in the inspector's limit field.
@@ -53,10 +54,6 @@ pub struct Editor {
     pub(crate) port_menu: Option<PortMenu>,
     pub(crate) show_browser: bool,
     pub(crate) show_inspector: bool,
-    /// Show whole facilities and how busy they are instead of fractional counts.
-    pub(crate) round_up: bool,
-    /// Nodes copied with Ctrl+C, and how many times they were pasted since.
-    pub(crate) clipboard: Option<(Graph, u32)>,
     /// Files opened or saved lately, newest first. Kept in eframe storage.
     pub(crate) recent_files: Vec<PathBuf>,
     /// Where drafts are saved; `None` keeps new graphs in memory until Save As.
@@ -72,8 +69,6 @@ pub struct Editor {
     pub(crate) autosave: Throttle,
     /// The canvas view as last saved, so moving the view also gets saved.
     pub(crate) saved_view: Option<CanvasView>,
-    /// The data version of the open file, when it isn't the active one.
-    pub(crate) other_data_version: Option<String>,
     /// The data folder and what was loaded from it; `None` when the app was given a catalog.
     pub(crate) data: Option<(DataFolder, DataChoice)>,
     /// Decoded icons belong to the old data after a switch.
@@ -85,9 +80,6 @@ pub struct Editor {
     pub(crate) save_failed: bool,
     /// Where to save the canvas once the window is next drawn.
     pub(crate) export_to: Option<PathBuf>,
-    /// The last refused action or file message, shown until the next one.
-    pub(crate) status: Option<String>,
-    last_solve: Option<Duration>,
     /// Whether the status bar shows the frame rate and the last solve's time.
     pub(crate) show_performance: bool,
     /// When the last frames were drawn, for the frame rate.
@@ -97,28 +89,18 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(catalog: Catalog, availability: Availability) -> Self {
-        let region = catalog
-            .regions()
-            .keys()
-            .next()
-            .cloned()
-            .unwrap_or_else(|| RegionId::from(""));
         Self {
-            catalog,
-            doc: Document::new(region),
+            session: Session::new(catalog, availability),
+            view: DocView::new(None),
             canvas: Canvas::default(),
             views: Views::default(),
             picker: None,
-            selection: None,
-            availability,
             settings: SettingsWindow::default(),
             browser: crate::browser::Browser::default(),
             limit_edit: String::new(),
             port_menu: None,
             show_browser: true,
             show_inspector: false,
-            round_up: false,
-            clipboard: None,
             recent_files: Vec::new(),
             drafts_dir: None,
             store: FileStore::default(),
@@ -127,15 +109,12 @@ impl Editor {
             upload: None,
             autosave: Throttle::new(crate::files::AUTOSAVE_INTERVAL),
             saved_view: None,
-            other_data_version: None,
             data: None,
             icons_stale: false,
             export_to: None,
             flash: None,
             last_saved: None,
             save_failed: false,
-            status: None,
-            last_solve: None,
             show_performance: true,
             frames: egui::util::History::new(2..1000, FRAME_RATE_WINDOW),
             last_title: String::new(),
@@ -145,15 +124,21 @@ impl Editor {
     /// Starts an empty graph in `region`, dropping the open one.
     pub fn new_graph(&mut self, region: RegionId) {
         self.set_document(Document::new(region));
-        self.other_data_version = None;
+        self.session.set_other_data_version(None);
     }
 
     pub(crate) fn set_document(&mut self, doc: Document) {
-        self.doc = doc;
+        self.session.replace_document(doc);
+        self.view = DocView::new(None);
         self.reset_views();
         self.picker = None;
         self.port_menu = None;
-        self.select(None);
+    }
+
+    /// Brings the focused view's snarl graph in line with the document, if it changed.
+    pub(crate) fn sync_view(&mut self) {
+        self.view
+            .sync(self.session.document(), self.session.catalog());
     }
 
     pub fn set_data_folder(&mut self, folder: DataFolder, choice: DataChoice) {
@@ -176,48 +161,61 @@ impl Editor {
         };
         match folder.load(&choice) {
             Ok(catalog) => {
-                self.doc.rebind(&catalog);
-                self.catalog = catalog;
+                self.session.switch_catalog(catalog);
+                self.view
+                    .rebuild(self.session.document(), self.session.catalog());
                 self.icons_stale = true;
                 if let Some((_, current)) = &mut self.data {
                     *current = choice;
                 }
-                self.status = None;
             }
             Err(error) => {
-                self.status =
-                    Some(strings.format("data-switch-failed", &[("error", &error.to_string())]));
+                self.session.set_status(Some(
+                    strings.format("data-switch-failed", &[("error", &error.to_string())]),
+                ));
             }
         }
     }
 
     pub fn catalog(&self) -> &Catalog {
-        &self.catalog
+        self.session.catalog()
     }
 
-    pub fn document(&self) -> &Document {
-        &self.doc
+    /// The open document with the view that draws it.
+    pub fn document(&self) -> DocumentRef<'_> {
+        DocumentRef {
+            doc: self.session.document(),
+            view: &self.view,
+        }
     }
 
-    pub fn document_mut(&mut self) -> &mut Document {
-        &mut self.doc
+    /// The open document, for edits that keep the view in line.
+    pub fn document_mut(&mut self) -> DocumentMut<'_> {
+        DocumentMut {
+            session: &mut self.session,
+            view: &mut self.view,
+        }
+    }
+
+    pub fn session(&self) -> &Session {
+        &self.session
     }
 
     pub fn availability(&self) -> &Availability {
-        &self.availability
+        self.session.availability()
     }
 
     pub fn selection(&self) -> Option<&Selection> {
-        self.selection.as_ref()
+        self.session.selection()
     }
 
     /// Selects these nodes, as a box selection would.
     pub fn select_nodes(&mut self, nodes: Vec<NodeId>) {
-        self.select(Selection::of_nodes(nodes));
+        self.session.select_nodes(nodes);
     }
 
     pub fn set_round_up(&mut self, on: bool) {
-        self.round_up = on;
+        self.session.set_round_up(on);
     }
 
     pub fn show_performance(&self) -> bool {
@@ -255,8 +253,14 @@ impl Editor {
 
     /// Where a port was drawn last frame, on screen.
     pub fn port_on_screen(&self, node: NodeId, side: Side, item: &str) -> Option<Pos2> {
-        self.canvas
-            .port_on_screen(&self.doc, &self.catalog, node, side, &item.into())
+        self.canvas.port_on_screen(
+            &self.view,
+            self.session.document(),
+            self.session.catalog(),
+            node,
+            side,
+            &item.into(),
+        )
     }
 
     /// Where a node was drawn last frame, on screen.
@@ -272,10 +276,11 @@ impl Editor {
     /// Shows another level of the graph: a workspace, or `None` for the top. The selection and
     /// any open menu belong to the level left behind.
     pub fn show_level(&mut self, level: Option<WorkspaceId>) {
-        if level == self.doc.level() {
+        if level == self.view.level() {
             return;
         }
-        self.doc.set_level(&self.catalog, level);
+        self.view
+            .set_level(self.session.document(), self.session.catalog(), level);
         self.select(None);
         self.picker = None;
         self.port_menu = None;
@@ -320,10 +325,11 @@ impl Editor {
             .show_collapsible(ui, &mut show_browser, |ui| {
                 if let Some(kind) = self
                     .browser
-                    .ui(ui, &self.catalog, strings)
-                    .and_then(|id| recipe_node(&self.catalog, id))
+                    .ui(ui, self.session.catalog(), strings)
+                    .and_then(|id| recipe_node(self.session.catalog(), id))
                 {
-                    let node = self.doc.add_node(kind, self.canvas.center());
+                    let at = to_pos(self.canvas.center());
+                    let node = self.session.add_node(kind, at, self.view.level());
                     self.select(Some(Selection::node(node)));
                 }
             });
@@ -347,13 +353,10 @@ impl Editor {
             .data
             .as_ref()
             .map(|(folder, choice)| (folder, choice.clone()));
-        let switch = self.settings.show(
-            ui.ctx(),
-            &self.catalog,
-            strings,
-            &mut self.availability,
-            data,
-        );
+        let (catalog, availability) = self.session.catalog_and_availability();
+        let switch = self
+            .settings
+            .show(ui.ctx(), catalog, strings, availability, data);
         if let Some(choice) = switch {
             self.switch_data(choice, strings);
         }
@@ -362,61 +365,42 @@ impl Editor {
         self.end_undo_step(ui.ctx());
         self.autosave(ui.ctx(), strings);
         self.update_title(ui.ctx(), strings);
-        if let Some(took) = self.doc.solve_if_stale(&self.catalog) {
-            self.last_solve = Some(took);
+        if self.session.solve_if_stale().is_some() {
             ui.ctx().request_repaint();
         }
+        self.sync_view();
     }
 
     /// Ends the undo step once the player lets go: a drag, or typing in a field, undoes in one go.
     fn end_undo_step(&mut self, ctx: &egui::Context) {
         let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
         if !busy {
-            self.doc.checkpoint();
+            self.session.checkpoint();
         }
     }
 
     pub(crate) fn apply(&mut self, event: CanvasEvent, strings: &Strings) {
+        let level = self.view.level();
         match event {
-            CanvasEvent::Connect { from, to } => self.connect(from, to, strings),
-            CanvasEvent::Disconnect(link) => {
-                self.doc.remove_link(&self.catalog, link);
-                if self.selection == Some(Selection::Link(link)) {
-                    self.select(None);
-                }
-            }
+            CanvasEvent::Connect { from, to } => self.session.connect(from, to),
+            CanvasEvent::Disconnect(link) => self.session.disconnect(link),
             CanvasEvent::OpenPicker { origin, graph_pos } => self.open_picker(origin, graph_pos),
             CanvasEvent::Select(selection) => self.select(selection),
-            CanvasEvent::Toggle(member) => {
-                let mut items = self
-                    .selection
-                    .as_ref()
-                    .map(|s| s.items().to_vec())
-                    .unwrap_or_default();
-                if let Some(at) = items.iter().position(|m| *m == member) {
-                    items.remove(at);
-                } else {
-                    items.push(member);
-                }
-                self.select(Selection::of_items(items));
-            }
-            CanvasEvent::Remove(Member::Node(node)) => self.remove_node(node),
+            CanvasEvent::Toggle(member) => self.session.toggle(member),
+            CanvasEvent::Remove(Member::Node(node)) => self.session.remove_node(node),
             CanvasEvent::Remove(Member::Workspace(workspace)) => {
-                self.doc.remove_workspace(&self.catalog, workspace);
-                self.select(None);
+                self.session.remove_workspace(workspace);
             }
             CanvasEvent::ShowLevel(level) => self.show_level(level),
             CanvasEvent::AddPort(side) => {
-                if let Some(port) = self.doc.add_port(&self.catalog, side) {
-                    self.select(Some(Selection::node(port)));
-                }
+                self.session.add_port(level, side);
             }
             CanvasEvent::Rename(workspace, name) => {
-                let _ = self.doc.rename_workspace(workspace, &name);
+                let _ = self.session.rename_workspace(workspace, &name);
             }
             CanvasEvent::Dissolve(workspace) => {
                 self.select(Selection::of_items(vec![Member::Workspace(workspace)]));
-                self.dissolve_selection();
+                self.session.dissolve_selection(level);
             }
             CanvasEvent::Cut(member) => {
                 self.select(Selection::of_items(vec![member]));
@@ -424,14 +408,14 @@ impl Editor {
             }
             CanvasEvent::Copy(member) => {
                 self.select(Selection::of_items(vec![member]));
-                self.copy();
+                self.session.copy();
             }
-            CanvasEvent::PasteInto(workspace) => self.paste_into(Some(workspace)),
+            CanvasEvent::PasteInto(workspace) => self.session.paste_into(Some(workspace), level),
             CanvasEvent::SetFacility(node, facility) => {
-                let _ = self.doc.set_facility(node, facility);
+                let _ = self.session.set_facility(node, facility);
             }
             CanvasEvent::SetLimit(node, limit) => {
-                let _ = self.doc.set_limit(node, limit);
+                let _ = self.session.set_limit(node, limit);
             }
             CanvasEvent::OpenPortMenu { port, graph_pos } => {
                 let screen = port_menu_pos(self.canvas.to_screen(graph_pos), port.side);
@@ -442,32 +426,7 @@ impl Editor {
     }
 
     pub(crate) fn select(&mut self, selection: Option<Selection>) {
-        self.selection = selection;
-    }
-
-    pub(crate) fn remove_node(&mut self, node: NodeId) {
-        self.doc.remove_node(&self.catalog, node);
-        if let Some(selection) = &self.selection
-            && selection.contains_node(node)
-        {
-            let rest: Vec<Member> = selection
-                .items()
-                .iter()
-                .copied()
-                .filter(|m| *m != Member::Node(node))
-                .collect();
-            self.select(Selection::of_items(rest));
-        }
-    }
-
-    fn connect(&mut self, from: PortRef, to: PortRef, strings: &Strings) {
-        match self.doc.connect(&self.catalog, from, to) {
-            Ok(_) => self.status = None,
-            Err(error) => {
-                let reason = link_error(&self.catalog, strings, &error);
-                self.status = Some(strings.format("link-refused", &[("error", &reason)]));
-            }
-        }
+        self.session.select(selection);
     }
 
     /// Adds the node the player picked and, when the picker was opened from a port, links it there.
@@ -478,54 +437,13 @@ impl Editor {
         graph_pos: Pos2,
         choice: Choice,
     ) -> Option<NodeId> {
-        let item = match origin {
-            Origin::Port { item, .. } => Some(item),
-            Origin::Canvas => None,
-        };
-        let kind = match choice {
-            Choice::Recipe(recipe) => recipe_node(&self.catalog, recipe)?,
-            Choice::Builtin(builtin) => picker::builtin_kind(&self.catalog, builtin, item),
-            Choice::Workspace => return None,
-        };
-        // Roughly line the new node's first port up with the point.
-        let pos = graph_pos - vec2(0.0, 40.0);
-        let node = match origin {
-            Origin::Canvas => self.doc.add_node(kind, pos),
-            Origin::Port { side, .. } => {
-                let anchor = match side {
-                    Side::Input => Anchor::Right(graph_pos.x),
-                    Side::Output => Anchor::Left(graph_pos.x),
-                };
-                self.doc.add_node_anchored(kind, pos, anchor)
-            }
-        };
-        if let Origin::Port {
-            node: other,
-            side,
-            item,
-        } = origin
-        {
-            let graph = self.doc.graph();
-            let new_kind = &graph.node(node)?.kind;
-            let other_kind = &graph.node(*other)?.kind;
-            let (from, to) = match side {
-                Side::Input => (
-                    port_ref(new_kind, node, Some(item)),
-                    port_ref(other_kind, *other, Some(item)),
-                ),
-                Side::Output => (
-                    port_ref(other_kind, *other, Some(item)),
-                    port_ref(new_kind, node, Some(item)),
-                ),
-            };
-            // The picker offers only nodes that fit the port, so this link can't be refused.
-            let linked = self.doc.connect(&self.catalog, from, to);
-            debug_assert!(
-                linked.is_ok(),
-                "picker offered a node that doesn't fit: {linked:?}"
-            );
+        let (node, anchor) =
+            self.session
+                .add_from_picker(origin, to_pos(graph_pos), choice, self.view.level())?;
+        self.sync_view();
+        if let Some(anchor) = anchor {
+            self.view.anchors.insert(node, anchor);
         }
-        self.select(Some(Selection::node(node)));
         Some(node)
     }
 
@@ -539,16 +457,13 @@ impl Editor {
         let Some(picker) = &mut self.picker else {
             return;
         };
-        match picker.show(ctx, &self.catalog, strings) {
+        match picker.show(ctx, self.session.catalog(), strings) {
             picker::Outcome::Open => {}
             picker::Outcome::Close => self.picker = None,
             picker::Outcome::Chosen(Choice::Workspace) => {
                 let picker = self.picker.take().expect("picker is open");
-                let name = self.new_workspace_name(strings);
-                let workspace = self
-                    .doc
-                    .add_workspace(&self.catalog, &name, picker.graph_pos);
-                self.select(Selection::of_items(vec![Member::Workspace(workspace)]));
+                self.session
+                    .add_workspace(to_pos(picker.graph_pos), self.view.level());
             }
             picker::Outcome::Chosen(choice) => {
                 let picker = self.picker.take().expect("picker is open");
@@ -563,35 +478,45 @@ impl Editor {
         };
         let port = menu.port.clone();
         // Follow the pin: the card can grow, and the canvas can pan or zoom, while the menu is open.
-        if let Some(pin) =
-            self.canvas
-                .port_on_screen(&self.doc, &self.catalog, port.node, port.side, &port.item)
-        {
+        if let Some(pin) = self.canvas.port_on_screen(
+            &self.view,
+            self.session.document(),
+            self.session.catalog(),
+            port.node,
+            port.side,
+            &port.item,
+        ) {
             menu.screen_pos = port_menu_pos(pin, port.side);
         }
-        match menu.show(ctx, &self.catalog, strings, self.doc.graph()) {
+        match menu.show(
+            ctx,
+            self.session.catalog(),
+            strings,
+            self.session.document().graph(),
+        ) {
             port_menu::Outcome::Open => {}
             port_menu::Outcome::Close => self.port_menu = None,
             port_menu::Outcome::SetLimit(limit) => {
-                let _ = self.doc.set_port_limit(&self.catalog, &port, limit);
+                let _ = self.session.set_port_limit(&port, limit);
             }
             port_menu::Outcome::SetShare(link, share) => {
-                let _ = self.doc.set_share(link, port.side, share);
+                let _ = self.session.set_share(link, port.side, share);
             }
             port_menu::Outcome::ClearShares => {
                 let links: Vec<_> = self
-                    .doc
+                    .session
+                    .document()
                     .graph()
                     .links_at(port.node, port.side)
                     .filter(|(_, link)| link.item == port.item)
                     .map(|(id, _)| id)
                     .collect();
                 for link in links {
-                    let _ = self.doc.set_share(link, port.side, None);
+                    let _ = self.session.set_share(link, port.side, None);
                 }
             }
             port_menu::Outcome::ClearLinks => {
-                self.doc.clear_port(&self.catalog, &port);
+                self.session.clear_port(&port);
                 self.port_menu = None;
             }
         }
@@ -604,7 +529,9 @@ impl Editor {
             ui.menu_button(strings.get("menu-view"), |ui| {
                 ui.checkbox(&mut self.show_browser, strings.get("toggle-recipes"));
                 ui.checkbox(&mut self.show_inspector, strings.get("toggle-inspector"));
-                ui.checkbox(&mut self.round_up, strings.get("menu-round-up"));
+                let mut round_up = self.session.round_up();
+                ui.checkbox(&mut round_up, strings.get("menu-round-up"));
+                self.session.set_round_up(round_up);
                 ui.checkbox(&mut self.show_performance, strings.get("menu-performance"));
                 ui.separator();
                 let entries = [
@@ -618,8 +545,8 @@ impl Editor {
                     if shortcut == Shortcut::MoveToWindow && !crate::views::WINDOWS {
                         continue;
                     }
-                    let button = egui::Button::new(strings.get(shortcut.name_key()))
-                        .shortcut_text(ui.ctx().format_shortcut(&shortcut.keys()));
+                    let button = egui::Button::new(strings.get(shortcut.label_key()))
+                        .shortcut_text(ui.ctx().format_shortcut(&crate::edit::keys(shortcut)));
                     if ui.add_enabled(self.can_run(shortcut), button).clicked() {
                         self.run(shortcut, strings);
                     }
@@ -634,12 +561,18 @@ impl Editor {
                 ui.toggle_value(&mut self.show_inspector, strings.get("toggle-inspector"));
                 ui.separator();
                 if ui.button(strings.get("settings-button")).clicked() {
-                    self.settings.open_on(&self.doc.graph().region().clone());
+                    self.settings
+                        .open_on(&self.session.document().graph().region().clone());
                 }
-                ui.toggle_value(&mut self.round_up, strings.get("toggle-round-up"))
+                let mut round_up = self.session.round_up();
+                ui.toggle_value(&mut round_up, strings.get("toggle-round-up"))
                     .on_hover_text(strings.get("menu-round-up"));
+                self.session.set_round_up(round_up);
                 ui.separator();
-                ui.weak(strings.format("data-version", &[("version", self.catalog.version())]));
+                ui.weak(strings.format(
+                    "data-version",
+                    &[("version", self.session.catalog().version())],
+                ));
                 ui.separator();
                 self.region_picker(ui, strings);
                 ui.label(strings.get("region-label"));
@@ -650,13 +583,13 @@ impl Editor {
     /// The graph's region. It can change at any time: what the new region lacks shows as
     /// warnings on the cards, and undo takes it back.
     fn region_picker(&mut self, ui: &mut Ui, strings: &Strings) {
-        let current = self.doc.graph().region().clone();
+        let current = self.session.document().graph().region().clone();
         let mut chosen = None;
         let picker = egui::ComboBox::from_id_salt("region")
-            .selected_text(names::region(&self.catalog, current.as_str()))
+            .selected_text(names::region(self.session.catalog(), current.as_str()))
             .show_ui(ui, |ui| {
-                for region in self.catalog.regions().keys() {
-                    let name = names::region(&self.catalog, region.as_str());
+                for region in self.session.catalog().regions().keys() {
+                    let name = names::region(self.session.catalog(), region.as_str());
                     if ui.selectable_label(*region == current, name).clicked() {
                         chosen = Some(region.clone());
                     }
@@ -666,7 +599,7 @@ impl Editor {
         ui.ctx()
             .accesskit_node_builder(picker.response.id, |node| node.set_label(label));
         if let Some(region) = chosen.filter(|r| *r != current) {
-            self.doc.set_region(region);
+            self.session.set_region(region);
         }
     }
 
@@ -674,7 +607,8 @@ impl Editor {
         let item = |ui: &mut Ui, key: &str, shortcut: Option<Shortcut>| {
             let mut button = egui::Button::new(strings.get(key));
             if let Some(shortcut) = shortcut {
-                button = button.shortcut_text(ui.ctx().format_shortcut(&shortcut.keys()));
+                button =
+                    button.shortcut_text(ui.ctx().format_shortcut(&crate::edit::keys(shortcut)));
             }
             ui.add(button).clicked()
         };
@@ -726,8 +660,8 @@ impl Editor {
             Shortcut::Dissolve,
         ];
         for shortcut in entries {
-            let button = egui::Button::new(strings.get(shortcut.name_key()))
-                .shortcut_text(ui.ctx().format_shortcut(&shortcut.keys()));
+            let button = egui::Button::new(strings.get(shortcut.label_key()))
+                .shortcut_text(ui.ctx().format_shortcut(&crate::edit::keys(shortcut)));
             if ui.add_enabled(self.can_run(shortcut), button).clicked() {
                 self.run(shortcut, strings);
             }
@@ -736,15 +670,18 @@ impl Editor {
 
     fn status_bar(&mut self, ui: &mut Ui, strings: &Strings) {
         ui.horizontal(|ui| {
-            if let Some(version) = &self.other_data_version {
+            if let Some(version) = self.session.other_data_version() {
                 let text = strings.format(
                     "file-other-data-version",
-                    &[("file", version), ("active", self.catalog.version())],
+                    &[
+                        ("file", version),
+                        ("active", self.session.catalog().version()),
+                    ],
                 );
                 ui.label(RichText::new(text).color(colors::WARN));
                 ui.separator();
             }
-            if let Some(status) = &self.status {
+            if let Some(status) = self.session.status() {
                 ui.label(RichText::new(status).color(colors::WARN));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -763,7 +700,7 @@ impl Editor {
     /// slow enough to drop frames shows as a warning; that is the point to move it to a worker
     /// (PLAN.md, M4).
     fn performance(&self, ui: &mut Ui, strings: &Strings) {
-        if let Some(took) = self.last_solve {
+        if let Some(took) = self.session.last_solve() {
             let ms = format::short(Some(took.as_secs_f64() * 1000.0));
             let text = RichText::new(strings.format("status-solve-time", &[("ms", &ms)]));
             if took > SLOW_SOLVE {

@@ -24,7 +24,7 @@ use egui_snarl::ui::{
 use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 
 use crate::document::{
-    Anchor, Document, PinTarget, VIEW_SCALE, ViewId, is_port, pin_targets, port_ref,
+    Anchor, DocView, PinTarget, VIEW_SCALE, ViewId, is_port, pin_targets, port_ref,
 };
 use crate::format;
 use crate::i18n::Strings;
@@ -32,6 +32,7 @@ use crate::names;
 use crate::picker::Origin;
 use crate::theme;
 use crate::widgets::{self, ItemPicture, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
+use aic_editor::{Document, Session};
 
 const CANVAS_ID: &str = "aic-canvas";
 /// The warning sign before a card's title, at 100%.
@@ -106,71 +107,7 @@ fn snarl_id(view: Id, level: Option<WorkspaceId>) -> Id {
     view.with(level)
 }
 
-/// What the player has selected: nodes and workspaces as drawn on the canvas, or one link.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Selection {
-    /// Never empty.
-    Items(Vec<Member>),
-    Link(LinkId),
-}
-
-impl Selection {
-    pub fn node(id: NodeId) -> Self {
-        Self::Items(vec![Member::Node(id)])
-    }
-
-    /// Some items, or `None` for none.
-    pub fn of_items(items: Vec<Member>) -> Option<Self> {
-        (!items.is_empty()).then_some(Self::Items(items))
-    }
-
-    /// Some nodes, or `None` for none.
-    pub fn of_nodes(nodes: Vec<NodeId>) -> Option<Self> {
-        Self::of_items(nodes.into_iter().map(Member::Node).collect())
-    }
-
-    pub fn items(&self) -> &[Member] {
-        match self {
-            Self::Items(items) => items,
-            Self::Link(_) => &[],
-        }
-    }
-
-    /// The selected nodes, leaving out workspaces.
-    pub fn nodes(&self) -> Vec<NodeId> {
-        self.items()
-            .iter()
-            .filter_map(|m| match m {
-                Member::Node(id) => Some(*id),
-                Member::Workspace(_) => None,
-            })
-            .collect()
-    }
-
-    pub fn contains(&self, member: Member) -> bool {
-        self.items().contains(&member)
-    }
-
-    pub fn contains_node(&self, id: NodeId) -> bool {
-        self.contains(Member::Node(id))
-    }
-
-    /// The node, when exactly one item is selected and it is a node.
-    pub fn single_node(&self) -> Option<NodeId> {
-        match self.items() {
-            [Member::Node(one)] => Some(*one),
-            _ => None,
-        }
-    }
-
-    /// The workspace, when exactly one item is selected and it is a workspace.
-    pub fn single_workspace(&self) -> Option<WorkspaceId> {
-        match self.items() {
-            [Member::Workspace(one)] => Some(*one),
-            _ => None,
-        }
-    }
-}
+pub use aic_editor::Selection;
 
 /// What the player did on the canvas this frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -376,14 +313,15 @@ impl Canvas {
     /// Where the port of `item` on `node`'s `side` was drawn last frame, on screen.
     pub fn port_on_screen(
         &self,
+        view: &DocView,
         doc: &Document,
         catalog: &Catalog,
         node: NodeId,
         side: Side,
         item: &ItemId,
     ) -> Option<Pos2> {
-        let member = doc.shown(node)?;
-        let view_id = doc.view_id(member)?;
+        let member = view.shown(doc, node)?;
+        let view_id = view.view_id(member)?;
         let index = pin_targets(doc.graph(), catalog, member, side)
             .iter()
             .position(|pin| pin.is(node, item))?;
@@ -404,15 +342,15 @@ impl Canvas {
     pub fn show(
         &mut self,
         ui: &mut Ui,
-        doc: &mut Document,
-        catalog: &Catalog,
+        view: &mut DocView,
+        session: &Session,
         strings: &Strings,
-        selection: Option<&Selection>,
-        round_up: bool,
     ) -> Vec<CanvasEvent> {
+        let (doc, catalog) = (session.document(), session.catalog());
+        let (selection, round_up) = (session.selection(), session.round_up());
         // The snarl response spans everything; the panel's own rect is what's on screen.
         let last_rect = std::mem::replace(&mut self.rect, ui.max_rect());
-        let level = doc.level();
+        let level = view.level();
         // egui-snarl's camera is on screen: when the view's place moves (its tab dragged to
         // another split, a split resized), the graph moves along with it.
         let moved = if last_rect.is_positive() && level == self.level {
@@ -428,8 +366,8 @@ impl Canvas {
             self.node_rects.clear();
             self.snarl_selection.clear();
         }
-        let path = doc.level_path();
-        let (graph, view, anchors, solution) = doc.parts();
+        let path = doc.level_path(level);
+        let (graph, view, anchors, solution) = view.parts(doc);
         let before: HashMap<ViewId, Pos2> = view
             .nodes_pos_ids()
             .filter(|(_, _, member)| match member {
