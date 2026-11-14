@@ -51,7 +51,7 @@ sections, workspaces with explicit ports (ADR 0007). Logical flow only, never sp
 - egui is immediate-mode and paints its own widgets: styling goes through `egui::Style` / `Visuals`,
   `FontDefinitions`, `SnarlStyle` and custom `Painter` drawing, not CSS. Anything can be drawn with the
   painter; standard widgets are styled globally.
-- Every user-facing string goes through Fluent (`crates/aic-app/i18n/en.ftl`).
+- Every user-facing string goes through Fluent (`crates/aic-app-egui/i18n/en.ftl`).
 - The UI never does math; it renders `aic_core::Solution`.
 - No third-party network access at build or run time; assets (data, icons, fonts) are copied in by
   hand.

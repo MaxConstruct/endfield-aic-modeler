@@ -11,11 +11,11 @@ use std::{env, fs};
 
 fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("set by cargo"));
-    // crates/aic-app → the repository root.
+    // crates/aic-app-egui → the repository root.
     let data = manifest
         .ancestors()
         .nth(2)
-        .expect("aic-app sits two folders below the repository root")
+        .expect("aic-app-egui sits two folders below the repository root")
         .join("data");
     println!("cargo:rerun-if-changed={}", data.display());
 

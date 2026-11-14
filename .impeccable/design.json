@@ -3,7 +3,7 @@
   "generatedAt": "2026-11-09T12:54:39+00:00",
   "title": "Design System: AIC Modeler",
   "extensions": {
-    "platform": "Native egui 0.36 + egui-snarl 0.12 desktop app. Tokens are Rust constants in crates/aic-app/src/theme.rs; CSS here is a preview translation only (1pt = 1px at 1x).",
+    "platform": "Native egui 0.36 + egui-snarl 0.12 desktop app. Tokens are Rust constants in crates/aic-app-egui/src/theme.rs; CSS here is a preview translation only (1pt = 1px at 1x).",
     "colorMeta": {
       "canvas": {
         "role": "neutral",
@@ -727,11 +727,11 @@
     ],
     "dos": [
       "**Do** take every color, size and radius from `theme`; a literal `Color32` or font size in a widget is a bug.",
-      "**Do** put every user-facing string through Fluent (`crates/aic-app/i18n/en.ftl`), with terse labels.",
+      "**Do** put every user-facing string through Fluent (`crates/aic-app-egui/i18n/en.ftl`), with terse labels.",
       "**Do** make one gesture do the thing: right-click opens the picker with search focused, one click places the node, edits apply at once.",
       "**Do** give every command a keyboard shortcut and light its toolbar button when the key is pressed.",
       "**Do** rely on undo and background autosave as the safety net; the app reopens the last document.",
-      "**Do** verify through egui_kittest snapshots (1280x800 at 1x). After a token change, delete `crates/aic-app/tests/snapshots/*.png`, then run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app`: kittest only rewrites images past its diff threshold."
+      "**Do** verify through egui_kittest snapshots (1280x800 at 1x). After a token change, delete `crates/aic-app-egui/tests/snapshots/*.png`, then run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app-egui`: kittest only rewrites images past its diff threshold."
     ],
     "donts": [
       "**Don't** add confirm dialogs, OK/Cancel pairs or \"discard changes?\" prompts.",

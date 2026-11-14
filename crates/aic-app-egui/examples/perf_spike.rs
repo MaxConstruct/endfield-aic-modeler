@@ -5,7 +5,7 @@
 //! Run a release build on the machine to measure:
 //!
 //! ```sh
-//! cargo run --release -p aic-app --example perf_spike
+//! cargo run --release -p aic-app-egui --example perf_spike
 //! ```
 //!
 //! Pass: frames stay under about 8 ms (PLAN.md, M4). Keep the window in front: macOS stops drawing

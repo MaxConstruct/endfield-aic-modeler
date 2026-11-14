@@ -3,7 +3,7 @@
 //! scripted phases with vsync off, prints frame times per phase, and exits.
 //!
 //! ```sh
-//! cargo run --release -p aic-app --example perf_app
+//! cargo run --release -p aic-app-egui --example perf_app
 //! ```
 //!
 //! Pass: frames stay under about 8 ms (PLAN.md, M4). Keep the window in front: macOS stops drawing
@@ -12,8 +12,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use aic_app::i18n::Strings;
-use aic_app::{App, load_catalog};
+use aic_app_egui::i18n::Strings;
+use aic_app_egui::{App, load_catalog};
 use aic_core::{NodeId, NodeKind, PortRef};
 use aic_data::{Catalog, ItemId, RecipeId};
 use eframe::egui::{self, Pos2, vec2};

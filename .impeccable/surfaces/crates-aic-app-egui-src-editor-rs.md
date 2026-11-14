@@ -1,13 +1,13 @@
 ---
 version: 1
 slug: "crates-aic-app-src-editor-rs"
-primary_target: "crates/aic-app/src/editor.rs"
-related_targets: ["crates/aic-app/src/canvas.rs","crates/aic-app/src/lib.rs"]
+primary_target: "crates/aic-app-egui/src/editor.rs"
+related_targets: ["crates/aic-app-egui/src/canvas.rs","crates/aic-app-egui/src/lib.rs"]
 ---
 
 # App shell (editor window)
 
-Scope: the whole editor window of aic-app: menu bar, toolbar, recipe browser, node canvas, inspector, status bar, node picker, port menu, settings window. Mode: Operate.
+Scope: the whole editor window of aic-app-egui: menu bar, toolbar, recipe browser, node canvas, inspector, status bar, node picker, port menu, settings window. Mode: Operate.
 
 Task: build and read factory graphs on a second 27" monitor beside the running game. Glance at counts, rates and warnings; make quick edits with mouse and keyboard; long sessions too.
 

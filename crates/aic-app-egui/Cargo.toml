@@ -1,5 +1,5 @@
 [package]
-name = "aic-app"
+name = "aic-app-egui"
 description = "Desktop UI for AIC Modeler."
 version.workspace = true
 edition.workspace = true

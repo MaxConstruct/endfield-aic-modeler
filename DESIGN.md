@@ -130,7 +130,7 @@ components:
 # Design System: AIC Modeler
 
 Native desktop app (Rust, egui 0.36 + egui-snarl 0.12, macOS and Windows). There is no CSS: every
-token above is a constant in `crates/aic-app/src/theme.rs` (`theme::color::*`, `theme::radius::*`,
+token above is a constant in `crates/aic-app-egui/src/theme.rs` (`theme::color::*`, `theme::radius::*`,
 `theme::text::*`), and the frontmatter's hex values mirror them. Token slugs map to Rust names by
 kebab-case (`text-muted` = `color::TEXT_MUTED`, `node-sink` = `color::node::SINK`). Sizes are egui
 points; at 1x a point is a pixel. `theme.rs` is the source of truth: change a value there, then here.
@@ -194,7 +194,7 @@ Low-chroma, one per node kind, set in `Canvas::header_frame` via `theme::color::
 
 ## Typography
 
-**UI Font:** Inter Display (SIL OFL), Light and SemiBold static cuts embedded from `crates/aic-app/fonts/`, identical on macOS and Windows.
+**UI Font:** Inter Display (SIL OFL), Light and SemiBold static cuts embedded from `crates/aic-app-egui/fonts/`, identical on macOS and Windows.
 **Number Font:** Inter Display Tabular: the same two cuts with Inter's tabular figures (`tnum`) frozen in as the default digits by `scripts/tabular-fonts.sh`. egui shapes text without OpenType features, so the font carries them. It is egui's `Monospace` family.
 
 **Character:** One typeface throughout. Every digit is the same width in the tabular cut, so columns of numbers line up; letters and punctuation keep Inter's proportional widths. egui's default fonts stay behind both as fallbacks for symbol and emoji glyphs.
@@ -269,11 +269,11 @@ Wires 2pt `LINKED`. The label is 12pt text on `INSET` at 90%, radius 3, 3pt pad,
 
 ### Do:
 - **Do** take every color, size and radius from `theme`; a literal `Color32` or font size in a widget is a bug.
-- **Do** put every user-facing string through Fluent (`crates/aic-app/i18n/en.ftl`), with terse labels.
+- **Do** put every user-facing string through Fluent (`crates/aic-app-egui/i18n/en.ftl`), with terse labels.
 - **Do** make one gesture do the thing: right-click opens the picker with search focused, one click places the node, edits apply at once.
 - **Do** give every command a keyboard shortcut and light its toolbar button when the key is pressed.
 - **Do** rely on undo and background autosave as the safety net; the app reopens the last document.
-- **Do** verify through egui_kittest snapshots (1280x800 at 1x). After a token change, delete `crates/aic-app/tests/snapshots/*.png`, then run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app`: kittest only rewrites images past its diff threshold.
+- **Do** verify through egui_kittest snapshots (1280x800 at 1x). After a token change, delete `crates/aic-app-egui/tests/snapshots/*.png`, then run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app-egui`: kittest only rewrites images past its diff threshold.
 
 ### Don't:
 - **Don't** add confirm dialogs, OK/Cancel pairs or "discard changes?" prompts.

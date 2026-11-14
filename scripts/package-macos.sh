@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds "AIC Modeler.app" and a .dmg holding it, in target/dist/. The game data is built into the
-# binary (crates/aic-app/build.rs), so the app needs nothing beside it.
+# binary (crates/aic-app-egui/build.rs), so the app needs nothing beside it.
 #
 #   scripts/package-macos.sh              # for this Mac's architecture
 #   scripts/package-macos.sh --universal  # Apple silicon + Intel; needs
@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NAME="AIC Modeler"
-BIN="aic-app"
+BIN="aic-app-egui"
 BUNDLE_ID="io.github.maxconstruct.aic-modeler"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
 
@@ -28,14 +28,14 @@ done
 if $universal; then
     targets=(aarch64-apple-darwin x86_64-apple-darwin)
     for target in "${targets[@]}"; do
-        cargo build --release --locked -p aic-app --target "$target"
+        cargo build --release --locked -p aic-app-egui --target "$target"
     done
     binary="target/universal/$BIN"
     mkdir -p target/universal
     lipo -create -output "$binary" "${targets[@]/#/target/}"/release/"$BIN"
     arch="universal"
 else
-    cargo build --release --locked -p aic-app
+    cargo build --release --locked -p aic-app-egui
     binary="target/release/$BIN"
     arch="$(uname -m)"
 fi

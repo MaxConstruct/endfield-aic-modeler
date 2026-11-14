@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/aic-data", "crates/aic-core", "crates/aic-app"]
+members = ["crates/aic-data", "crates/aic-core", "crates/aic-app-egui"]
 
 [workspace.package]
 version = "0.1.0"
