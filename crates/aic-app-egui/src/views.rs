@@ -19,7 +19,7 @@ use egui_dock::{DockArea, DockState, Node, NodePath, Split, Surface, SurfaceInde
 use serde::{Deserialize, Serialize};
 
 use crate::canvas::Canvas;
-use crate::document::LevelView;
+use crate::document::DocView;
 use crate::editor::Editor;
 use crate::i18n::Strings;
 use crate::names;
@@ -39,7 +39,7 @@ pub struct ViewKey(u64);
 /// A view's own state while another view is focused.
 struct Parked {
     canvas: Canvas,
-    level: LevelView,
+    level: DocView,
 }
 
 /// A native window of views.
@@ -221,7 +221,7 @@ impl Editor {
             key,
             Parked {
                 canvas,
-                level: LevelView::new(level),
+                level: DocView::new(level),
             },
         );
         key
@@ -234,7 +234,7 @@ impl Editor {
             key,
             Parked {
                 canvas: Canvas::new(key.0),
-                level: LevelView::new(level),
+                level: DocView::new(level),
             },
         );
         key
@@ -243,7 +243,7 @@ impl Editor {
     /// Opening another graph shows its top in every view.
     pub(crate) fn reset_views(&mut self) {
         for parked in self.views.parked.values_mut() {
-            parked.level = LevelView::new(None);
+            parked.level = DocView::new(None);
         }
     }
 
@@ -424,6 +424,8 @@ impl Editor {
         if !focused {
             self.swap(key);
         }
+        // Edits made earlier in the frame (menus, toolbar, browser, inspector) show now.
+        self.sync_view();
         let events = self.canvas.show(ui, &mut self.view, &self.session, strings);
         let rect = self.canvas.rect;
         let pressed = ui.input(|i| {
@@ -653,7 +655,7 @@ impl Editor {
                     *key,
                     Parked {
                         canvas: canvas_for(*key, level, camera),
-                        level: LevelView::new(level),
+                        level: DocView::new(level),
                     },
                 );
             }

@@ -1673,6 +1673,39 @@ fn reopening_restores_the_graph_and_where_the_canvas_looked() {
 }
 
 #[test]
+fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let strings = Strings::english();
+    let dir = temp_dir("reopen-fit");
+    let path = dir.join("far.aicm");
+    let node = smelter(&mut harness, 3000.0, 2000.0);
+    let text = editor(&mut harness).document().graph().to_json("vtest");
+    std::fs::write(&path, text).unwrap();
+
+    // As at startup: the document is reopened before the first frame is drawn.
+    let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
+    let mut again = Harness::builder()
+        .with_size(WINDOW_SIZE)
+        .build_eframe(|cc| {
+            aic_app_egui::theme::install(&cc.egui_ctx);
+            let mut app = App::new(Strings::english(), Ok(catalog), None);
+            app.editor_mut().unwrap().reopen(&path, &strings);
+            app
+        });
+    again.run();
+    let ws = editor(&mut again);
+    let id = ws.document().graph().nodes().keys().next().unwrap();
+    let on_screen = ws.node_on_screen(id).expect("the node was drawn");
+    let window = eframe::egui::Rect::from_min_size(
+        eframe::egui::Pos2::ZERO,
+        eframe::egui::vec2(WINDOW_SIZE[0], WINDOW_SIZE[1]),
+    );
+    assert!(window.intersects(on_screen), "{on_screen:?} is off screen");
+    let _ = node;
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
     let mut harness = harness(&aic_editor::testing::fixture_dir());
     let strings = Strings::english();

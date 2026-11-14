@@ -136,6 +136,8 @@ impl Editor {
         if self.session.undo() {
             self.port_menu = None;
             self.picker = None;
+            // The view may name a workspace this took away; later edits in the frame resolve it.
+            self.sync_view();
         }
     }
 
@@ -143,6 +145,8 @@ impl Editor {
         if self.session.redo() {
             self.port_menu = None;
             self.picker = None;
+            // The view may name a workspace this took away; later edits in the frame resolve it.
+            self.sync_view();
         }
     }
 

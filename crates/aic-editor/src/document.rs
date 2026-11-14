@@ -198,10 +198,17 @@ impl Document {
         &self.solution
     }
 
+    /// `level` if it is still in the graph, else the top. A view may name a workspace an undo
+    /// took away; every call that takes a level falls back this way, so none panics and no node
+    /// ends up in a workspace that doesn't exist.
+    pub fn resolve_level(&self, level: Level) -> Level {
+        level.filter(|&id| self.graph.workspace_info(id).is_some())
+    }
+
     /// The workspaces from the top down to `level`, outermost first.
     pub fn level_path(&self, level: Level) -> Vec<WorkspaceId> {
         let mut path = Vec::new();
-        let mut current = level;
+        let mut current = self.resolve_level(level);
         while let Some(id) = current {
             path.push(id);
             current = self.graph.workspace_info(id).and_then(|w| w.parent);
@@ -213,7 +220,7 @@ impl Document {
     /// What draws `node` at `level`: the node itself, or the workspace it is in. `None` when it
     /// is outside the level.
     pub fn shown(&self, level: Level, node: NodeId) -> Option<Member> {
-        shown(&self.graph, level, node)
+        shown(&self.graph, self.resolve_level(level), node)
     }
 
     /// Marks the graph as changed: it needs a solve and makes an undo step.
@@ -254,6 +261,7 @@ impl Document {
 
     /// Adds a node to `level`, at `pos`.
     pub fn add_node(&mut self, kind: NodeKind, pos: Pos, level: Level) -> NodeId {
+        let level = self.resolve_level(level);
         let id = self
             .graph
             .add_node_in(kind, pos, level)
@@ -270,6 +278,7 @@ impl Document {
         offset: Pos,
         into: Level,
     ) -> Vec<Member> {
+        let into = self.resolve_level(into);
         let pasted = self.graph.paste_into(catalog, other, offset, into);
         self.changed();
         pasted
@@ -278,13 +287,14 @@ impl Document {
     /// Adds a port to the workspace `level`. Ports belong to a workspace, so at the top there is
     /// none to add.
     pub fn add_port(&mut self, level: Level, side: Side) -> Option<NodeId> {
-        let port = self.graph.add_port(level?, side).ok()?;
+        let port = self.graph.add_port(self.resolve_level(level)?, side).ok()?;
         self.changed();
         Some(port)
     }
 
     /// Adds an empty workspace to `level`.
     pub fn add_workspace(&mut self, name: &str, level: Level, pos: Pos) -> WorkspaceId {
+        let level = self.resolve_level(level);
         let id = self
             .graph
             .add_workspace(name, level, pos)
@@ -670,5 +680,48 @@ mod tests {
             doc.shown(Some(workspace), inside),
             Some(Member::Node(inside))
         );
+    }
+
+    /// A workspace that was made and then undone away: its id is a level no longer in the graph.
+    fn gone_level(doc: &mut Document) -> Level {
+        doc.checkpoint();
+        let ws = doc.add_workspace("W", None, origin());
+        doc.checkpoint();
+        doc.undo();
+        assert!(doc.graph().workspace_info(ws).is_none());
+        Some(ws)
+    }
+
+    fn assert_no_orphans(doc: &Document) {
+        for node in doc.graph().nodes().values() {
+            if let Some(ws) = node.workspace {
+                assert!(doc.graph().workspace_info(ws).is_some(), "orphan in {ws:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_level_that_is_gone_falls_back_to_the_top() {
+        let catalog = catalog();
+        let mut doc = doc();
+        let gone = gone_level(&mut doc);
+        let node = doc.add_node(recipe(), origin(), gone);
+        assert_eq!(doc.graph().node(node).unwrap().workspace, None);
+
+        let mut copy = Graph::new("tundra".into());
+        copy.add_node(recipe(), origin());
+        let pasted = doc.paste(&catalog, &copy, origin(), gone);
+        assert_eq!(pasted.len(), 1);
+        assert_eq!(
+            doc.add_port(gone, Side::Input),
+            None,
+            "the top has no ports to add"
+        );
+        assert_eq!(doc.level_path(gone), []);
+        assert_eq!(doc.resolve_level(gone), None);
+        // (Slot ids are reused once a graph is restored, so this goes last.)
+        let workspace = doc.add_workspace("V", gone, origin());
+        assert_eq!(doc.graph().workspace_info(workspace).unwrap().parent, None);
+        assert_no_orphans(&doc);
     }
 }

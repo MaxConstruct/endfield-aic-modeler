@@ -333,6 +333,7 @@ impl Session {
 
     /// Selects everything at `level`.
     pub fn select_all(&mut self, level: Level) {
+        let level = self.doc.resolve_level(level);
         let all = self.doc.graph().members_of(level);
         self.select(Selection::of_items(all));
     }
@@ -595,6 +596,7 @@ impl Session {
 
     /// Pastes what was copied into `into`: the level shown, or a workspace in it.
     pub fn paste_into(&mut self, into: Level, level: Level) {
+        let (into, level) = (self.doc.resolve_level(into), self.doc.resolve_level(level));
         let Some((copied, times)) = &mut self.clipboard else {
             return;
         };
@@ -610,6 +612,7 @@ impl Session {
 
     /// Copies the selection a step away from itself and selects the copy.
     pub fn duplicate(&mut self, level: Level) {
+        let level = self.doc.resolve_level(level);
         let items = self.selected_items();
         if items.is_empty() {
             return;
@@ -677,8 +680,10 @@ impl Session {
         else {
             return;
         };
+        let level = self.doc.resolve_level(level);
         let inside: Vec<Member> = self.doc.graph().members_of(Some(workspace));
         if self.doc.dissolve(workspace).is_ok() {
+            let level = self.doc.resolve_level(level);
             let shown = self.doc.graph().members_of(level);
             let kept: Vec<Member> = inside.into_iter().filter(|m| shown.contains(m)).collect();
             self.select(Selection::of_items(kept));
@@ -937,5 +942,21 @@ mod tests {
             session.run(Command::SplitRight, None),
             Outcome::View(ViewCommand::SplitRight)
         );
+    }
+
+    #[test]
+    fn a_view_naming_a_workspace_an_undo_took_away_pastes_to_the_top() {
+        let mut session = session();
+        let node = session.add_node(smelter(), origin(), None);
+        session.select(Some(Selection::node(node)));
+        session.copy();
+        session.checkpoint();
+        let ws = session.add_workspace(origin(), None);
+        session.checkpoint();
+        session.undo();
+        session.paste(Some(ws));
+        let graph = session.document().graph();
+        assert!(graph.nodes().values().all(|n| n.workspace.is_none()));
+        assert_eq!(graph.nodes().len(), 2);
     }
 }

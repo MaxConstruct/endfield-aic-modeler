@@ -58,9 +58,6 @@ pub struct DocView {
     synced: Option<u64>,
 }
 
-/// A view that waits while another is in the editor.
-pub type LevelView = DocView;
-
 impl DocView {
     /// A view of `level` (`None` for the top), drawn when it is first brought in line.
     pub fn new(level: Option<WorkspaceId>) -> Self {
@@ -178,6 +175,8 @@ impl DocView {
     /// graph changed since it was last in line, and falls back to the top if its workspace is
     /// gone.
     pub fn swap(&mut self, doc: &Document, catalog: &Catalog, other: &mut DocView) {
+        // The view going out is brought in line first, so it comes back as it left.
+        self.sync(doc, catalog);
         std::mem::swap(self, other);
         if self.synced != Some(doc.generation()) {
             self.rebuild(doc, catalog);
@@ -494,6 +493,32 @@ mod tests {
         rig.add_node(recipe(), Pos2::ZERO);
         rig.swap(&mut other);
         assert_eq!(rig.view.view().nodes().count(), 2);
+    }
+
+    #[test]
+    fn a_view_parked_after_an_edit_keeps_its_ids_when_it_comes_back() {
+        let mut rig = Rig::new();
+        let a = rig.add_node(recipe(), Pos2::ZERO);
+        let b = rig.add_node(recipe(), Pos2::ZERO);
+        let before = (
+            rig.view.view_id(Member::Node(a)),
+            rig.view.view_id(Member::Node(b)),
+        );
+        let mut other = DocView::new(None);
+        rig.swap(&mut other);
+        rig.swap(&mut other);
+
+        // An edit no one synced the view after, then the view is parked and brought back.
+        rig.session.set_limit(a, Some(2.0)).unwrap();
+        rig.swap(&mut other);
+        rig.swap(&mut other);
+        assert_eq!(
+            (
+                rig.view.view_id(Member::Node(a)),
+                rig.view.view_id(Member::Node(b))
+            ),
+            before
+        );
     }
 
     #[test]
