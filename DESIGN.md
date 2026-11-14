@@ -130,10 +130,10 @@ components:
 # Design System: AIC Modeler
 
 Native desktop app (Rust, egui 0.36 + egui-snarl 0.12, macOS and Windows). There is no CSS: every
-token above is a constant in `crates/aic-app-egui/src/theme.rs` (`theme::color::*`, `theme::radius::*`,
-`theme::text::*`), and the frontmatter's hex values mirror them. Token slugs map to Rust names by
+token above is a constant in `crates/aic-editor/src/style.rs` (`style::color::*`, `style::radius::*`,
+`style::text::*`; the egui app re-exports them from `theme.rs`), and the frontmatter's hex values mirror them. Token slugs map to Rust names by
 kebab-case (`text-muted` = `color::TEXT_MUTED`, `node-sink` = `color::node::SINK`). Sizes are egui
-points; at 1x a point is a pixel. `theme.rs` is the source of truth: change a value there, then here.
+points; at 1x a point is a pixel. `crates/aic-editor/src/style.rs` is the source of truth: change a value there, then here.
 
 ## Overview
 
@@ -190,11 +190,11 @@ Low-chroma, one per node kind, set in `Canvas::header_frame` via `theme::color::
 
 **The Meaning-Only Hue Rule.** Pink is pulled from the depot, green is sent to it (or a storage filling), amber is a warning, red is an error. A hue used for decoration breaks the reading of every number on screen.
 
-**The Tested Contrast Rule.** Contrast is enforced by unit tests in `theme.rs`: every text and state color is ≥4.5:1 on canvas, panel, raised and inset; `TEXT_STRONG` is ≥7:1 and `TEXT_MUTED` ≥4.5:1 on every header tint; `ACCENT_TEXT` ≥4.5:1 on `ACCENT_FILL`. A new color or tint joins those tests.
+**The Tested Contrast Rule.** Contrast is enforced by unit tests in `crates/aic-editor/src/style.rs`: every text and state color is ≥4.5:1 on canvas, panel, raised and inset; `TEXT_STRONG` is ≥7:1 and `TEXT_MUTED` ≥4.5:1 on every header tint; `ACCENT_TEXT` ≥4.5:1 on `ACCENT_FILL`. A new color or tint joins those tests.
 
 ## Typography
 
-**UI Font:** Inter Display (SIL OFL), Light and SemiBold static cuts embedded from `crates/aic-app-egui/fonts/`, identical on macOS and Windows.
+**UI Font:** Inter Display (SIL OFL), Light and SemiBold static cuts embedded from `crates/aic-editor/fonts/`, identical on macOS and Windows.
 **Number Font:** Inter Display Tabular: the same two cuts with Inter's tabular figures (`tnum`) frozen in as the default digits by `scripts/tabular-fonts.sh`. egui shapes text without OpenType features, so the font carries them. It is egui's `Monospace` family.
 
 **Character:** One typeface throughout. Every digit is the same width in the tabular cut, so columns of numbers line up; letters and punctuation keep Inter's proportional widths. egui's default fonts stay behind both as fallbacks for symbol and emoji glyphs.

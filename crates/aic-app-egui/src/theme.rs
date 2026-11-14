@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use aic_editor::style::{self, fonts};
 use eframe::egui::{
     self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, RichText,
     Shadow, Stroke, Style, TextStyle, Vec2, Visuals,
@@ -12,88 +13,94 @@ use eframe::egui::{
 /// The palette. Neutrals step up from the canvas (darkest) to panels, then cards and popovers.
 /// Hues carry meaning only: the accent is selection and focus, the rest are states.
 pub mod color {
+    use super::rgba;
+    use aic_editor::style;
     use eframe::egui::Color32;
 
     /// The node canvas, the darkest surface.
-    pub const CANVAS: Color32 = Color32::from_rgb(0x11, 0x12, 0x14);
+    pub const CANVAS: Color32 = rgba(style::color::CANVAS);
     /// Side panels, menu bar, toolbar, status bar.
-    pub const PANEL: Color32 = Color32::from_rgb(0x18, 0x19, 0x1C);
+    pub const PANEL: Color32 = rgba(style::color::PANEL);
     /// Node cards, popovers, windows, menus.
-    pub const RAISED: Color32 = Color32::from_rgb(0x1F, 0x20, 0x24);
+    pub const RAISED: Color32 = rgba(style::color::RAISED);
     /// Text fields and other inset wells.
-    pub const INSET: Color32 = Color32::from_rgb(0x0F, 0x10, 0x12);
+    pub const INSET: Color32 = rgba(style::color::INSET);
     /// Every other row of a striped list.
-    pub const STRIPE: Color32 = Color32::from_rgb(0x1B, 0x1C, 0x20);
+    pub const STRIPE: Color32 = rgba(style::color::STRIPE);
 
     /// A button at rest.
-    pub const CONTROL: Color32 = Color32::from_rgb(0x26, 0x28, 0x2D);
+    pub const CONTROL: Color32 = rgba(style::color::CONTROL);
     /// A button under the pointer, or an open menu's button.
-    pub const CONTROL_HOVER: Color32 = Color32::from_rgb(0x2E, 0x30, 0x36);
+    pub const CONTROL_HOVER: Color32 = rgba(style::color::CONTROL_HOVER);
     /// A button being pressed.
-    pub const CONTROL_ACTIVE: Color32 = Color32::from_rgb(0x36, 0x38, 0x3F);
+    pub const CONTROL_ACTIVE: Color32 = rgba(style::color::CONTROL_ACTIVE);
 
     /// Dividers between panels, and the canvas grid.
-    pub const DIVIDER: Color32 = Color32::from_rgb(0x26, 0x27, 0x2B);
+    pub const DIVIDER: Color32 = rgba(style::color::DIVIDER);
     /// Outlines of cards, buttons and fields.
-    pub const BORDER: Color32 = Color32::from_rgb(0x30, 0x32, 0x38);
+    pub const BORDER: Color32 = rgba(style::color::BORDER);
     /// Outlines under the pointer.
-    pub const BORDER_STRONG: Color32 = Color32::from_rgb(0x44, 0x47, 0x4F);
+    pub const BORDER_STRONG: Color32 = rgba(style::color::BORDER_STRONG);
     /// The canvas grid: a step above the canvas, so it is there without being read.
-    pub const GRID: Color32 = Color32::from_rgb(0x1C, 0x1D, 0x21);
+    pub const GRID: Color32 = rgba(style::color::GRID);
 
     /// Headings, hovered text, numbers that matter.
-    pub const TEXT_STRONG: Color32 = Color32::from_rgb(0xF3, 0xF4, 0xF6);
+    pub const TEXT_STRONG: Color32 = rgba(style::color::TEXT_STRONG);
     /// Labels and body text.
-    pub const TEXT: Color32 = Color32::from_rgb(0xD3, 0xD5, 0xDA);
+    pub const TEXT: Color32 = rgba(style::color::TEXT);
     /// Secondary text: units, facility names, captions.
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(0xA0, 0xA3, 0xAB);
+    pub const TEXT_MUTED: Color32 = rgba(style::color::TEXT_MUTED);
     /// Hints and placeholders. Still 4.5:1 on panels.
-    pub const TEXT_FAINT: Color32 = Color32::from_rgb(0x86, 0x89, 0x91);
+    pub const TEXT_FAINT: Color32 = rgba(style::color::TEXT_FAINT);
 
     /// Selection and keyboard focus. Nothing else is blue.
-    pub const ACCENT: Color32 = Color32::from_rgb(0x6E, 0x9B, 0xFF);
+    pub const ACCENT: Color32 = rgba(style::color::ACCENT);
     /// Behind selected text, selected rows and toggled buttons.
-    pub const ACCENT_FILL: Color32 = Color32::from_rgb(0x24, 0x37, 0x61);
+    pub const ACCENT_FILL: Color32 = rgba(style::color::ACCENT_FILL);
     /// Text on [`ACCENT_FILL`], and the outline of a focused field (egui draws both with one
     /// stroke).
-    pub const ACCENT_TEXT: Color32 = Color32::from_rgb(0x9C, 0xBB, 0xFF);
+    pub const ACCENT_TEXT: Color32 = rgba(style::color::ACCENT_TEXT);
 
     /// An input port pulling from the depot (and a source node, which does the same).
-    pub const DEPOT_IN: Color32 = Color32::from_rgb(0xF0, 0x7A, 0xAE);
+    pub const DEPOT_IN: Color32 = rgba(style::color::DEPOT_IN);
     /// An output port sending to the depot (and a sink node, which does the same).
-    pub const DEPOT_OUT: Color32 = Color32::from_rgb(0x6C, 0xC7, 0x7E);
+    pub const DEPOT_OUT: Color32 = rgba(style::color::DEPOT_OUT);
     /// A linked port, and links.
-    pub const LINKED: Color32 = Color32::from_rgb(0x9A, 0xA0, 0xAB);
+    pub const LINKED: Color32 = rgba(style::color::LINKED);
     /// Throttle markers and hints such as a link over one belt.
-    pub const WARN: Color32 = Color32::from_rgb(0xE9, 0xA2, 0x3B);
+    pub const WARN: Color32 = rgba(style::color::WARN);
     /// A storage filling up.
-    pub const POSITIVE: Color32 = Color32::from_rgb(0x6C, 0xC7, 0x7E);
+    pub const POSITIVE: Color32 = rgba(style::color::POSITIVE);
     /// A storage draining, text that doesn't parse, errors.
-    pub const NEGATIVE: Color32 = Color32::from_rgb(0xEF, 0x64, 0x61);
+    pub const NEGATIVE: Color32 = rgba(style::color::NEGATIVE);
     /// The box a right-drag draws to select.
     pub const SELECT_BOX: Color32 = ACCENT;
 
     /// Node card headers: a low-chroma tint per node kind, so kinds tell apart at a glance while
     /// the header text stays the loudest thing on it.
     pub mod node {
+        use super::rgba;
+        use aic_editor::style;
         use eframe::egui::Color32;
 
-        pub const RECIPE: Color32 = Color32::from_rgb(0x28, 0x33, 0x49);
+        pub const RECIPE: Color32 = rgba(style::color::node::RECIPE);
         /// Pink family, like a port pulling from the depot.
-        pub const SOURCE: Color32 = Color32::from_rgb(0x4A, 0x2A, 0x3C);
+        pub const SOURCE: Color32 = rgba(style::color::node::SOURCE);
         /// Green family, like a port sending to the depot.
-        pub const SINK: Color32 = Color32::from_rgb(0x21, 0x3A, 0x29);
-        pub const OUTPOST_ORDER: Color32 = Color32::from_rgb(0x45, 0x36, 0x1C);
-        pub const MISSING: Color32 = Color32::from_rgb(0x52, 0x24, 0x26);
+        pub const SINK: Color32 = rgba(style::color::node::SINK);
+        pub const OUTPOST_ORDER: Color32 = rgba(style::color::node::OUTPOST_ORDER);
+        pub const MISSING: Color32 = rgba(style::color::node::MISSING);
         /// Splitters, mergers, storage, control ports and workspace ports.
-        pub const LOGISTICS: Color32 = Color32::from_rgb(0x2E, 0x30, 0x36);
-        pub const WORKSPACE: Color32 = Color32::from_rgb(0x3A, 0x30, 0x52);
+        pub const LOGISTICS: Color32 = rgba(style::color::node::LOGISTICS);
+        pub const WORKSPACE: Color32 = rgba(style::color::node::WORKSPACE);
     }
 
     /// Region badges: one saturated tint per region, in the data's region order (Valley IV, then
     /// Wuling), so a region reads the same everywhere and two regions tell apart without reading.
     /// Yellow and teal; the yellow is a cooler lemon than the warning's amber.
     pub mod region {
+        use super::rgba;
+        use aic_editor::style;
         use eframe::egui::Color32;
 
         pub struct Tint {
@@ -103,42 +110,35 @@ pub mod color {
         }
 
         pub const TINTS: [Tint; 2] = [
-            Tint {
-                fill: Color32::from_rgb(0x3B, 0x36, 0x0E),
-                stroke: Color32::from_rgb(0x75, 0x6A, 0x1B),
-                text: Color32::from_rgb(0xF2, 0xE0, 0x5A),
-            },
-            Tint {
-                fill: Color32::from_rgb(0x12, 0x3D, 0x40),
-                stroke: Color32::from_rgb(0x23, 0x6E, 0x73),
-                text: Color32::from_rgb(0x74, 0xE0, 0xE4),
-            },
+            tint(style::color::region::TINTS[0]),
+            tint(style::color::region::TINTS[1]),
         ];
+
+        const fn tint(tint: style::color::region::Tint) -> Tint {
+            Tint {
+                fill: rgba(tint.fill),
+                stroke: rgba(tint.stroke),
+                text: rgba(tint.text),
+            }
+        }
     }
 }
 
-/// Corner radii, in points.
-pub mod radius {
-    /// Buttons, fields, chips, link labels.
-    pub const SMALL: u8 = 4;
-    /// Node cards, menus, popovers.
-    pub const MEDIUM: u8 = 6;
-    /// Windows.
-    pub const LARGE: u8 = 8;
+/// A design token as egui's color.
+const fn rgba(c: style::Rgba) -> Color32 {
+    Color32::from_rgba_premultiplied(c.0, c.1, c.2, c.3)
 }
 
-/// Type sizes, in points. At 1x a point is a pixel; the steps are about 1.15 apart.
-pub mod text {
-    /// Link labels, captions, the status bar.
-    pub const SMALL: f32 = 12.0;
-    /// Labels, buttons, list rows.
-    pub const BODY: f32 = 13.0;
-    /// Numbers in panels, port rates: the tabular face (`Monospace`).
-    pub const MONO: f32 = 13.0;
-    /// Panel titles.
-    pub const HEADING: f32 = 15.0;
-    /// The number a card is about: its facility count, a source's supply.
-    pub const NUMBER: f32 = 18.0;
+pub use aic_editor::style::{radius, text};
+
+/// A design shadow as egui's.
+const fn shadow(s: style::Shadow) -> Shadow {
+    Shadow {
+        offset: s.offset,
+        blur: s.blur,
+        spread: 0,
+        color: Color32::from_black_alpha(s.alpha),
+    }
 }
 
 /// Font family of the semibold UI face, for headings and emphasis.
@@ -182,28 +182,13 @@ pub fn node_frame() -> egui::Frame {
         .fill(color::RAISED)
         .stroke(Stroke::new(1.0, color::BORDER))
         .corner_radius(CornerRadius::same(radius::MEDIUM))
-        .inner_margin(Margin::same(6))
-        .shadow(Shadow {
-            offset: [0, 2],
-            blur: 6,
-            spread: 0,
-            color: Color32::from_black_alpha(90),
-        })
+        .inner_margin(Margin::same(style::spacing::CARD_MARGIN))
+        .shadow(shadow(style::shadow::CARD))
 }
 
 const SEMIBOLD: &str = "semibold";
 const TABULAR_SEMIBOLD: &str = "tabular-semibold";
 const NUMBER_STYLE: &str = "number";
-
-/// The app's faces, embedded so it looks the same on macOS and Windows, under the SIL Open Font
-/// License (`fonts/Inter-LICENSE.txt`). Inter Display carries words in static Light and SemiBold
-/// cuts. Numbers that must line up use the same cuts with tabular figures frozen in as the default
-/// digits (`scripts/tabular-fonts.sh`): egui shapes text without OpenType features, so it can't
-/// turn on `tnum` itself.
-const INTER_LIGHT: &[u8] = include_bytes!("../fonts/InterDisplay-Light.ttf");
-const INTER_SEMIBOLD: &[u8] = include_bytes!("../fonts/InterDisplay-SemiBold.ttf");
-const TABULAR_LIGHT: &[u8] = include_bytes!("../fonts/InterDisplayTabular-Light.ttf");
-const TABULAR_SEMIBOLD_CUT: &[u8] = include_bytes!("../fonts/InterDisplayTabular-SemiBold.ttf");
 
 /// Inter Display and its tabular cuts in front of egui's default fonts. egui's own faces stay
 /// behind them as fallbacks for the symbols and emoji the toolbar draws. egui's `Monospace` family
@@ -222,20 +207,24 @@ fn fonts() -> FontDefinitions {
         list.extend(fallback.iter().cloned());
         list
     };
-    let regular = family("inter", FontData::from_static(INTER_LIGHT), &proportional);
+    let regular = family(
+        "inter",
+        FontData::from_static(fonts::INTER_LIGHT),
+        &proportional,
+    );
     let regular_bold = family(
         "inter-semibold",
-        FontData::from_static(INTER_SEMIBOLD),
+        FontData::from_static(fonts::INTER_SEMIBOLD),
         &regular,
     );
     let mono = family(
         "inter-tabular",
-        FontData::from_static(TABULAR_LIGHT),
+        FontData::from_static(fonts::INTER_TABULAR_LIGHT),
         &monospace,
     );
     let mono_bold = family(
         "inter-tabular-semibold",
-        FontData::from_static(TABULAR_SEMIBOLD_CUT),
+        FontData::from_static(fonts::INTER_TABULAR_SEMIBOLD),
         &mono,
     );
 
@@ -259,16 +248,16 @@ fn apply(style: &mut Style) {
     .into();
 
     let spacing = &mut style.spacing;
-    spacing.item_spacing = Vec2::new(8.0, 3.0);
-    spacing.button_padding = Vec2::new(8.0, 2.0);
-    spacing.interact_size = Vec2::new(40.0, 20.0);
-    spacing.window_margin = Margin::same(10);
-    spacing.menu_margin = Margin::same(4);
-    spacing.indent = 16.0;
-    spacing.icon_width = 14.0;
-    spacing.icon_width_inner = 8.0;
-    spacing.icon_spacing = 6.0;
-    spacing.combo_height = 320.0;
+    spacing.item_spacing = Vec2::from(style::spacing::ITEM);
+    spacing.button_padding = Vec2::from(style::spacing::BUTTON_PADDING);
+    spacing.interact_size = Vec2::from(style::spacing::INTERACT_SIZE);
+    spacing.window_margin = Margin::same(style::spacing::WINDOW_MARGIN);
+    spacing.menu_margin = Margin::same(style::spacing::MENU_MARGIN);
+    spacing.indent = style::spacing::INDENT;
+    spacing.icon_width = style::spacing::ICON_WIDTH;
+    spacing.icon_width_inner = style::spacing::ICON_WIDTH_INNER;
+    spacing.icon_spacing = style::spacing::ICON_SPACING;
+    spacing.combo_height = style::spacing::COMBO_HEIGHT;
     spacing.scroll = egui::style::ScrollStyle::thin();
 
     style.visuals = visuals();
@@ -290,20 +279,10 @@ fn visuals() -> Visuals {
     v.window_fill = color::RAISED;
     v.window_stroke = Stroke::new(1.0, color::BORDER);
     v.window_corner_radius = CornerRadius::same(radius::LARGE);
-    v.window_shadow = Shadow {
-        offset: [0, 8],
-        blur: 24,
-        spread: 0,
-        color: Color32::from_black_alpha(140),
-    };
+    v.window_shadow = shadow(style::shadow::WINDOW);
     v.window_highlight_topmost = false;
     v.menu_corner_radius = CornerRadius::same(radius::MEDIUM);
-    v.popup_shadow = Shadow {
-        offset: [0, 4],
-        blur: 14,
-        spread: 0,
-        color: Color32::from_black_alpha(120),
-    };
+    v.popup_shadow = shadow(style::shadow::POPOVER);
 
     v.selection.bg_fill = color::ACCENT_FILL;
     v.selection.stroke = Stroke::new(1.0, color::ACCENT_TEXT);
@@ -338,66 +317,6 @@ fn visuals() -> Visuals {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Relative luminance (WCAG 2), for contrast checks.
-    fn luminance(c: Color32) -> f32 {
-        let channel = |v: u8| {
-            let v = f32::from(v) / 255.0;
-            if v <= 0.039_28 {
-                v / 12.92
-            } else {
-                ((v + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
-    }
-
-    fn contrast(a: Color32, b: Color32) -> f32 {
-        let (a, b) = (luminance(a), luminance(b));
-        (a.max(b) + 0.05) / (a.min(b) + 0.05)
-    }
-
-    #[test]
-    fn text_reads_on_every_surface() {
-        for surface in [color::CANVAS, color::PANEL, color::RAISED, color::INSET] {
-            for text in [
-                color::TEXT_STRONG,
-                color::TEXT,
-                color::TEXT_MUTED,
-                color::TEXT_FAINT,
-            ] {
-                assert!(contrast(text, surface) >= 4.5, "{text:?} on {surface:?}");
-            }
-            for state in [
-                color::ACCENT,
-                color::DEPOT_IN,
-                color::DEPOT_OUT,
-                color::WARN,
-                color::NEGATIVE,
-                color::LINKED,
-            ] {
-                assert!(contrast(state, surface) >= 4.5, "{state:?} on {surface:?}");
-            }
-        }
-    }
-
-    #[test]
-    fn header_text_reads_on_every_node_tint() {
-        use color::node::*;
-        for tint in [
-            RECIPE,
-            SOURCE,
-            SINK,
-            OUTPOST_ORDER,
-            MISSING,
-            LOGISTICS,
-            WORKSPACE,
-        ] {
-            assert!(contrast(color::TEXT_STRONG, tint) >= 7.0, "{tint:?}");
-            assert!(contrast(color::TEXT_MUTED, tint) >= 4.5, "{tint:?}");
-        }
-        assert!(contrast(color::ACCENT_TEXT, color::ACCENT_FILL) >= 4.5);
-    }
 
     #[test]
     fn every_family_has_a_font() {

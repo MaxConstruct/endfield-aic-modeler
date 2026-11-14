@@ -11,6 +11,7 @@ pub mod names;
 pub mod picker;
 pub mod settings;
 pub mod store;
+pub mod style;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod throttle;

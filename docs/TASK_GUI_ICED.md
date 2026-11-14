@@ -910,7 +910,7 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 | T0 | ADR 0009 and plan updates | — | done 2026-11-15 |
 | A1 | Rename `aic-app` → `aic-app-egui` | T0 | done 2026-11-15 |
 | A2 | `aic-editor` with the pure modules | A1 | done 2026-11-15 |
-| A3 | Design tokens and fonts in `aic_editor::style` | A2 | todo |
+| A3 | Design tokens and fonts in `aic_editor::style` | A2 | done 2026-11-15 |
 | A4 | Split the document | A2 | todo |
 | A5 | `Session`: selection, editing, `Command` | A4 | todo |
 | A6 | `Session`: files, autosave, settings | A5 | todo |

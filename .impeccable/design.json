@@ -3,7 +3,7 @@
   "generatedAt": "2026-11-09T12:54:39+00:00",
   "title": "Design System: AIC Modeler",
   "extensions": {
-    "platform": "Native egui 0.36 + egui-snarl 0.12 desktop app. Tokens are Rust constants in crates/aic-app-egui/src/theme.rs; CSS here is a preview translation only (1pt = 1px at 1x).",
+    "platform": "Native egui 0.36 + egui-snarl 0.12 desktop app. Tokens are Rust constants in crates/aic-editor/src/style.rs; CSS here is a preview translation only (1pt = 1px at 1x).",
     "colorMeta": {
       "canvas": {
         "role": "neutral",
@@ -701,7 +701,7 @@
       },
       {
         "name": "The Tested Contrast Rule",
-        "body": "Contrast is enforced by unit tests in `theme.rs`: every text and state color is ≥4.5:1 on canvas, panel, raised and inset; `TEXT_STRONG` is ≥7:1 and `TEXT_MUTED` ≥4.5:1 on every header tint; `ACCENT_TEXT` ≥4.5:1 on `ACCENT_FILL`. A new color or tint joins those tests.",
+        "body": "Contrast is enforced by unit tests in `crates/aic-editor/src/style.rs`: every text and state color is ≥4.5:1 on canvas, panel, raised and inset; `TEXT_STRONG` is ≥7:1 and `TEXT_MUTED` ≥4.5:1 on every header tint; `ACCENT_TEXT` ≥4.5:1 on `ACCENT_FILL`. A new color or tint joins those tests.",
         "section": "colors"
       },
       {
