@@ -6,6 +6,7 @@
 //! What depends on a level of the graph takes it as a parameter ([`Level`]): views are the UI's
 //! layout (ADR 0008).
 
+use std::path::Path;
 use std::time::Duration;
 
 use aic_core::{
@@ -15,12 +16,14 @@ use aic_core::{
 use aic_data::{Catalog, FacilityId, RegionId};
 
 use crate::command::Command;
+use crate::data::{DataChoice, DataFolder};
 use crate::document::{Anchor, Document, Level, port_ref};
+use crate::files::Files;
 use crate::i18n::Strings;
 use crate::messages::link_error;
 use crate::picker::{self, Choice, Origin};
 use crate::selection::Selection;
-use crate::settings::Availability;
+use crate::settings::{Availability, Settings};
 
 /// How far each paste lands from the copied nodes, in graph units.
 const PASTE_OFFSET: f32 = 40.0;
@@ -60,17 +63,20 @@ pub enum Outcome {
 }
 
 pub struct Session {
-    catalog: Catalog,
-    strings: Strings,
-    doc: Document,
+    pub(crate) catalog: Catalog,
+    pub(crate) strings: Strings,
+    pub(crate) doc: Document,
+    pub(crate) files: Files,
+    /// The data folder and what was loaded from it; `None` when the session was given a catalog.
+    data: Option<(DataFolder, DataChoice)>,
     selection: Option<Selection>,
     /// Nodes copied with Ctrl+C, and how many times they were pasted since.
     clipboard: Option<(Graph, u32)>,
     availability: Availability,
     /// The last refused action or file message, shown until the next one.
-    status: Option<String>,
+    pub(crate) status: Option<String>,
     /// The data version of the open file, when it isn't the active one.
-    other_data_version: Option<String>,
+    pub(crate) other_data_version: Option<String>,
     /// Show whole facilities and how busy they are instead of fractional counts.
     round_up: bool,
     last_solve: Option<Duration>,
@@ -89,6 +95,8 @@ impl Session {
             catalog,
             strings: Strings::english(),
             doc: Document::new(region),
+            files: Files::new(),
+            data: None,
             selection: None,
             clipboard: None,
             availability,
@@ -129,9 +137,20 @@ impl Session {
         &mut self.availability
     }
 
-    /// The catalog and the availability to edit, for a UI that shows both at once.
-    pub fn catalog_and_availability(&mut self) -> (&Catalog, &mut Availability) {
-        (&self.catalog, &mut self.availability)
+    /// The catalog, the availability to edit and the data folder with its choice, borrowed apart
+    /// for a UI that shows them in one settings window.
+    pub fn settings_parts(
+        &mut self,
+    ) -> (
+        &Catalog,
+        &mut Availability,
+        Option<(&DataFolder, &DataChoice)>,
+    ) {
+        (
+            &self.catalog,
+            &mut self.availability,
+            self.data.as_ref().map(|(folder, choice)| (folder, choice)),
+        )
     }
 
     pub fn round_up(&self) -> bool {
@@ -222,6 +241,55 @@ impl Session {
             self.last_solve = took;
         }
         took
+    }
+
+    /// What a UI keeps between runs.
+    pub fn settings(&self, show_performance: bool) -> Settings {
+        Settings {
+            data: self.data_choice().cloned().unwrap_or_default(),
+            availability: self.availability.clone(),
+            recent_files: self.recent_files().to_vec(),
+            last_document: self.last_document().map(Path::to_owned),
+            show_performance,
+        }
+    }
+
+    /// The data folder the catalog came from, and the version and language chosen in it.
+    pub fn set_data_folder(&mut self, folder: DataFolder, choice: DataChoice) {
+        self.data = Some((folder, choice));
+    }
+
+    pub fn data_folder(&self) -> Option<&DataFolder> {
+        self.data.as_ref().map(|(folder, _)| folder)
+    }
+
+    pub fn data_choice(&self) -> Option<&DataChoice> {
+        self.data.as_ref().map(|(_, choice)| choice)
+    }
+
+    /// Loads another data version or language from the data folder. The open graph stays; its
+    /// recipe nodes are matched against the new data by ID. A failure keeps the current data and
+    /// says why in [`Self::status`]. Returns whether the data changed.
+    pub fn switch_data(&mut self, choice: DataChoice) -> bool {
+        let Some((folder, _)) = &self.data else {
+            return false;
+        };
+        match folder.load(&choice) {
+            Ok(catalog) => {
+                self.switch_catalog(catalog);
+                if let Some((_, current)) = &mut self.data {
+                    *current = choice;
+                }
+                true
+            }
+            Err(error) => {
+                self.status = Some(
+                    self.strings
+                        .format("data-switch-failed", &[("error", &error.to_string())]),
+                );
+                false
+            }
+        }
     }
 
     /// Switches to a catalog of another data version or language: the graph's recipe nodes are

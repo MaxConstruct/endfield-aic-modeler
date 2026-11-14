@@ -19,11 +19,8 @@ use crate::names;
 use crate::picker::{self, Choice, Origin, Picker};
 use crate::port_menu::{self, PortMenu};
 use crate::settings::{Availability, SettingsWindow};
-use crate::store::FileStore;
-use crate::throttle::Throttle;
 use crate::views::Views;
 use crate::widgets::colors;
-use aic_editor::Document;
 use aic_editor::Session;
 use aic_editor::picker::recipe_node;
 
@@ -54,30 +51,16 @@ pub struct Editor {
     pub(crate) port_menu: Option<PortMenu>,
     pub(crate) show_browser: bool,
     pub(crate) show_inspector: bool,
-    /// Files opened or saved lately, newest first. Kept in eframe storage.
-    pub(crate) recent_files: Vec<PathBuf>,
-    /// Where drafts are saved; `None` keeps new graphs in memory until Save As.
-    pub(crate) drafts_dir: Option<PathBuf>,
-    /// Where files are read and written: the disk, or the browser's storage.
-    pub(crate) store: FileStore,
     /// Files for the browser to download.
     pub(crate) downloads: Vec<Download>,
     /// The name typed into the browser's Save As prompt, while it is open.
     pub(crate) save_as_prompt: Option<String>,
     /// The file the player is picking in the browser, once read.
     pub(crate) upload: Option<std::sync::mpsc::Receiver<Upload>>,
-    pub(crate) autosave: Throttle,
-    /// The canvas view as last saved, so moving the view also gets saved.
-    pub(crate) saved_view: Option<CanvasView>,
-    /// The data folder and what was loaded from it; `None` when the app was given a catalog.
-    pub(crate) data: Option<(DataFolder, DataChoice)>,
     /// Decoded icons belong to the old data after a switch.
     pub(crate) icons_stale: bool,
     /// The shortcut last pressed, and when: its toolbar button lights up for a moment.
     pub(crate) flash: Option<(Shortcut, web_time::Instant)>,
-    /// When the document was last written, and whether the last try failed.
-    pub(crate) last_saved: Option<web_time::Instant>,
-    pub(crate) save_failed: bool,
     /// Where to save the canvas once the window is next drawn.
     pub(crate) export_to: Option<PathBuf>,
     /// Whether the status bar shows the frame rate and the last solve's time.
@@ -101,20 +84,12 @@ impl Editor {
             port_menu: None,
             show_browser: true,
             show_inspector: false,
-            recent_files: Vec::new(),
-            drafts_dir: None,
-            store: FileStore::default(),
             downloads: Vec::new(),
             save_as_prompt: None,
             upload: None,
-            autosave: Throttle::new(crate::files::AUTOSAVE_INTERVAL),
-            saved_view: None,
-            data: None,
             icons_stale: false,
             export_to: None,
             flash: None,
-            last_saved: None,
-            save_failed: false,
             show_performance: true,
             frames: egui::util::History::new(2..1000, FRAME_RATE_WINDOW),
             last_title: String::new(),
@@ -123,12 +98,13 @@ impl Editor {
 
     /// Starts an empty graph in `region`, dropping the open one.
     pub fn new_graph(&mut self, region: RegionId) {
-        self.set_document(Document::new(region));
-        self.session.set_other_data_version(None);
+        self.session.new_graph(region);
+        self.after_new_document();
     }
 
-    pub(crate) fn set_document(&mut self, doc: Document) {
-        self.session.replace_document(doc);
+    /// Another document is open: every view shows its top, and no menu is left over from the old
+    /// one.
+    pub(crate) fn after_new_document(&mut self) {
         self.view = DocView::new(None);
         self.reset_views();
         self.picker = None;
@@ -142,7 +118,7 @@ impl Editor {
     }
 
     pub fn set_data_folder(&mut self, folder: DataFolder, choice: DataChoice) {
-        self.data = Some((folder, choice));
+        self.session.set_data_folder(folder, choice);
     }
 
     pub fn settings_mut(&mut self) -> &mut SettingsWindow {
@@ -150,30 +126,16 @@ impl Editor {
     }
 
     pub fn data_choice(&self) -> Option<&DataChoice> {
-        self.data.as_ref().map(|(_, choice)| choice)
+        self.session.data_choice()
     }
 
     /// Loads another data version or language from the data folder. The open graph stays; its
     /// recipe nodes are matched against the new data by ID. A failure keeps the current data.
-    pub fn switch_data(&mut self, choice: DataChoice, strings: &Strings) {
-        let Some((folder, _)) = &self.data else {
-            return;
-        };
-        match folder.load(&choice) {
-            Ok(catalog) => {
-                self.session.switch_catalog(catalog);
-                self.view
-                    .rebuild(self.session.document(), self.session.catalog());
-                self.icons_stale = true;
-                if let Some((_, current)) = &mut self.data {
-                    *current = choice;
-                }
-            }
-            Err(error) => {
-                self.session.set_status(Some(
-                    strings.format("data-switch-failed", &[("error", &error.to_string())]),
-                ));
-            }
+    pub fn switch_data(&mut self, choice: DataChoice, _strings: &Strings) {
+        if self.session.switch_data(choice) {
+            self.view
+                .rebuild(self.session.document(), self.session.catalog());
+            self.icons_stale = true;
         }
     }
 
@@ -349,11 +311,8 @@ impl Editor {
             self.overlays_ui(ui.ctx(), strings);
         }
         self.save_as_prompt_ui(ui.ctx(), strings);
-        let data = self
-            .data
-            .as_ref()
-            .map(|(folder, choice)| (folder, choice.clone()));
-        let (catalog, availability) = self.session.catalog_and_availability();
+        let (catalog, availability, data) = self.session.settings_parts();
+        let data = data.map(|(folder, choice)| (folder, choice.clone()));
         let switch = self
             .settings
             .show(ui.ctx(), catalog, strings, availability, data);
@@ -618,11 +577,11 @@ impl Editor {
         if item(ui, "menu-open", Some(Shortcut::Open)) {
             self.request(Pending::Open, strings);
         }
-        ui.add_enabled_ui(!self.recent_files.is_empty(), |ui| {
+        ui.add_enabled_ui(!self.session.recent_files().is_empty(), |ui| {
             ui.menu_button(strings.get("menu-open-recent"), |ui| {
                 let mut chosen = None;
-                for path in &self.recent_files {
-                    let name = self.store.label(path);
+                for path in self.session.recent_files() {
+                    let name = self.session.file_label(path);
                     if ui.button(name).clicked() {
                         chosen = Some(path.clone());
                     }

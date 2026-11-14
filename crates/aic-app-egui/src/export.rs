@@ -18,7 +18,7 @@ impl Editor {
     /// The browser downloads it instead.
     pub fn export_png(&mut self, strings: &Strings) {
         let name = format!("{}.png", strings.get("file-untitled"));
-        if self.store.is_browser() {
+        if self.session.is_browser() {
             self.request_export(PathBuf::from(name));
         } else if let Some(path) = pick_png_path(name) {
             self.request_export(path);
@@ -54,8 +54,8 @@ impl Editor {
         });
         let pixels_per_point = ctx.pixels_per_point();
         for (path, image) in shots {
-            let browser = self.store.is_browser();
-            let file = self.store.label(&path);
+            let browser = self.session.is_browser();
+            let file = self.session.file_label(&path);
             let result = canvas_png(&image, self.canvas.rect, pixels_per_point).and_then(|png| {
                 if browser {
                     self.downloads.push(Download {

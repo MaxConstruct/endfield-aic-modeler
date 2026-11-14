@@ -920,6 +920,18 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 - (2026-11-15, A5) `Session::disconnect` also clears a selected link; egui's `sync_from_view` uses
   it for a wire lost to Cmd+drag, which before left a stale `Selection::Link` (the inspector
   already ignored it).
+- (2026-11-15, A6) File rules live in `aic_editor::files` as `impl Session`, with `Files` (store,
+  drafts folder, recent list, autosave throttle, saved camera, last write) private to the crate. The
+  data folder and choice moved into `Session` too (`switch_data`, `settings_parts`), so
+  `Session::settings(show_performance)` can fill `aic_editor::Settings`. egui does not use
+  `Settings`: it keeps its separate eframe keys, as planned. `Settings` adds `serde_json` to
+  `aic-editor` (named in the plan's dependency table).
+- (2026-11-15, A6) `Session::save` returns the name to offer when the player must pick a path
+  (instead of an `Outcome::PickSavePath`); `open_file`, `reopen` and `open_upload` return
+  `Option<Opened>` (the camera saved with the file) and set `status()` on failure. Times are passed
+  in (`now: Instant`), so autosave can be tested without sleeping.
+- (2026-11-15, A6) `crop_png` (plan section 4, `export.rs`) is not in any A task and wasn't moved;
+  egui keeps its export code. Whoever builds iced's export (C13) can move it then.
 - (2026-11-15, A2, unrelated bug) The egui kittest snapshots are flaky on this machine: with no
   change at all, `a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports`
   (`workspace_inside`, ~500 differing pixels) and sometimes `a_view_of_a_dissolved_workspace_goes_back_to_the_top`
@@ -938,7 +950,7 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 | A3 | Design tokens and fonts in `aic_editor::style` | A2 | done 2026-11-15 |
 | A4 | Split the document | A2 | done 2026-11-15 |
 | A5 | `Session`: selection, editing, `Command` | A4 | done 2026-11-15 |
-| A6 | `Session`: files, autosave, settings | A5 | todo |
+| A6 | `Session`: files, autosave, settings | A5 | done 2026-11-15 |
 | A7 | `scripts/check-frontends.sh` | A2 | todo |
 | B1 | `aic-app-iced` skeleton | A3, A6, A7 | todo |
 | B2 | iced_nodegraph spike (gate) | B1 | todo |

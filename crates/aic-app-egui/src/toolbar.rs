@@ -119,10 +119,10 @@ impl Editor {
 
     /// Whether the work is safe on disk, at the right of the status bar.
     pub(crate) fn save_indicator(&self, ui: &mut Ui, strings: &Strings) {
-        let (text, color) = if self.save_failed {
+        let (text, color) = if self.session.save_failed() {
             (strings.get("save-state-failed"), colors::NEGATIVE)
         } else if self.session.document().is_modified() {
-            let key = if self.session.document().path().is_some() || self.drafts_dir.is_some() {
+            let key = if self.session.document().path().is_some() || self.session.keeps_drafts() {
                 "save-state-saving"
             } else {
                 "save-state-unsaved"
@@ -172,9 +172,12 @@ impl Editor {
             .session
             .document()
             .path()
-            .map(|path| self.store.label(path))
+            .map(|path| self.session.file_label(path))
             .unwrap_or_else(|| strings.get("file-untitled"));
-        let when = self.last_saved.map(|at| ago(strings, at.elapsed()));
+        let when = self
+            .session
+            .last_saved()
+            .map(|at| ago(strings, at.elapsed()));
         let hint = match when {
             Some(when) => strings.format("save-state-hint", &[("file", &file), ("when", &when)]),
             None => file,

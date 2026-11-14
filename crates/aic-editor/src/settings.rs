@@ -2,9 +2,12 @@
 //! supply, and how a typed amount is read.
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 
 use aic_data::{ItemId, RegionId};
 use serde::{Deserialize, Serialize};
+
+use crate::data::DataChoice;
 
 /// The storage key for [`Availability`].
 pub const STORAGE_KEY: &str = "raw-resource-availability";
@@ -60,6 +63,42 @@ pub fn parse_amount(text: &str) -> Result<Option<f64>, BadAmount> {
         _ => Err(BadAmount),
     }
 }
+/// What a UI keeps between runs, as one value: the data choice, the raw resource availability, the
+/// recent files, the document open last and whether the status bar shows performance. The egui app
+/// keeps these under separate eframe keys; a UI with a settings file writes this.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub data: DataChoice,
+    pub availability: Availability,
+    pub recent_files: Vec<PathBuf>,
+    pub last_document: Option<PathBuf>,
+    pub show_performance: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            data: DataChoice::default(),
+            availability: Availability::default(),
+            recent_files: Vec::new(),
+            last_document: None,
+            show_performance: true,
+        }
+    }
+}
+
+impl Settings {
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).expect("settings serialize")
+    }
+
+    /// Settings from text. Anything unreadable is the caller's to replace with the defaults.
+    pub fn from_json(text: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(text)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +121,20 @@ mod tests {
         assert_eq!(availability.get(&valley, &ore), None);
         availability.set(&wuling, &ore, None);
         assert!(availability.region(&wuling).is_empty());
+    }
+
+    #[test]
+    fn settings_round_trip_and_missing_fields_take_defaults() {
+        let mut settings = Settings::default();
+        settings.recent_files.push("plan.aicm".into());
+        settings.show_performance = false;
+        settings.availability.set(
+            &RegionId::from("jinlong"),
+            &ItemId::from("copper_ore"),
+            Some(420.0),
+        );
+        assert_eq!(Settings::from_json(&settings.to_json()).unwrap(), settings);
+        assert_eq!(Settings::from_json("{}").unwrap(), Settings::default());
+        assert!(Settings::from_json("not json").is_err());
     }
 }
