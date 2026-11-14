@@ -3,6 +3,7 @@
 
 pub mod browser;
 pub mod data;
+pub mod document;
 pub mod embedded;
 pub mod format;
 pub mod i18n;
@@ -15,3 +16,4 @@ pub mod style;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod throttle;
+pub use document::{Document, Level};

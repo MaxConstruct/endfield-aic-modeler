@@ -183,7 +183,7 @@ impl Editor {
             Shortcut::Duplicate => self.duplicate(),
             Shortcut::Delete => self.delete_selection(),
             Shortcut::SelectAll => {
-                let all = self.doc.view.nodes().copied().collect();
+                let all = self.doc.view().nodes().copied().collect();
                 self.select(Selection::of_items(all));
             }
             Shortcut::MakeWorkspace => self.make_workspace(strings),

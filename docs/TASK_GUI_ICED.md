@@ -895,6 +895,16 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
   (the paths-only table that egui's `web.rs` fetches), instead of a public table.
 - (2026-11-15, A2) `aic_editor::testing` also has `fixture_dir()` (the fixture version folder), since
   the egui snapshot tests load the fixture from disk with `aic_data::load`.
+- (2026-11-15, A4) `aic_editor::Document` edits drop the `catalog` parameter wherever it only served
+  the view (`undo`, `redo`, `remove_node`, `remove_link`, `remove_workspace`, `workspace_from`,
+  `dissolve`, `add_port`, `clear_port`); `from_graph(graph, path)` drops it too. egui's `Document`
+  keeps its old signatures and derefs (read only) to the inner document. The pure graph helpers
+  (`PinTarget`, `pin_targets`, `pins`, `shown`, `is_port`, `port_ref`) moved to
+  `aic_editor::document` now, since both frontends need them (plan C3 says the same).
+- (2026-11-15, A4) egui's reconcile moves a view node only when the graph position differs from
+  what the view was last brought in line with, so a drag not yet handed to the graph isn't undone by
+  an unrelated edit (the old incremental edits behaved so). Full rebuilds remain for `set_level`,
+  `rebind`, a stale view swapped in and `from_graph`.
 - (2026-11-15, A2, unrelated bug) The egui kittest snapshots are flaky on this machine: with no
   change at all, `a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports`
   (`workspace_inside`, ~500 differing pixels) and sometimes `a_view_of_a_dissolved_workspace_goes_back_to_the_top`
@@ -911,7 +921,7 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 | A1 | Rename `aic-app` → `aic-app-egui` | T0 | done 2026-11-15 |
 | A2 | `aic-editor` with the pure modules | A1 | done 2026-11-15 |
 | A3 | Design tokens and fonts in `aic_editor::style` | A2 | done 2026-11-15 |
-| A4 | Split the document | A2 | todo |
+| A4 | Split the document | A2 | done 2026-11-15 |
 | A5 | `Session`: selection, editing, `Command` | A4 | todo |
 | A6 | `Session`: files, autosave, settings | A5 | todo |
 | A7 | `scripts/check-frontends.sh` | A2 | todo |
