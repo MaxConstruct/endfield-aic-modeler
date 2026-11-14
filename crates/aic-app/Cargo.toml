@@ -11,6 +11,7 @@ aic-core.workspace = true
 aic-data.workspace = true
 eframe = { version = "0.36", features = ["persistence"] }
 egui-snarl = "0.12"
+egui_dock = { version = "0.21.1", features = ["serde"] }
 fluent-bundle = "0.16.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 indexmap = "2"

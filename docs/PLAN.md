@@ -653,7 +653,14 @@ Done.
   since `std::time::Instant` panics in the browser.
 
 ### M10: Multiple views
-Not started. Brief settled 2026-11-14 (ADR 0008).
+Done, except detached windows not yet tried as real OS windows (the tests run them embedded). Brief
+settled 2026-11-14 (ADR 0008). Built on egui_dock 0.21 (`views.rs`); the focused view's canvas and
+level live in the editor and the document, the others wait parked and are swapped in to be drawn
+(`Document::swap_level`), drawn afresh when the graph changed meanwhile. A tab egui_dock would float
+in an egui window becomes a native window. The camera moves with its view's place on screen, so a
+dragged tab or a resized split keeps what it showed. Shortcuts: Split right Cmd/Ctrl+\\, Split down
+Cmd/Ctrl+Shift+\\, Duplicate view Cmd/Ctrl+Shift+D, Move to new window Cmd/Ctrl+Shift+N, Close view
+Cmd/Ctrl+W. With one view there is no tab bar.
 - The canvas area becomes a dock: a tree of splits, each a group of tabs. Every tab is a **view** of
   the one open graph with its own level (the top, or a workspace) and camera. The recipe browser and
   the inspector stay fixed side panels around the dock. The default layout is one tab, so nothing
@@ -682,7 +689,6 @@ Not started. Brief settled 2026-11-14 (ADR 0008).
   with the settings, not in the `.aicm` file. A file still saves one camera, the focused view's.
   Opening a file puts every view at the top, the focused one at the file's camera. A view whose
   workspace is dissolved or gone moves to the top.
-- Docking: egui_dock or egui_tiles if a release supports egui 0.36, else a small split tree of our own.
 - Tests: kittest snapshots of a split layout and of the drop preview; an edit in one view shows in the
   other the same frame; a shared selection; a dissolved workspace's view falls back to the top.
 - Not in M10: several documents open at once, a selection per view, dockable side panels, synced

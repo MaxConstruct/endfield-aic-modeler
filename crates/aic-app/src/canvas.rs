@@ -98,9 +98,9 @@ pub fn zoom_step(zoom: f32, zoom_in: bool) -> f32 {
     }
 }
 
-/// egui-snarl's id for the canvas of one level. Each level keeps its own camera and selection.
-fn snarl_id(level: Option<WorkspaceId>) -> Id {
-    Id::new((CANVAS_ID, level))
+/// egui-snarl's id for one view's canvas of one level. Each keeps its own camera and selection.
+fn snarl_id(view: Id, level: Option<WorkspaceId>) -> Id {
+    view.with(level)
 }
 
 /// What the player has selected: nodes and workspaces as drawn on the canvas, or one link.
@@ -218,6 +218,8 @@ type PinCenters = Rc<RefCell<HashMap<PinKey, Pos2>>>;
 
 /// View state that lives across frames.
 pub struct Canvas {
+    /// Sets this view's ids apart from other views' of the same graph.
+    id: Id,
     style: SnarlStyle,
     pins: PinCenters,
     /// What the player is typing in each card's limit field.
@@ -233,8 +235,8 @@ pub struct Canvas {
     snarl_selection: Vec<ViewId>,
     /// What the player is dragging, found when it first moves and kept until the button is up.
     grabbed: Option<Member>,
-    /// A view to show from the next frame, set when a file opens.
-    pending_view: Option<aic_core::CanvasView>,
+    /// A camera to show from the next frame at a level, set when a file or a view opens.
+    pending_view: Option<(Option<WorkspaceId>, aic_core::CanvasView)>,
     /// A zoom to show from the next frame, around the middle of the canvas.
     pending_zoom: Option<f32>,
     /// Wheel scroll not yet turned into a zoom step, as a factor. Small scrolls add up here until
@@ -256,7 +258,15 @@ pub struct Canvas {
 
 impl Default for Canvas {
     fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+impl Canvas {
+    /// The canvas of the view numbered `view`.
+    pub fn new(view: u64) -> Self {
         Self {
+            id: Id::new((CANVAS_ID, view)),
             style: SnarlStyle {
                 node_layout: Some(NodeLayout::coil()),
                 pin_placement: Some(PinPlacement::Edge),
@@ -300,9 +310,7 @@ impl Default for Canvas {
             shown_levels: Default::default(),
         }
     }
-}
 
-impl Canvas {
     /// Where the canvas is looking: the graph point at its top-left, and the zoom. `None` before
     /// the canvas was first drawn.
     pub fn view(&self) -> Option<aic_core::CanvasView> {
@@ -338,7 +346,12 @@ impl Canvas {
 
     /// Looks at `view` from the next frame on, as when a file is opened.
     pub fn show_view(&mut self, view: aic_core::CanvasView) {
-        self.pending_view = Some(view);
+        self.show_view_at(None, view);
+    }
+
+    /// Looks at `view` once `level` is next shown.
+    pub fn show_view_at(&mut self, level: Option<WorkspaceId>, view: aic_core::CanvasView) {
+        self.pending_view = Some((level, view));
     }
 
     /// The middle of the visible canvas, in graph space.
@@ -395,8 +408,15 @@ impl Canvas {
         round_up: bool,
     ) -> Vec<CanvasEvent> {
         // The snarl response spans everything; the panel's own rect is what's on screen.
-        self.rect = ui.max_rect();
+        let last_rect = std::mem::replace(&mut self.rect, ui.max_rect());
         let level = doc.level();
+        // egui-snarl's camera is on screen: when the view's place moves (its tab dragged to
+        // another split, a split resized), the graph moves along with it.
+        let moved = if last_rect.is_positive() && level == self.level {
+            self.rect.min - last_rect.min
+        } else {
+            Vec2::ZERO
+        };
         if level != self.level {
             if self.level.is_none() {
                 self.top_view = self.view();
@@ -423,6 +443,8 @@ impl Canvas {
             None => self.wheel_zoom(ui),
         };
         let mut viewer = Viewer {
+            id: self.id,
+            moved,
             catalog,
             strings,
             graph,
@@ -441,9 +463,8 @@ impl Canvas {
             ctx: ui.ctx().clone(),
             pending_view: self
                 .pending_view
-                .take()
-                .filter(|_| level.is_none())
-                .map(|view| {
+                .take_if(|(at, _)| *at == level)
+                .map(|(_, view)| {
                     // Screen = zoom × graph + translation, with the view's corner at the canvas
                     // corner; the camera's scaling is in view space.
                     let corner = Pos2::new(view.x, view.y).to_vec2() * view.zoom;
@@ -455,7 +476,7 @@ impl Canvas {
             events: Vec::new(),
         };
         let response = SnarlWidget::new()
-            .id(snarl_id(level))
+            .id(snarl_id(self.id, level))
             .style(self.style)
             .show(view, &mut viewer, ui);
         let mut events = viewer.events;
@@ -477,7 +498,7 @@ impl Canvas {
             pins: &pins,
             selection,
         };
-        let layer = LayerId::new(ui.layer_id().order, snarl_id(level));
+        let layer = LayerId::new(ui.layer_id().order, snarl_id(self.id, level));
         let clicked_label = labels.paint(ui, layer, self.to_global, self.rect);
         let selected = events.iter().any(|e| matches!(e, CanvasEvent::Select(_)));
         let modifiers = ui.input(|i| i.modifiers);
@@ -526,7 +547,7 @@ impl Canvas {
                 .map(|w| w.name.clone())
                 .unwrap_or_default()
         };
-        egui::Area::new(Id::new("level-bar"))
+        egui::Area::new(self.id.with("level-bar"))
             .fixed_pos(self.rect.left_top() + vec2(EDGE_GAP, EDGE_GAP))
             .show(ui.ctx(), |ui| {
                 ui.horizontal(|ui| {
@@ -558,7 +579,7 @@ impl Canvas {
                     }
                 });
             });
-        egui::Area::new(Id::new("level-bar-outputs"))
+        egui::Area::new(self.id.with("level-bar-outputs"))
             .pivot(egui::Align2::RIGHT_TOP)
             .fixed_pos(self.rect.right_top() + vec2(-EDGE_GAP, EDGE_GAP))
             .show(ui.ctx(), |ui| {
@@ -636,7 +657,7 @@ impl Canvas {
                 let rect = Rect::from_two_pos(start, end);
                 let painter = ui.ctx().layer_painter(LayerId::new(
                     egui::Order::Foreground,
-                    Id::new("right-drag-box"),
+                    self.id.with("right-drag-box"),
                 ));
                 painter.rect(
                     rect,
@@ -740,7 +761,7 @@ impl Canvas {
         selection: Option<&Selection>,
         node_clicked: bool,
     ) -> Option<CanvasEvent> {
-        let now = egui_snarl::ui::get_selected_nodes(snarl_id(self.level), ui.ctx());
+        let now = egui_snarl::ui::get_selected_nodes(snarl_id(self.id, self.level), ui.ctx());
         let last = std::mem::replace(&mut self.snarl_selection, now.clone());
         if now == last || node_clicked {
             return None;
@@ -930,6 +951,10 @@ fn paint_throttle_marker(painter: &egui::Painter, tile: Rect) {
 }
 
 struct Viewer<'a> {
+    /// The view's id ([`Canvas::id`]), which the ids of its widgets start from.
+    id: Id,
+    /// How far the canvas moved on screen since the last frame.
+    moved: Vec2,
     catalog: &'a Catalog,
     strings: &'a Strings,
     graph: &'a Graph,
@@ -1113,7 +1138,11 @@ impl Viewer<'_> {
         }
         // A double-click on the port opens its menu: the limit as a rate, and clearing its links.
         let response = ui
-            .interact(rect, Id::new(("port-row", id, side, item)), Sense::click())
+            .interact(
+                rect,
+                self.id.with(("port-row", id, side, item)),
+                Sense::click(),
+            )
             .on_hover_text(hint);
         // Beside the pin, on the node's edge; last frame's spot is close enough.
         let pin_center = self.pins.borrow().get(&pin).copied();
@@ -1181,7 +1210,7 @@ impl Viewer<'_> {
     fn limit_field(&mut self, ui: &mut Ui, id: NodeId, limit: Option<f64>, required: bool) {
         let buffer = self.limit_edits.entry(id).or_default();
         let field = LimitField {
-            id: Id::new(("node-limit", id)),
+            id: self.id.with(("node-limit", id)),
             buffer,
             current: limit,
             width: crisp(76.0),
@@ -1700,7 +1729,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
                     .workspace_info(workspace)
                     .map(|w| w.name.clone())
                     .unwrap_or_default();
-                let id = Id::new(("workspace-title", workspace));
+                let id = self.id.with(("workspace-title", workspace));
                 if !ui.memory(|m| m.has_focus(id)) {
                     *self.title_edit = name.clone();
                 }
@@ -1844,6 +1873,7 @@ impl SnarlViewer<Member> for Viewer<'_> {
         if !usable || self.fresh {
             *to_global = TSTransform::from_scaling(1.0 / VIEW_SCALE);
         }
+        to_global.translation += self.moved;
         if let Some((fixed, zoom)) = self.zoom {
             // The graph point at `fixed` stays there. The camera's scaling is in view space.
             let under = to_global.inverse() * fixed;

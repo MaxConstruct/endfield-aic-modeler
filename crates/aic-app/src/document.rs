@@ -6,6 +6,10 @@
 //! [`Member`] of that level (a node, the level's own ports included, or a workspace inside it),
 //! with one wire per link at that level.
 //!
+//! The canvas can show the graph in several views (ADR 0008). The document holds one view's level
+//! at a time; the others wait in a [`LevelView`] and are swapped in to be drawn
+//! ([`Document::swap_level`]), drawn afresh if the graph changed meanwhile.
+//!
 //! Undo and redo keep whole `Graph` snapshots: graphs are small, so a clone per step is cheap.
 //! Edits since the last [`Document::checkpoint`] make one step, so a drag or a typed number undoes
 //! in one go.
@@ -49,6 +53,34 @@ pub enum Anchor {
 /// How many undo steps are kept.
 const HISTORY_LIMIT: usize = 200;
 
+/// One view's level of the graph and the egui-snarl graph drawing it, while another view's is in
+/// the [`Document`].
+pub struct LevelView {
+    view: Snarl<Member>,
+    view_ids: HashMap<Member, ViewId>,
+    level: Option<WorkspaceId>,
+    anchors: HashMap<NodeId, Anchor>,
+    /// The document's [`Document::generation`] this was drawn from; `None` before it was drawn.
+    synced: Option<u64>,
+}
+
+impl LevelView {
+    /// A view of `level` (`None` for the top), drawn when it is first swapped in.
+    pub fn new(level: Option<WorkspaceId>) -> Self {
+        Self {
+            view: Snarl::new(),
+            view_ids: HashMap::new(),
+            level,
+            anchors: HashMap::new(),
+            synced: None,
+        }
+    }
+
+    pub fn level(&self) -> Option<WorkspaceId> {
+        self.level
+    }
+}
+
 pub struct Document {
     pub(crate) graph: Graph,
     pub(crate) view: Snarl<Member>,
@@ -68,6 +100,8 @@ pub struct Document {
     next_revision: u64,
     /// Counts every change, moves and undos included; saving records the count it saved.
     edits: u64,
+    /// Counts every change to what the views draw, so a view swapped in knows to draw afresh.
+    generation: u64,
     saved_edits: u64,
     path: Option<PathBuf>,
     /// The file is a draft in the app's own folder, not one the player chose.
@@ -103,6 +137,7 @@ impl Document {
             redo: Vec::new(),
             next_revision: 1,
             edits: 0,
+            generation: 0,
             saved_edits: 0,
             path,
             draft: false,
@@ -199,11 +234,13 @@ impl Document {
         }
         self.rebuild_view(catalog);
         self.stale = true;
+        self.generation += 1;
     }
 
     /// Shows the committed graph again. A workspace that is gone takes the view back up.
     fn restore(&mut self, catalog: &Catalog) {
         self.edits += 1;
+        self.generation += 1;
         self.graph = self.committed.clone();
         while let Some(level) = self.level
             && self.graph.workspace_info(level).is_none()
@@ -267,6 +304,26 @@ impl Document {
         self.stale = true;
         self.pending = true;
         self.edits += 1;
+        self.generation += 1;
+    }
+
+    /// Puts `other`'s level in the document and the document's in `other`. The level coming in is
+    /// drawn afresh if the graph changed since it was last in, and falls back to the top if its
+    /// workspace is gone.
+    pub fn swap_level(&mut self, catalog: &Catalog, other: &mut LevelView) {
+        std::mem::swap(&mut self.view, &mut other.view);
+        std::mem::swap(&mut self.view_ids, &mut other.view_ids);
+        std::mem::swap(&mut self.level, &mut other.level);
+        std::mem::swap(&mut self.anchors, &mut other.anchors);
+        let synced = other.synced.replace(self.generation);
+        if synced != Some(self.generation) {
+            while let Some(level) = self.level
+                && self.graph.workspace_info(level).is_none()
+            {
+                self.level = None;
+            }
+            self.rebuild_view(catalog);
+        }
     }
 
     pub fn graph(&self) -> &Graph {
@@ -544,6 +601,7 @@ impl Document {
                         let _ = self.graph.set_pos(id, new);
                         self.pending = true;
                         self.edits += 1;
+                        self.generation += 1;
                     }
                 }
                 Member::Workspace(id) => {
@@ -551,6 +609,7 @@ impl Document {
                         let _ = self.graph.set_workspace_pos(id, new);
                         self.pending = true;
                         self.edits += 1;
+                        self.generation += 1;
                     }
                 }
             }
@@ -710,6 +769,32 @@ mod tests {
             facility: "furnace".into(),
             limit: Some(1.0),
         }
+    }
+
+    #[test]
+    fn a_view_swapped_in_draws_what_changed_while_it_waited() {
+        let catalog = catalog();
+        let mut doc = Document::new("tundra".into());
+        doc.add_node(recipe(), Pos2::ZERO);
+        let mut other = LevelView::new(None);
+        doc.swap_level(&catalog, &mut other);
+        assert_eq!(doc.view().nodes().count(), 1, "drawn on its first swap");
+        doc.swap_level(&catalog, &mut other);
+
+        doc.add_node(recipe(), Pos2::ZERO);
+        doc.swap_level(&catalog, &mut other);
+        assert_eq!(doc.view().nodes().count(), 2);
+    }
+
+    #[test]
+    fn a_view_whose_workspace_is_gone_shows_the_top() {
+        let catalog = catalog();
+        let mut doc = Document::new("tundra".into());
+        let workspace = doc.add_workspace(&catalog, "W", Pos2::ZERO);
+        let mut inside = LevelView::new(Some(workspace));
+        doc.remove_workspace(&catalog, workspace);
+        doc.swap_level(&catalog, &mut inside);
+        assert_eq!(doc.level(), None);
     }
 
     #[test]

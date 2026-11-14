@@ -2167,3 +2167,222 @@ fn the_status_bar_shows_the_frame_rate_and_solve_time_until_turned_off() {
     assert!(harness.query_by_label_contains(" fps").is_none());
     assert!(harness.query_by_label_contains("Solve ").is_none());
 }
+
+// M10: multiple views.
+
+use aic_app::views::{ViewAction, ViewKey};
+
+fn views(harness: &mut Harness<'_, App>) -> Vec<ViewKey> {
+    editor(harness).views().keys()
+}
+
+fn focused(harness: &mut Harness<'_, App>) -> ViewKey {
+    editor(harness).views().focused()
+}
+
+fn view_menu(harness: &mut Harness<'_, App>, item: &str) {
+    harness.get_by_label("View").click();
+    harness.run();
+    // A menu button's label carries its shortcut too.
+    harness.get_by_label_contains(item).click();
+    harness.run();
+}
+
+#[test]
+fn one_view_has_no_tab_bar() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    assert_eq!(views(&mut harness).len(), 1);
+    assert!(harness.query_by_label("Close view").is_none());
+}
+
+#[test]
+fn split_right_shows_the_graph_twice_and_an_edit_in_one_view_shows_in_the_other() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let ingot = smelter(&mut harness, 0.0, 0.0);
+    let first = focused(&mut harness);
+    view_menu(&mut harness, "Split right");
+    let keys = views(&mut harness);
+    assert_eq!(keys.len(), 2);
+    let second = focused(&mut harness);
+    assert_ne!(second, first, "the new view has focus");
+    let titles: Vec<String> = keys
+        .iter()
+        .map(|key| editor(&mut harness).view_title(*key, &Strings::english()))
+        .collect();
+    assert_eq!(titles[1], format!("{} · 2", titles[0]));
+
+    // Added in the second view, drawn in the first.
+    let plate = add(
+        &mut harness,
+        NodeKind::Recipe {
+            recipe: "iron_plate".into(),
+            facility: "constructor".into(),
+            limit: None,
+        },
+        400.0,
+        0.0,
+    );
+    editor(&mut harness).focus_view(first);
+    harness.run();
+    let ed = editor(&mut harness);
+    assert!(
+        ed.node_on_screen(plate).is_some(),
+        "the first view draws it"
+    );
+    assert!(ed.node_on_screen(ingot).is_some());
+
+    // One selection for every view.
+    editor(&mut harness).select_nodes(vec![ingot]);
+    harness.run();
+    editor(&mut harness).focus_view(second);
+    harness.run();
+    assert_eq!(
+        editor(&mut harness).selection(),
+        Some(&Selection::node(ingot))
+    );
+    harness.snapshot("views_split");
+}
+
+#[test]
+fn the_keys_split_a_view_down_and_close_it_again() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Backslash);
+    harness.run();
+    assert_eq!(views(&mut harness).len(), 2);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Backslash);
+    harness.run();
+    assert_eq!(views(&mut harness).len(), 3);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    harness.run();
+    assert_eq!(views(&mut harness).len(), 1);
+    // The last view stays.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    harness.run();
+    assert_eq!(views(&mut harness).len(), 1);
+}
+
+#[test]
+fn a_view_of_a_dissolved_workspace_goes_back_to_the_top() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    let [_, ingot, plate, _] = plate_chain(&mut harness);
+    editor(&mut harness).select_nodes(vec![ingot, plate]);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::G);
+    harness.run();
+    let workspace = editor(&mut harness)
+        .selection()
+        .and_then(Selection::single_workspace)
+        .unwrap();
+    let top = focused(&mut harness);
+    editor(&mut harness)
+        .views_mut()
+        .request(ViewAction::OpenBeside(top, workspace));
+    harness.run();
+    let inside = focused(&mut harness);
+    assert_ne!(inside, top);
+    assert_eq!(editor(&mut harness).view_level(inside), Some(workspace));
+    assert_eq!(editor(&mut harness).view_level(top), None);
+    harness.snapshot("views_workspace_beside_top");
+
+    editor(&mut harness).focus_view(top);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::G);
+    harness.run();
+    let ed = editor(&mut harness);
+    assert!(ed.document().graph().workspace_info(workspace).is_none());
+    assert_eq!(ed.view_level(inside), None);
+}
+
+#[test]
+fn a_view_moves_to_a_window_of_its_own() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    smelter(&mut harness, 0.0, 0.0);
+    view_menu(&mut harness, "Split right");
+    let moved = focused(&mut harness);
+    view_menu(&mut harness, "Move to new window");
+    let ed = editor(&mut harness);
+    assert_eq!(ed.views().window_count(), 1);
+    assert!(ed.views().is_in_window(moved));
+    assert_eq!(ed.views().len(), 2);
+    harness.run();
+    harness.snapshot("views_window");
+}
+
+#[test]
+fn the_layout_of_the_views_is_kept_with_the_settings() {
+    let mut harness = browser_harness();
+    let [_, ingot, plate, _] = plate_chain(&mut harness);
+    editor(&mut harness).select_nodes(vec![ingot, plate]);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::G);
+    harness.run();
+    let top = focused(&mut harness);
+    let workspace = editor(&mut harness)
+        .selection()
+        .and_then(Selection::single_workspace)
+        .unwrap();
+    editor(&mut harness)
+        .views_mut()
+        .request(ViewAction::OpenBeside(top, workspace));
+    harness.run();
+    editor(&mut harness)
+        .views_mut()
+        .request(ViewAction::SplitDown(top));
+    harness.run();
+    let mut storage = MemoryStorage::default();
+    eframe::App::save(harness.state_mut(), &mut storage);
+
+    let catalog = aic_data::load(&fixture("tests/fixtures/satisfactory/vtest"), "en").unwrap();
+    let mut again = Harness::builder()
+        .with_size(WINDOW_SIZE)
+        .build_eframe(|cc| {
+            aic_app::theme::install(&cc.egui_ctx);
+            App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
+        });
+    again.run();
+    let keys = views(&mut again);
+    assert_eq!(keys.len(), 3);
+    let ed = editor(&mut again);
+    let workspace = ed.document().graph().workspaces().keys().next().unwrap();
+    let levels: Vec<_> = keys.iter().map(|key| ed.view_level(*key)).collect();
+    assert_eq!(levels.iter().filter(|l| **l == Some(workspace)).count(), 1);
+    assert_eq!(levels.iter().filter(|l| l.is_none()).count(), 2);
+}
+
+#[test]
+fn a_tab_dragged_over_a_view_shows_where_it_lands_and_splits_there() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    smelter(&mut harness, 0.0, 0.0);
+    view_menu(&mut harness, "Split right");
+    view_menu(&mut harness, "Duplicate view");
+    assert_eq!(views(&mut harness).len(), 3);
+    // The duplicate's tab, second in the right-hand group (egui_dock's tabs aren't in the
+    // accessibility tree), onto the bottom of the left view.
+    let tab = pos2(760.0, 39.0);
+    let target = pos2(420.0, 700.0);
+    harness.hover_at(tab);
+    harness.run();
+    harness.event(Event::PointerButton {
+        pos: tab,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    for step in 1..=8 {
+        harness.event(Event::PointerMoved(tab.lerp(target, step as f32 / 8.0)));
+        harness.step();
+    }
+    harness.step();
+    harness.snapshot("views_drop_preview");
+    harness.event(Event::PointerButton {
+        pos: target,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run();
+    assert_eq!(views(&mut harness).len(), 3, "moved, not closed");
+    harness.snapshot("views_dropped");
+}

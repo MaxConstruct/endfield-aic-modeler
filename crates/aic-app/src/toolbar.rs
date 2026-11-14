@@ -60,6 +60,12 @@ impl Shortcut {
             Self::SelectAll => "⛶",
             Self::MakeWorkspace => "⊞",
             Self::Dissolve => "⊟",
+            // Not on the toolbar: in the View menu and the tab menus only.
+            Self::SplitRight
+            | Self::SplitDown
+            | Self::DuplicateView
+            | Self::MoveToWindow
+            | Self::CloseView => "",
         }
     }
 
@@ -80,6 +86,11 @@ impl Shortcut {
             Self::SelectAll => "menu-select-all",
             Self::MakeWorkspace => "menu-make-workspace",
             Self::Dissolve => "menu-dissolve-workspace",
+            Self::SplitRight => "view-split-right",
+            Self::SplitDown => "view-split-down",
+            Self::DuplicateView => "view-duplicate",
+            Self::MoveToWindow => "view-move-to-window",
+            Self::CloseView => "view-close",
         }
     }
 }
@@ -104,7 +115,12 @@ impl Editor {
             | Shortcut::Open
             | Shortcut::Save
             | Shortcut::SaveAs
-            | Shortcut::SelectAll => true,
+            | Shortcut::SelectAll
+            | Shortcut::SplitRight
+            | Shortcut::SplitDown
+            | Shortcut::DuplicateView => true,
+            Shortcut::MoveToWindow => crate::views::WINDOWS,
+            Shortcut::CloseView => self.views.len() > 1,
         }
     }
 

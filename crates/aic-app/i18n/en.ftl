@@ -38,6 +38,15 @@ menu-dissolve-workspace = Dissolve workspace
 menu-view = View
 menu-round-up = Round up facilities
 menu-performance = Frame rate and solve time
+
+## Views
+
+view-split-right = Split right
+view-split-down = Split down
+view-duplicate = Duplicate view
+view-move-to-window = Move to new window
+view-close = Close view
+view-numbered = { $title } · { $number }
 toggle-round-up = Round up
 toolbar-hint = { $name } ({ $keys })
 

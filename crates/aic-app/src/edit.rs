@@ -8,6 +8,7 @@ use crate::canvas::Selection;
 use crate::editor::Editor;
 use crate::files::Pending;
 use crate::i18n::Strings;
+use crate::views::ViewAction;
 
 /// How far each paste lands from the copied nodes, in graph units.
 const PASTE_OFFSET: f32 = 40.0;
@@ -29,11 +30,21 @@ pub enum Shortcut {
     SelectAll,
     MakeWorkspace,
     Dissolve,
+    SplitRight,
+    SplitDown,
+    DuplicateView,
+    MoveToWindow,
+    CloseView,
 }
 
 impl Shortcut {
     /// Checked in this order, so Cmd+Shift+S is Save As and not Save.
-    const ALL: [Self; 14] = [
+    const ALL: [Self; 19] = [
+        Self::SplitDown,
+        Self::SplitRight,
+        Self::DuplicateView,
+        Self::MoveToWindow,
+        Self::CloseView,
         Self::Dissolve,
         Self::MakeWorkspace,
         Self::SaveAs,
@@ -68,6 +79,11 @@ impl Shortcut {
             Self::SelectAll => KeyboardShortcut::new(command, Key::A),
             Self::MakeWorkspace => KeyboardShortcut::new(command, Key::G),
             Self::Dissolve => KeyboardShortcut::new(shift_command, Key::G),
+            Self::SplitRight => KeyboardShortcut::new(command, Key::Backslash),
+            Self::SplitDown => KeyboardShortcut::new(shift_command, Key::Backslash),
+            Self::DuplicateView => KeyboardShortcut::new(shift_command, Key::D),
+            Self::MoveToWindow => KeyboardShortcut::new(shift_command, Key::N),
+            Self::CloseView => KeyboardShortcut::new(command, Key::W),
         }
     }
 
@@ -150,6 +166,7 @@ impl Editor {
     }
 
     pub fn run(&mut self, shortcut: Shortcut, strings: &Strings) {
+        let focused = self.views.focused();
         match shortcut {
             Shortcut::New => self.request(Pending::New, strings),
             Shortcut::Open => self.request(Pending::Open, strings),
@@ -171,6 +188,11 @@ impl Editor {
             }
             Shortcut::MakeWorkspace => self.make_workspace(strings),
             Shortcut::Dissolve => self.dissolve_selection(),
+            Shortcut::SplitRight => self.views.request(ViewAction::SplitRight(focused)),
+            Shortcut::SplitDown => self.views.request(ViewAction::SplitDown(focused)),
+            Shortcut::DuplicateView => self.views.request(ViewAction::Duplicate(focused)),
+            Shortcut::MoveToWindow => self.views.request(ViewAction::MoveToWindow(focused)),
+            Shortcut::CloseView => self.views.request(ViewAction::Close(focused)),
         }
     }
 
@@ -207,7 +229,10 @@ impl Editor {
             Some(Selection::Items(items)) => Selection::of_items(
                 items
                     .into_iter()
-                    .filter(|item| self.doc.view_id(*item).is_some())
+                    .filter(|item| match *item {
+                        Member::Node(id) => graph.node(id).is_some(),
+                        Member::Workspace(id) => graph.workspace_info(id).is_some(),
+                    })
                     .collect(),
             ),
             _ => None,

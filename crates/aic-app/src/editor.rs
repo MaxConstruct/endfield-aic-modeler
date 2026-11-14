@@ -23,6 +23,7 @@ use crate::port_menu::{self, PortMenu};
 use crate::settings::{Availability, SettingsWindow};
 use crate::store::FileStore;
 use crate::throttle::Throttle;
+use crate::views::Views;
 use crate::widgets::colors;
 
 /// A solve slower than this is reported in the status bar.
@@ -39,7 +40,9 @@ const PORT_MENU_GAP: f32 = 12.0;
 pub struct Editor {
     pub(crate) catalog: Catalog,
     pub(crate) doc: Document,
+    /// The focused view's canvas; the other views' wait in `views`.
     pub(crate) canvas: Canvas,
+    pub(crate) views: Views,
     pub(crate) picker: Option<Picker>,
     pub(crate) selection: Option<Selection>,
     pub(crate) availability: Availability,
@@ -104,6 +107,7 @@ impl Editor {
             catalog,
             doc: Document::new(region),
             canvas: Canvas::default(),
+            views: Views::default(),
             picker: None,
             selection: None,
             availability,
@@ -146,6 +150,7 @@ impl Editor {
 
     pub(crate) fn set_document(&mut self, doc: Document) {
         self.doc = doc;
+        self.reset_views();
         self.picker = None;
         self.port_menu = None;
         self.select(None);
@@ -332,22 +337,12 @@ impl Editor {
         self.show_inspector = show_inspector;
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
-            .show(ui, |ui| {
-                let events = self.canvas.show(
-                    ui,
-                    &mut self.doc,
-                    &self.catalog,
-                    strings,
-                    self.selection.as_ref(),
-                    self.round_up,
-                );
-                for event in events {
-                    self.apply(event, strings);
-                }
-            });
-        self.doc.sync_from_view(&self.catalog);
-        self.picker_ui(ui.ctx(), strings);
-        self.port_menu_ui(ui.ctx(), strings);
+            .show(ui, |ui| self.views_ui(ui, strings));
+        self.view_windows(ui.ctx(), strings);
+        self.finish_views(ui.ctx());
+        if !self.views.is_in_window(self.views.focused()) {
+            self.overlays_ui(ui.ctx(), strings);
+        }
         self.save_as_prompt_ui(ui.ctx(), strings);
         let data = self
             .data
@@ -382,7 +377,7 @@ impl Editor {
         }
     }
 
-    fn apply(&mut self, event: CanvasEvent, strings: &Strings) {
+    pub(crate) fn apply(&mut self, event: CanvasEvent, strings: &Strings) {
         match event {
             CanvasEvent::Connect { from, to } => self.connect(from, to, strings),
             CanvasEvent::Disconnect(link) => {
@@ -535,6 +530,12 @@ impl Editor {
         Some(node)
     }
 
+    /// The node picker and the port menu, over the focused view, in the window that shows it.
+    pub(crate) fn overlays_ui(&mut self, ctx: &egui::Context, strings: &Strings) {
+        self.picker_ui(ctx, strings);
+        self.port_menu_ui(ctx, strings);
+    }
+
     fn picker_ui(&mut self, ctx: &egui::Context, strings: &Strings) {
         let Some(picker) = &mut self.picker else {
             return;
@@ -607,6 +608,24 @@ impl Editor {
                 ui.checkbox(&mut self.show_inspector, strings.get("toggle-inspector"));
                 ui.checkbox(&mut self.round_up, strings.get("menu-round-up"));
                 ui.checkbox(&mut self.show_performance, strings.get("menu-performance"));
+                ui.separator();
+                let entries = [
+                    Shortcut::SplitRight,
+                    Shortcut::SplitDown,
+                    Shortcut::DuplicateView,
+                    Shortcut::MoveToWindow,
+                    Shortcut::CloseView,
+                ];
+                for shortcut in entries {
+                    if shortcut == Shortcut::MoveToWindow && !crate::views::WINDOWS {
+                        continue;
+                    }
+                    let button = egui::Button::new(strings.get(shortcut.name_key()))
+                        .shortcut_text(ui.ctx().format_shortcut(&shortcut.keys()));
+                    if ui.add_enabled(self.can_run(shortcut), button).clicked() {
+                        self.run(shortcut, strings);
+                    }
+                }
             });
             ui.separator();
             ui.toggle_value(&mut self.show_browser, strings.get("toggle-recipes"));

@@ -23,6 +23,7 @@ pub mod store;
 pub mod theme;
 mod throttle;
 mod toolbar;
+pub mod views;
 #[cfg(target_arch = "wasm32")]
 mod web;
 mod widgets;
@@ -169,6 +170,11 @@ impl App {
         if let (State::Ready(editor), Some(last)) = (&mut self.state, last) {
             editor.reopen(&last, &self.strings);
         }
+        let layout =
+            storage.and_then(|s| eframe::get_value::<views::Layout>(s, views::STORAGE_KEY));
+        if let (State::Ready(editor), Some(layout)) = (&mut self.state, layout) {
+            editor.restore_layout(layout);
+        }
     }
 
     pub fn editor(&self) -> Option<&Editor> {
@@ -287,6 +293,7 @@ impl eframe::App for App {
             eframe::set_value(storage, settings::STORAGE_KEY, editor.availability());
             eframe::set_value(storage, files::RECENT_KEY, &editor.recent_files());
             eframe::set_value(storage, editor::PERFORMANCE_KEY, &editor.show_performance());
+            eframe::set_value(storage, views::STORAGE_KEY, &editor.layout());
             if let Some(files) = editor.browser_files() {
                 eframe::set_value(storage, BROWSER_FILES_KEY, files);
             }
