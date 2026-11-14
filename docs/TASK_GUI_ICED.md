@@ -896,7 +896,7 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 
 | Task | Title | Depends on | Status |
 |---|---|---|---|
-| T0 | ADR 0009 and plan updates | — | todo |
+| T0 | ADR 0009 and plan updates | — | done 2026-11-15 |
 | A1 | Rename `aic-app` → `aic-app-egui` | T0 | todo |
 | A2 | `aic-editor` with the pure modules | A1 | todo |
 | A3 | Design tokens and fonts in `aic_editor::style` | A2 | todo |

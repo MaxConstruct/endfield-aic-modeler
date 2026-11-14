@@ -10,7 +10,7 @@ Read before working:
 
 ## Ground rules
 
-1. **The UI never does math.** All solving lives in `aic-core`, which has no egui dependency. The UI builds a `Graph`, calls `solve(&catalog, &graph)`, and renders the `Solution`.
+1. **The UI never does math.** All solving lives in `aic-core` and all non-drawing app logic in `aic-editor`; neither has a GUI dependency. A UI builds a `Graph`, calls `solve(&catalog, &graph)`, and renders the `Solution`.
 2. **Internal IDs are game IDs** (`copper_nugget`, `furnance_1`), never display names. Display names come from the i18n table at render time.
 3. **All rates are items per minute** inside the app. Convert once, in the data layer.
 4. **Data loading goes through our own schema.** Only `crates/aic-data/src/raw.rs` knows the factoriolab format. Everything else uses `Catalog`.
