@@ -27,6 +27,10 @@ use crate::widgets::colors;
 
 /// A solve slower than this is reported in the status bar.
 const SLOW_SOLVE: Duration = Duration::from_millis(16);
+/// The storage key for whether the status bar shows the frame rate and solve time.
+pub const PERFORMANCE_KEY: &str = "show-performance";
+/// The frame rate is the mean over the frames of the last second.
+const FRAME_RATE_WINDOW: f32 = 1.0;
 /// The status bar's zoom slider.
 const ZOOM_SLIDER_WIDTH: f32 = 96.0;
 /// Space between a port's pin and the menu it opens.
@@ -81,6 +85,10 @@ pub struct Editor {
     /// The last refused action or file message, shown until the next one.
     pub(crate) status: Option<String>,
     last_solve: Option<Duration>,
+    /// Whether the status bar shows the frame rate and the last solve's time.
+    pub(crate) show_performance: bool,
+    /// When the last frames were drawn, for the frame rate.
+    frames: egui::util::History<()>,
     pub(crate) last_title: String,
 }
 
@@ -124,6 +132,8 @@ impl Editor {
             save_failed: false,
             status: None,
             last_solve: None,
+            show_performance: true,
+            frames: egui::util::History::new(2..1000, FRAME_RATE_WINDOW),
             last_title: String::new(),
         }
     }
@@ -205,6 +215,15 @@ impl Editor {
         self.round_up = on;
     }
 
+    pub fn show_performance(&self) -> bool {
+        self.show_performance
+    }
+
+    /// Whether the status bar shows the frame rate and the last solve's time.
+    pub fn set_show_performance(&mut self, on: bool) {
+        self.show_performance = on;
+    }
+
     /// Opens the node picker as if from `origin`, with the new node going to `graph_pos`.
     pub fn open_picker(&mut self, origin: Origin, graph_pos: Pos2) {
         let screen = self.canvas.to_screen(graph_pos);
@@ -278,6 +297,10 @@ impl Editor {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, strings: &Strings) {
+        // A frame egui runs twice is drawn once.
+        if ui.ctx().current_pass_index() == 0 {
+            self.frames.add(ui.input(|i| i.time), ());
+        }
         self.handle_close_request(ui.ctx(), strings);
         self.poll_upload(ui.ctx(), strings);
         if std::mem::take(&mut self.icons_stale) {
@@ -583,6 +606,7 @@ impl Editor {
                 ui.checkbox(&mut self.show_browser, strings.get("toggle-recipes"));
                 ui.checkbox(&mut self.show_inspector, strings.get("toggle-inspector"));
                 ui.checkbox(&mut self.round_up, strings.get("menu-round-up"));
+                ui.checkbox(&mut self.show_performance, strings.get("menu-performance"));
             });
             ui.separator();
             ui.toggle_value(&mut self.show_browser, strings.get("toggle-recipes"));
@@ -707,18 +731,6 @@ impl Editor {
                 ui.label(RichText::new(text).color(colors::WARN));
                 ui.separator();
             }
-            // Solving runs on the UI thread. Say so when it gets slow enough to drop frames; that is
-            // the point to move it to a worker (PLAN.md, M4).
-            if let Some(took) = self.last_solve
-                && took > SLOW_SOLVE
-            {
-                let ms = format::short(Some(took.as_secs_f64() * 1000.0));
-                ui.label(
-                    RichText::new(strings.format("status-slow-solve", &[("ms", &ms)]))
-                        .color(colors::WARN),
-                );
-                ui.separator();
-            }
             if let Some(status) = &self.status {
                 ui.label(RichText::new(status).color(colors::WARN));
             }
@@ -726,8 +738,32 @@ impl Editor {
                 self.save_indicator(ui, strings);
                 ui.separator();
                 self.zoom_control(ui, strings);
+                if self.show_performance {
+                    ui.separator();
+                    self.performance(ui, strings);
+                }
             });
         });
+    }
+
+    /// `60 fps · Solve 0.4 ms`, laid out right to left. Solving runs on the UI thread, so a solve
+    /// slow enough to drop frames shows as a warning; that is the point to move it to a worker
+    /// (PLAN.md, M4).
+    fn performance(&self, ui: &mut Ui, strings: &Strings) {
+        if let Some(took) = self.last_solve {
+            let ms = format::short(Some(took.as_secs_f64() * 1000.0));
+            let text = RichText::new(strings.format("status-solve-time", &[("ms", &ms)]));
+            if took > SLOW_SOLVE {
+                ui.label(text.color(colors::WARN))
+                    .on_hover_text(strings.get("status-slow-solve"));
+            } else {
+                ui.label(text);
+            }
+        }
+        if let Some(rate) = self.frames.rate() {
+            let fps = format!("{rate:.0}");
+            ui.label(strings.format("status-frame-rate", &[("fps", &fps)]));
+        }
     }
 
     /// `− ──●── + 100%`: the canvas's zoom, set by the slider or stepped by the buttons. Laid out

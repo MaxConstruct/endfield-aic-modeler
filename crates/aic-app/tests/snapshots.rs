@@ -28,6 +28,8 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
             aic_app::theme::install(&cc.egui_ctx);
             App::new(Strings::english(), Ok(catalog), None)
         });
+    // The frame rate and solve time change from run to run; snapshots leave them out.
+    hide_performance(&mut harness);
     harness.run();
     // The inspector starts closed; most tests read or type into it.
     harness
@@ -35,6 +37,12 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
         .click();
     harness.run();
     harness
+}
+
+fn hide_performance(harness: &mut Harness<'_, App>) {
+    if let Some(editor) = harness.state_mut().editor_mut() {
+        editor.set_show_performance(false);
+    }
 }
 
 fn editor<'a>(harness: &'a mut Harness<'_, App>) -> &'a mut aic_app::editor::Editor {
@@ -1173,6 +1181,7 @@ fn data_folder_app() -> Harness<'static, App> {
             aic_app::theme::install(&cc.egui_ctx);
             App::from_folder(Strings::english(), folder.clone(), None)
         });
+    hide_performance(&mut harness);
     harness.run();
     harness
 }
@@ -2140,4 +2149,21 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
     again.run();
     assert_eq!(node_count(&mut again), 1);
     assert!(editor(&mut again).document().is_draft());
+}
+
+#[test]
+fn the_status_bar_shows_the_frame_rate_and_solve_time_until_turned_off() {
+    let mut harness = harness(&fixture("tests/fixtures/satisfactory/vtest"));
+    editor(&mut harness).set_show_performance(true);
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    harness.get_by_label_contains(" fps");
+    harness.get_by_label_contains("Solve ");
+
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Frame rate and solve time").click();
+    harness.run();
+    assert!(harness.query_by_label_contains(" fps").is_none());
+    assert!(harness.query_by_label_contains("Solve ").is_none());
 }

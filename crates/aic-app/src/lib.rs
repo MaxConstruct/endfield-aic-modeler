@@ -77,6 +77,11 @@ impl App {
             Ok(catalog) => {
                 let mut editor = Editor::new(catalog, availability);
                 editor.set_recent_files(recent);
+                if let Some(show) =
+                    storage.and_then(|s| eframe::get_value::<bool>(s, editor::PERFORMANCE_KEY))
+                {
+                    editor.set_show_performance(show);
+                }
                 State::Ready(Box::new(editor))
             }
             Err(message) => State::Failed(message),
@@ -281,6 +286,7 @@ impl eframe::App for App {
             }
             eframe::set_value(storage, settings::STORAGE_KEY, editor.availability());
             eframe::set_value(storage, files::RECENT_KEY, &editor.recent_files());
+            eframe::set_value(storage, editor::PERFORMANCE_KEY, &editor.show_performance());
             if let Some(files) = editor.browser_files() {
                 eframe::set_value(storage, BROWSER_FILES_KEY, files);
             }
