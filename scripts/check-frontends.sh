@@ -9,11 +9,14 @@
 #   aic-app-iced   no egui, no eframe
 #
 # "GUI crate" is egui*, eframe, iced*, wgpu, winit and rfd. Normal, build and dev dependencies all
-# count, so a test-only egui_kittest in aic-editor fails too. A crate that doesn't exist yet
+# count, so a test-only egui_kittest in aic-editor fails too, and so do dependencies of other
+# targets (wasm32) and of optional features. A crate that doesn't exist yet
 # (aic-app-iced, before task B1) is skipped.
 #
 #   scripts/check-frontends.sh
 set -euo pipefail
+# The forbidden-name patterns are globs to match against names, never against files.
+set -f
 
 cd "$(dirname "$0")/.."
 
@@ -40,7 +43,7 @@ for crate in aic-data aic-core aic-editor aic-app-egui aic-app-iced; do
         echo "skip  $crate (not created yet)"
         continue
     fi
-    tree="$(cargo tree -p "$crate" -e normal,dev,build --prefix none --color never)"
+    tree="$(cargo tree -p "$crate" -e normal,dev,build --target all --all-features --prefix none --color never)"
     # The crate names, one per line: the first word of each line of the tree.
     names="$(printf '%s\n' "$tree" | awk '{print $1}' | sort -u)"
     bad=""
