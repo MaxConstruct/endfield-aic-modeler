@@ -104,6 +104,14 @@ _Avoid_: Group, outpost, blueprint, folder, module
 An input or output the player adds to a workspace, carrying one item across its edge. It has an outside end and an inside end; with either end unlinked, nothing flows through it.
 _Avoid_: Pin, connector, gate
 
+**Level**:
+What a canvas shows: the top of the graph, or the inside of one workspace.
+_Avoid_: Layer, depth, scope
+
+**View**:
+One look at the open graph, in a tab: a level and a camera. Every view shows the same graph, numbers and selection; views are not saved in the graph's file.
+_Avoid_: Window, pane, editor, tab
+
 **Limit**:
 An upper bound the player sets on a facility count, sink, source or control port. The solver runs everything as high as limits and supply allow. A recipe node's limit can also be typed as a rate through one of its ports (e.g. 225/min of plates); it is the same limit, kept as a facility count.
 _Avoid_: Target, fixed value, constraint

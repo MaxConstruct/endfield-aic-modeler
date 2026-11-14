@@ -12,6 +12,7 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 - [0002](adr/0002-logical-planning-only.md): logical flow planning only, no spatial layout.
 - [0003](adr/0003-limits-and-maximize.md): player values are limits, and the solver maximizes.
 - [0004](adr/0004-throughput-measured-at-origins-and-sinks.md): pass-1 throughput is measured at origins and sinks.
+- [0008](adr/0008-views-are-layout-not-document.md): views are layout state, not part of the document.
 
 Tech:
 
@@ -650,6 +651,42 @@ Done.
   storage and opens it; Export PNG downloads the image.
 - Stays on the `microlp` backend; `aic-core` builds for `wasm32` unchanged. Times use `web-time`,
   since `std::time::Instant` panics in the browser.
+
+### M10: Multiple views
+Not started. Brief settled 2026-11-14 (ADR 0008).
+- The canvas area becomes a dock: a tree of splits, each a group of tabs. Every tab is a **view** of
+  the one open graph with its own level (the top, or a workspace) and camera. The recipe browser and
+  the inspector stay fixed side panels around the dock. The default layout is one tab, so nothing
+  changes until the player splits.
+- A tab is named after its level: the region at the top, the workspace's name inside one. Two tabs on
+  the same level get a number ("Valley IV · 2").
+- Dragging a tab onto a view's left, right, top or bottom edge splits it; onto its middle joins that
+  tab group. A translucent accent fill shows where it lands. Splits nest without limit and their
+  dividers drag.
+- On the desktop, dropping a tab outside the window, or Move to new window in the tab's menu, opens it
+  in its own OS window (an egui immediate viewport, on the UI thread). A detached window shows only
+  the canvas, with its own tabs and splits; the menus, toolbar, side panels and status bar stay in the
+  main window. Closing it closes its views, never the document. The web build has no new windows: the
+  menu item is hidden and a drop outside the canvas does nothing.
+- The tab menu has Split right, Split down, Duplicate view, Move to new window and Close, each with a
+  shortcut (`edit.rs`). The last view can't be closed. Closing a view loses nothing, so it never asks.
+- Opening a workspace (double-click, Open) changes the level of the view it was opened from;
+  middle-click or Cmd/Ctrl+click opens it in a new tab beside it.
+- One document, one solve, one undo history, one autosave and **one selection** for all views: a node
+  selected in one view is highlighted in every view that shows it, the inspector shows it, and Cut,
+  Copy, Paste, Delete and Make workspace act on it from any view. Each view keeps its own camera, pin
+  centres, limit fields being typed and egui-snarl state; egui-snarl's id becomes view and level.
+- The view last clicked has focus, marked by a 1px accent line under its tab. The status bar's zoom
+  and the toolbar's view commands act on it.
+- The layout, each view's level and camera, and detached windows' places are kept in eframe storage
+  with the settings, not in the `.aicm` file. A file still saves one camera, the focused view's.
+  Opening a file puts every view at the top, the focused one at the file's camera. A view whose
+  workspace is dissolved or gone moves to the top.
+- Docking: egui_dock or egui_tiles if a release supports egui 0.36, else a small split tree of our own.
+- Tests: kittest snapshots of a split layout and of the drop preview; an edit in one view shows in the
+  other the same frame; a shared selection; a dissolved workspace's view falls back to the top.
+- Not in M10: several documents open at once, a selection per view, dockable side panels, synced
+  scrolling between views, minimaps.
 
 ---
 
