@@ -951,7 +951,7 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 | A4 | Split the document | A2 | done 2026-11-15 |
 | A5 | `Session`: selection, editing, `Command` | A4 | done 2026-11-15 |
 | A6 | `Session`: files, autosave, settings | A5 | done 2026-11-15 |
-| A7 | `scripts/check-frontends.sh` | A2 | todo |
+| A7 | `scripts/check-frontends.sh` | A2 | done 2026-11-15 |
 | B1 | `aic-app-iced` skeleton | A3, A6, A7 | todo |
 | B2 | iced_nodegraph spike (gate) | B1 | todo |
 | C1 | Shell | B2 | todo |
