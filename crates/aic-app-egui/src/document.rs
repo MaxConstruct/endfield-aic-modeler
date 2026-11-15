@@ -499,25 +499,17 @@ mod tests {
         let mut rig = Rig::new();
         let a = rig.add_node(recipe(), Pos2::ZERO);
         let b = rig.add_node(recipe(), Pos2::ZERO);
-        let before = (
-            rig.view.view_id(Member::Node(a)),
-            rig.view.view_id(Member::Node(b)),
-        );
+        let before = rig.view.view_id(Member::Node(b));
         let mut other = DocView::new(None);
         rig.swap(&mut other);
         rig.swap(&mut other);
 
-        // An edit no one synced the view after, then the view is parked and brought back.
-        rig.session.set_limit(a, Some(2.0)).unwrap();
+        // An edit no one synced the view after, then the view is parked and brought back. Drawn
+        // afresh, `b` would be the view's first node and take `a`'s id.
+        rig.session.remove_node(a);
         rig.swap(&mut other);
         rig.swap(&mut other);
-        assert_eq!(
-            (
-                rig.view.view_id(Member::Node(a)),
-                rig.view.view_id(Member::Node(b))
-            ),
-            before
-        );
+        assert_eq!(rig.view.view_id(Member::Node(b)), before);
     }
 
     #[test]
