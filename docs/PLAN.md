@@ -196,7 +196,7 @@ endfield-aic-modeler/
    ├─ aic-data/               # parse + normalize -> Catalog; native discovery. deps: serde, serde_json, thiserror, indexmap
    ├─ aic-core/               # Graph model, validation, sections, solver. deps: aic-data, good_lp, serde, slotmap
    ├─ aic-editor/             # App logic shared by the UIs, no GUI dependency: document, session, selection, commands, files, Fluent strings, style tokens, built-in data (ADR 0009)
-   ├─ aic-app-egui/         # eframe + egui-snarl UI (the shipping UI). deps: aic-editor, eframe, egui-snarl, rfd. Was aic-app
+   ├─ aic-app/                # eframe + egui-snarl UI. deps: aic-editor, eframe, egui-snarl, egui_dock, rfd
    ├─ aic-app-iced/           # EXPERIMENT (ADR 0009, docs/TASK_GUI_ICED.md): iced + iced_nodegraph UI. deps: aic-editor, iced, iced_nodegraph, rfd
    └─ aic-extract/            # LATER (M8): CLI that converts other sources into data/<version>/
 ```
@@ -338,8 +338,8 @@ generation separately.
 - Add `../data/README.md` (layout and the game data disclaimer) and `LICENSE-MIT` / `LICENSE-APACHE`.
   `CLAUDE.md` already exists; update its paths if anything moves.
 - Max copies `icons.webp` in by hand when needed. Claude Code should not try to download any data.
-- `aic-app-egui` opens an empty eframe window.
-- **Done when:** `cargo run -p aic-app-egui` shows a window, and `cargo test --workspace` passes.
+- `aic-app` opens an empty eframe window.
+- **Done when:** `cargo run -p aic-app` shows a window, and `cargo test --workspace` passes.
 
 ### M1: `aic-data`, load the catalog
 - `parse.rs`: `Catalog::from_bytes(data_json, i18n_json, icons: Option<&[u8]>) -> Result<Catalog>`.
@@ -463,8 +463,8 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   - When it passes, record ADR 0005: egui + egui-snarl is the shipping UI. iced + iced_nodegraph was
     considered and rejected because the node editor crate is young with a single maintainer, and the
     graph sizes don't need it.
-  - The spike is `crates/aic-app-egui/examples/perf_spike.rs`
-    (`cargo run --release -p aic-app-egui --example perf_spike`). It drives itself through idle, pan, zoom,
+  - The spike is `crates/aic-app/examples/perf_spike.rs`
+    (`cargo run --release -p aic-app --example perf_spike`). It drives itself through idle, pan, zoom,
     node drag, new-link drag and live-value phases with vsync off, prints frame times, and exits.
     Measured 2026-11-09 on an M1 Pro (Metal), all 300 nodes on screen (the worst case): mean frame
     5.2–8.1 ms, p95 5.7–8.8 ms; about 4.5 ms of each frame is building the UI. Skipping the widgets of
@@ -473,7 +473,7 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
 - Three areas: left **recipe browser** (search by English name, filter by category; only the graph's
   region; hidden recipes left out), center **`egui-snarl` canvas**, right **inspector** (selected node or
   link, its throttle reason, plus totals). Both side panels collapse from toggles in the top bar.
-- Fluent setup: `crates/aic-app-egui/i18n/en.ftl` embedded with `include_str!`. Every UI string goes through it.
+- Fluent setup: `crates/aic-editor/i18n/en.ftl` embedded with `include_str!`. Every UI string goes through it.
 - `SnarlViewer`:
   - Recipe node: icon, recipe name, facility picker (when there is more than one facility), actual count
     on top, limit below. On the card the facility picker is one button that steps to the next facility;
@@ -630,7 +630,7 @@ Done, except where noted.
   coupons earned show on the card, in the inspector and in a Coupons total; they never go to the depot.
 - Export the canvas as a PNG (File menu): a window screenshot cropped to the canvas, so it is what is on
   screen, not the whole graph.
-- Performance run against the real app: `cargo run --release -p aic-app-egui --example perf_app` (201 recipe
+- Performance run against the real app: `cargo run --release -p aic-app --example perf_app` (201 recipe
   nodes, 109 links, real data and icons, inspector and totals). On the M1 Pro on 2026-11-09 the UI took
   4.1 ms per frame idle, 4.1 ms panning and 6.3 ms with a solve every frame. The frame interval was
   about 16 ms, but the M4 spike measured the same 16 ms that day (5.0–5.7 ms UI), so the cap is outside
@@ -647,9 +647,9 @@ Done, except where noted.
 
 ### M9: Web build
 Done.
-- `wasm32-unknown-unknown` build of `aic-app-egui` with eframe's web runner, built by Trunk:
+- `wasm32-unknown-unknown` build of `aic-app` with eframe's web runner, built by Trunk:
   `scripts/build-web.sh` writes `target/web/` (`--serve` serves a debug build with live reload).
-  `crates/aic-app-egui/index.html` and `Trunk.toml` hold the setup; Trunk uses the `wasm-bindgen-cli`
+  `crates/aic-app/index.html` and `Trunk.toml` hold the setup; Trunk uses the `wasm-bindgen-cli`
   installed with Cargo at the version in `Cargo.lock`, so the build downloads no tools of its own.
 - Data comes from the same site: Trunk copies `data/` next to the page, and on `wasm32` `build.rs`
   writes the list of its files (paths only, no bytes). The app fetches them all at startup with a

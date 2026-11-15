@@ -1,15 +1,15 @@
 //! Drives the app headlessly and compares it with the images in `tests/snapshots/`.
 //!
-//! After an intended UI change, run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app-egui` and review the new
+//! After an intended UI change, run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app` and review the new
 //! images before committing them.
 
 use std::path::{Path, PathBuf};
 
-use aic_app_egui::canvas::Selection;
-use aic_app_egui::i18n::Strings;
-use aic_app_egui::picker::Origin;
-use aic_app_egui::store::BrowserFiles;
-use aic_app_egui::{App, WINDOW_SIZE};
+use aic_app::canvas::Selection;
+use aic_app::i18n::Strings;
+use aic_app::picker::Origin;
+use aic_app::store::BrowserFiles;
+use aic_app::{App, WINDOW_SIZE};
 use aic_core::{Graph, NodeId, NodeKind, Port, PortRef, Side, Solution};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -25,7 +25,7 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             App::new(Strings::english(), Ok(catalog), None)
         });
     // The frame rate and solve time change from run to run; snapshots leave them out.
@@ -47,7 +47,7 @@ fn hide_performance(harness: &mut Harness<'_, App>) {
     }
 }
 
-fn editor<'a>(harness: &'a mut Harness<'_, App>) -> &'a mut aic_app_egui::editor::Editor {
+fn editor<'a>(harness: &'a mut Harness<'_, App>) -> &'a mut aic_app::editor::Editor {
     harness.state_mut().editor_mut().expect("data loaded")
 }
 
@@ -172,7 +172,7 @@ fn load_error_screen() {
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             App::new(
                 Strings::english(),
                 Err("no data folder found (tried ./data)".into()),
@@ -879,7 +879,7 @@ fn inspector_starts_closed() {
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             App::new(Strings::english(), Ok(catalog), None)
         });
     harness.run();
@@ -1170,11 +1170,11 @@ fn round_up_shows_whole_facilities_and_how_busy_they_are() {
 
 fn data_folder_app() -> Harness<'static, App> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures");
-    let folder = aic_app_egui::data::DataFolder::at(dir).map_err(|e| e.to_string());
+    let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(move |cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             App::from_folder(Strings::english(), folder.clone(), None)
         });
     hide_performance(&mut harness);
@@ -1203,7 +1203,7 @@ fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
     harness.run();
     harness.snapshot("settings_data");
 
-    let choice = aic_app_egui::data::DataChoice {
+    let choice = aic_app::data::DataChoice {
         version: Some("v1.9.0".into()),
         language: None,
     };
@@ -1625,7 +1625,7 @@ fn a_new_graph_autosaves_to_a_draft_and_save_as_moves_it_to_the_players_file() {
 
     // New saves the open file first, then starts a fresh draft.
     smelter(&mut harness, 300.0, 0.0);
-    editor(&mut harness).request(aic_app_egui::files::Pending::New);
+    editor(&mut harness).request(aic_app::files::Pending::New);
     harness.run();
     let saved = Graph::from_json(
         editor(&mut harness).catalog(),
@@ -1681,7 +1681,7 @@ fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes(
     let mut again = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             let mut app = App::new(Strings::english(), Ok(catalog), None);
             app.editor_mut().unwrap().reopen(&path);
             app
@@ -1898,7 +1898,7 @@ fn a_cards_body_is_centered_whichever_ports_it_has() {
         .collect();
     for node in nodes {
         let card = node_rect(&mut harness, node);
-        let view = aic_app_egui::document::VIEW_SCALE;
+        let view = aic_app::document::VIEW_SCALE;
         let card = eframe::egui::Rect::from_min_max(
             graph_point(&mut harness, card.min) * view,
             graph_point(&mut harness, card.max) * view,
@@ -2174,7 +2174,7 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
     let mut again = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
         });
     again.run();
@@ -2201,7 +2201,7 @@ fn the_status_bar_shows_the_frame_rate_and_solve_time_until_turned_off() {
 
 // M10: multiple views.
 
-use aic_app_egui::views::{ViewAction, ViewKey};
+use aic_app::views::{ViewAction, ViewKey};
 
 fn views(harness: &mut Harness<'_, App>) -> Vec<ViewKey> {
     editor(harness).views().keys()
@@ -2369,7 +2369,7 @@ fn the_layout_of_the_views_is_kept_with_the_settings() {
     let mut again = Harness::builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
         });
     again.run();

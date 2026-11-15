@@ -4,12 +4,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
-use aic_app_egui::App;
+use aic_app::App;
 #[cfg(not(target_arch = "wasm32"))]
-use aic_app_egui::WINDOW_SIZE;
+use aic_app::WINDOW_SIZE;
 #[cfg(not(target_arch = "wasm32"))]
-use aic_app_egui::data::DataFolder;
-use aic_app_egui::i18n::Strings;
+use aic_app::data::DataFolder;
+use aic_app::i18n::Strings;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
@@ -26,7 +26,7 @@ fn main() -> eframe::Result {
         &title,
         options,
         Box::new(|cc| {
-            aic_app_egui::theme::install(&cc.egui_ctx);
+            aic_app::theme::install(&cc.egui_ctx);
             Ok(Box::new(App::from_folder(strings, folder, cc.storage)))
         }),
     )
@@ -52,7 +52,7 @@ fn main() {
                 canvas,
                 eframe::WebOptions::default(),
                 Box::new(|cc| {
-                    aic_app_egui::theme::install(&cc.egui_ctx);
+                    aic_app::theme::install(&cc.egui_ctx);
                     Ok(Box::new(App::loading(Strings::english(), &cc.egui_ctx)))
                 }),
             )

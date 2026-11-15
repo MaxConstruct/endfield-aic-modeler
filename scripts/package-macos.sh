@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NAME="AIC Modeler"
-BIN="aic-app-egui"
+BIN="aic-app"
 BUNDLE_ID="io.github.maxconstruct.aic-modeler"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
 
@@ -28,14 +28,14 @@ done
 if $universal; then
     targets=(aarch64-apple-darwin x86_64-apple-darwin)
     for target in "${targets[@]}"; do
-        cargo build --release --locked -p aic-app-egui --target "$target"
+        cargo build --release --locked -p aic-app --target "$target"
     done
     binary="target/universal/$BIN"
     mkdir -p target/universal
     lipo -create -output "$binary" "${targets[@]/#/target/}"/release/"$BIN"
     arch="universal"
 else
-    cargo build --release --locked -p aic-app-egui
+    cargo build --release --locked -p aic-app
     binary="target/release/$BIN"
     arch="$(uname -m)"
 fi

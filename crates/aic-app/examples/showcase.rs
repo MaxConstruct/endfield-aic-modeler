@@ -1,10 +1,10 @@
-//! The design system on one screen: every token in `aic_app_egui::theme` and the standard widgets in the
+//! The design system on one screen: every token in `aic_app::theme` and the standard widgets in the
 //! app's style, with a canvas sample and the overlays. A developer tool, so its strings are not
 //! translated.
 //!
-//! `cargo run -p aic-app-egui --example showcase`
+//! `cargo run -p aic-app --example showcase`
 
-use aic_app_egui::theme::{self, color, radius, text};
+use aic_app::theme::{self, color, radius, text};
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind,
     Ui, Vec2, epaint::CubicBezierShape, pos2, vec2,

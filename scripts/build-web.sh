@@ -9,7 +9,7 @@
 # `cargo install --locked wasm-bindgen-cli --version 0.2.130` (the version in Cargo.lock).
 set -euo pipefail
 
-cd "$(dirname "$0")/../crates/aic-app-egui"
+cd "$(dirname "$0")/../crates/aic-app"
 
 case "${1:-}" in
     --serve) exec trunk serve ;;

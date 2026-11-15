@@ -5,7 +5,7 @@
 #   aic-data       no other aic crate, no GUI crate
 #   aic-core       no aic-editor, no UI crate, no GUI crate
 #   aic-editor     no UI crate, no GUI crate (it stays wasm-clean and toolkit-free)
-#   aic-app-egui   no iced
+#   aic-app   no iced
 #   aic-app-iced   no egui, no eframe
 #
 # "GUI crate" is egui*, eframe, iced*, wgpu, winit and rfd. Normal, build and dev dependencies all
@@ -21,7 +21,7 @@ set -f
 cd "$(dirname "$0")/.."
 
 # Crates no lower layer may depend on, and the toolkits.
-ui_crates='aic-editor aic-app-egui aic-app-iced'
+ui_crates='aic-editor aic-app aic-app-iced'
 egui_crates='egui egui-* egui_* eframe'
 iced_crates='iced iced_* iced-*'
 gui_crates="$egui_crates $iced_crates wgpu winit rfd"
@@ -31,14 +31,14 @@ forbidden_for() {
     case "$1" in
         aic-data) echo "aic-core $ui_crates $gui_crates" ;;
         aic-core) echo "$ui_crates $gui_crates" ;;
-        aic-editor) echo "aic-app-egui aic-app-iced $gui_crates" ;;
-        aic-app-egui) echo "aic-app-iced $iced_crates" ;;
-        aic-app-iced) echo "aic-app-egui $egui_crates" ;;
+        aic-editor) echo "aic-app aic-app-iced $gui_crates" ;;
+        aic-app) echo "aic-app-iced $iced_crates" ;;
+        aic-app-iced) echo "aic-app $egui_crates" ;;
     esac
 }
 
 failed=0
-for crate in aic-data aic-core aic-editor aic-app-egui aic-app-iced; do
+for crate in aic-data aic-core aic-editor aic-app aic-app-iced; do
     if [ "$crate" = aic-app-iced ] && [ ! -d crates/aic-app-iced ]; then
         echo "skip  $crate (not created yet)"
         continue
