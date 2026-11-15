@@ -151,10 +151,10 @@ impl Editor {
             Outcome::View(ViewCommand::Close) => {
                 self.views.request(ViewAction::Close(focused));
             }
-            // The window puts copied nodes on the system clipboard when the key is pressed (see
-            // `keyboard`); a menu click copies within the app only.
             // egui pastes on its own Paste event; a menu click pastes what this window copied.
             Outcome::ReadClipboard => self.session.paste(self.view.level()),
+            // Only comes when something was copied. A key press puts it on the system clipboard
+            // (see `keyboard`); a menu click copies within the app only.
             Outcome::WriteClipboard(_) | Outcome::Restored | Outcome::Done | Outcome::Nothing => {}
         }
     }

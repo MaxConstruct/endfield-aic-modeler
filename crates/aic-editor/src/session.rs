@@ -273,7 +273,7 @@ impl Session {
     /// folder and the choice differs), the raw resource availability and the recent files, then
     /// reopens the last document. A choice that doesn't load keeps the current data and says why
     /// in [`Self::status`]; a last document that is gone says so too, and the session carries on
-    /// with its new draft.
+    /// with its new draft. When both go wrong, the data error is the one left in the status.
     pub fn apply_settings(&mut self, settings: &Settings) -> Applied {
         if self
             .data_choice()
@@ -281,12 +281,17 @@ impl Session {
         {
             self.switch_data(settings.data.clone());
         }
+        // Kept apart: a reopen sets or clears the status, and must not hide this one.
+        let data_error = self.status.take();
         self.availability = settings.availability.clone();
         self.set_recent_files(settings.recent_files.clone());
         let opened = settings
             .last_document
             .as_deref()
             .and_then(|path| self.reopen(path));
+        if data_error.is_some() {
+            self.status = data_error;
+        }
         Applied {
             opened,
             show_performance: settings.show_performance,
@@ -722,7 +727,6 @@ impl Session {
         else {
             return;
         };
-        let level = self.doc.resolve_level(level);
         let inside: Vec<Member> = self.doc.graph().members_of(Some(workspace));
         if self.doc.dissolve(workspace).is_ok() {
             let level = self.doc.resolve_level(level);
@@ -1076,6 +1080,32 @@ mod tests {
         let mut third = session();
         assert!(third.apply_settings(&gone).opened.is_none());
         assert!(third.status().is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_data_choice_that_does_not_load_stays_in_the_status_after_the_last_document_opens() {
+        let dir = std::env::temp_dir().join(format!("aic-apply-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("broken")).unwrap();
+        std::fs::write(dir.join("broken/data.json"), "not json").unwrap();
+        let folder = DataFolder::at(dir.clone()).unwrap();
+
+        let mut one = session();
+        one.add_node(smelter(), origin(), None);
+        let file = dir.join("plan.aicm");
+        one.save_to(&file, web_time::Instant::now(), None);
+
+        let mut settings = one.settings(false);
+        settings.data = DataChoice {
+            version: Some("broken".into()),
+            language: None,
+        };
+        settings.last_document = Some(file);
+        let mut other = session();
+        other.set_data_folder(folder, DataChoice::default());
+        assert!(other.apply_settings(&settings).opened.is_some());
+        assert!(other.status().is_some(), "the data error is still shown");
         let _ = std::fs::remove_dir_all(dir);
     }
 }
