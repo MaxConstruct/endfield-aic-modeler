@@ -12,6 +12,10 @@
 //! `PERF_IDLE=20` instead leaves the app alone for 20 seconds, with vsync on as in the real app,
 //! and prints how many frames it drew and what asked for them: an idle app should draw none.
 //! `PERF_MINIMIZE=1` minimizes the window for that time.
+//!
+//! `PERF_HEADLESS=1` opens no window: it builds and tessellates the UI 600 times, then 600 more
+//! with the live values changing, and prints the CPU time per frame. With no GPU and no compositor
+//! in the way its numbers vary much less from run to run.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -271,12 +275,60 @@ fn build(app: &mut App, target: usize) -> Option<NodeId> {
     nodes.first().copied()
 }
 
+/// The headless run: the UI's CPU cost per frame, without painting it.
+fn headless(catalog: Result<Catalog, String>, target: usize) {
+    let ctx = egui::Context::default();
+    aic_app::theme::install(&ctx);
+    let mut app = App::new(Strings::english(), catalog, None);
+    let live = build(&mut app, target);
+    let mut time = 0.0;
+    let mut frames = |app: &mut App, count: usize, live: Option<NodeId>| {
+        let mut times = Vec::with_capacity(count);
+        for frame in 0..count {
+            if let (Some(node), Some(editor)) = (live, app.editor_mut()) {
+                let limit = 30.0 + (frame % 60) as f64;
+                let _ = editor.document_mut().set_limit(node, Some(limit));
+            }
+            time += 1.0 / 60.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 900.0))),
+                time: Some(time),
+                ..Default::default()
+            };
+            let started = Instant::now();
+            let output = ctx.run_ui(input, |ui| {
+                eframe::App::ui(app, ui, &mut eframe::Frame::_new_kittest());
+            });
+            let _ = ctx.tessellate(output.shapes, output.pixels_per_point);
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        times
+    };
+    let _ = frames(&mut app, 60, None);
+    println!(
+        "{:<12} {:>9} {:>9} {:>9}",
+        "phase", "mean ms", "median ms", "p95 ms"
+    );
+    for (name, live) in [("Idle", None), ("LiveValues", live)] {
+        let mut times = frames(&mut app, 600, live);
+        times.sort_by(f64::total_cmp);
+        let mean = times.iter().sum::<f64>() / times.len() as f64;
+        let median = times[times.len() / 2];
+        let p95 = times[times.len() * 95 / 100];
+        println!("{name:<12} {mean:>9.2} {median:>9.2} {p95:>9.2}");
+    }
+}
+
 fn main() -> eframe::Result {
     let catalog = load_catalog(None).map_err(|error| error.to_string());
     let target: usize = std::env::var("PERF_NODES")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(200);
+    if std::env::var("PERF_HEADLESS").is_ok_and(|v| v == "1") {
+        headless(catalog, target);
+        return Ok(());
+    }
     let idle = std::env::var("PERF_IDLE")
         .ok()
         .and_then(|v| v.parse().ok())
