@@ -636,6 +636,14 @@ Done, except where noted.
   about 16 ms, but the M4 spike measured the same 16 ms that day (5.0–5.7 ms UI), so the cap is outside
   the app (it measured 5–8 ms during M4). No regression in egui. Re-measure on Windows with both
   examples before writing ADR 0005.
+  - 2026-11-15, same Mac. Idle: `PERF_IDLE=20` (vsync on, as in the app) draws no frames in 20 s
+    and `ps` shows 0.0% CPU, minimized too (`PERF_MINIMIZE=1`); the released app idles at 0.0%. The
+    one wake-up found was autosave with nowhere to save, every 5 s; fixed. Per frame, headless
+    (`PERF_HEADLESS=1`, UI build and tessellation, 5 runs each): idle 3.78 → 3.55 ms mean, live
+    values 6.01 → 5.86 ms, from integer rate formatting, borrowed icon lookups, port hints built
+    only on hover and Fluent lookups once a frame. Windowed frames stay about 6 ms mean, 8 ms p95,
+    within run-to-run noise. Culling the recipe browser's off-screen rows (about 5% of a frame)
+    was tried and dropped: it hides them from AccessKit and moved the snapshots.
 
 ### M8: `aic-extract` CLI
 - `aic-extract <source-kind> <input> --out data/<version>/` writes `data.json` (factoriolab format,
