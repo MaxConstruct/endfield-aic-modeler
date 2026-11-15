@@ -20,8 +20,8 @@ const SAVE_STATES: [&str; 6] = [
     "save-state-empty",
 ];
 
-/// How long a button stays lit after its key is pressed.
-const FLASH: Duration = Duration::from_millis(400);
+/// How long a button stays lit after its key is pressed, in seconds.
+const FLASH: f64 = 0.4;
 const BUTTON: egui::Vec2 = vec2(28.0, 22.0);
 
 /// The toolbar's buttons in order; `None` is a separator. File commands live in the File menu.
@@ -73,17 +73,25 @@ impl Editor {
         self.session.can_run(shortcut)
     }
 
-    /// The shortcut whose button is lit, if its moment isn't over.
-    pub fn flashing(&self) -> Option<Command> {
-        self.flash
-            .filter(|(_, at)| self.flash_holds || at.elapsed() < FLASH)
-            .map(|(shortcut, _)| shortcut)
+    /// The shortcut whose button is lit, if its moment isn't over by egui's clock.
+    pub fn flashing(&self, ctx: &egui::Context) -> Option<Command> {
+        self.flash_left(ctx).map(|(shortcut, _)| shortcut)
+    }
+
+    /// The lit shortcut and how long it has left.
+    fn flash_left(&self, ctx: &egui::Context) -> Option<(Command, f64)> {
+        let (shortcut, at) = self.flash?;
+        let left = FLASH - (ctx.input(|i| i.time) - at);
+        (left > 0.0).then_some((shortcut, left))
     }
 
     pub(crate) fn toolbar(&mut self, ui: &mut Ui, strings: &Strings) {
-        let lit = self.flashing();
-        if lit.is_some() {
-            ui.ctx().request_repaint_after(FLASH);
+        let flash = self.flash_left(ui.ctx());
+        let lit = flash.map(|(shortcut, _)| shortcut);
+        // One more frame when it goes dark; none after that.
+        if let Some((_, left)) = flash {
+            ui.ctx()
+                .request_repaint_after(Duration::from_secs_f64(left));
         }
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;

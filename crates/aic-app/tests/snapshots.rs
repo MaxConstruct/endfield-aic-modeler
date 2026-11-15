@@ -42,8 +42,6 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
 fn hide_performance(harness: &mut Harness<'_, App>) {
     if let Some(editor) = harness.state_mut().editor_mut() {
         editor.set_show_performance(false);
-        // A lit button stays lit, however fast the test runs.
-        editor.hold_flash(true);
     }
 }
 
@@ -1404,9 +1402,6 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
     );
     assert_eq!(ed.document().view().wires().count(), 3);
     fit_view(&mut harness);
-    // That snapshot was recorded with no lit button.
-    editor(&mut harness).end_flash();
-    harness.run();
     snapshot_graph(&mut harness, "workspace_inside");
 
     // Panning moves the nodes, not the port tiles: they hold still in the same frame, numbers
@@ -1792,15 +1787,35 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     harness.run();
     assert_eq!(node_count(&mut harness), 2);
 
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    // Frame by frame, by kittest's clock (a quarter second a step): the key goes down, the next
+    // frame draws its button lit, and the button goes dark once its moment is over.
+    let ctx = harness.ctx.clone();
+    let z = |pressed: bool| eframe::egui::Event::Key {
+        key: Key::Z,
+        pressed,
+        modifiers: Modifiers::COMMAND,
+        repeat: false,
+        physical_key: None,
+    };
+    harness.event(eframe::egui::Event::ModifiersChanged(Modifiers::COMMAND));
+    harness.event(z(true));
+    harness.step();
+    assert_eq!(node_count(&mut harness), 1);
     harness.step();
     assert_eq!(
-        editor(&mut harness).flashing(),
+        editor(&mut harness).flashing(&ctx),
         Some(aic_editor::Command::Undo),
         "the key lights its button"
     );
-    assert_eq!(node_count(&mut harness), 1);
     harness.snapshot("toolbar");
+    harness.event(z(false));
+    harness.event(eframe::egui::Event::ModifiersChanged(Modifiers::NONE));
+    harness.step();
+    assert_eq!(
+        editor(&mut harness).flashing(&ctx),
+        None,
+        "and it goes dark"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

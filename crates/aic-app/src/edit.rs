@@ -83,7 +83,7 @@ impl Editor {
                     ctx.input_mut(|i| i.consume_shortcut(&shortcut_of(chord)))
                 });
             if pressed {
-                self.flash(command);
+                self.flash(ctx, command);
                 self.run(command);
             }
         }
@@ -105,7 +105,7 @@ impl Editor {
             (copy, cut, pasted)
         });
         if copy || cut {
-            self.flash(if cut { Command::Cut } else { Command::Copy });
+            self.flash(ctx, if cut { Command::Cut } else { Command::Copy });
             self.session.copy();
             if let Some(text) = self.session.copy_text() {
                 ctx.copy_text(text);
@@ -115,7 +115,7 @@ impl Editor {
             self.session.delete_selection();
         }
         if let Some(text) = pasted {
-            self.flash(Command::Paste);
+            self.flash(ctx, Command::Paste);
             self.session.paste_text(&text, self.view.level());
         }
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
@@ -160,8 +160,11 @@ impl Editor {
     }
 
     /// Lights the shortcut's toolbar button for a moment, so a key press shows where its button is.
-    pub(crate) fn flash(&mut self, shortcut: Command) {
-        self.flash = Some((shortcut, web_time::Instant::now()));
+    /// The time is egui's, so a test's stepped clock decides when it goes dark.
+    pub(crate) fn flash(&mut self, ctx: &egui::Context, shortcut: Command) {
+        // The toolbar is drawn before the keys are read; egui draws another frame after any input
+        // event, and that one lights it.
+        self.flash = Some((shortcut, ctx.input(|i| i.time)));
     }
 
     pub fn undo(&mut self) {

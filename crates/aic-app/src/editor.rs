@@ -59,10 +59,9 @@ pub struct Editor {
     pub(crate) upload: Option<std::sync::mpsc::Receiver<Upload>>,
     /// Decoded icons belong to the old data after a switch.
     pub(crate) icons_stale: bool,
-    /// The shortcut last pressed, and when: its toolbar button lights up for a moment.
-    pub(crate) flash: Option<(Command, web_time::Instant)>,
-    /// Tests only: a flash stays lit until the next one replaces it, instead of timing out.
-    pub(crate) flash_holds: bool,
+    /// The shortcut last pressed, and when by egui's clock (`InputState::time`): its toolbar
+    /// button lights up for a moment.
+    pub(crate) flash: Option<(Command, f64)>,
     /// Where to save the canvas once the window is next drawn.
     pub(crate) export_to: Option<PathBuf>,
     /// Whether the status bar shows the frame rate and the last solve's time.
@@ -92,7 +91,6 @@ impl Editor {
             icons_stale: false,
             export_to: None,
             flash: None,
-            flash_holds: false,
             show_performance: true,
             frames: egui::util::History::new(2..1000, FRAME_RATE_WINDOW),
             last_title: String::new(),
@@ -190,17 +188,6 @@ impl Editor {
     /// Whether the status bar shows the frame rate and the last solve's time.
     pub fn set_show_performance(&mut self, on: bool) {
         self.show_performance = on;
-    }
-
-    /// Tests only: keeps a lit toolbar button lit until the next key press, so a snapshot doesn't
-    /// depend on how long the test took to run.
-    pub fn hold_flash(&mut self, on: bool) {
-        self.flash_holds = on;
-    }
-
-    /// Puts out the lit toolbar button now.
-    pub fn end_flash(&mut self) {
-        self.flash = None;
     }
 
     /// Opens the node picker as if from `origin`, with the new node going to `graph_pos`.
