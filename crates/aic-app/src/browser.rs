@@ -47,6 +47,7 @@ impl Browser {
             });
         ui.separator();
         let mut clicked = None;
+        let hint = strings.get("browser-add-hint");
         egui::ScrollArea::vertical().show(ui, |ui| {
             // One line per recipe; a long name is cut short and shown whole on hover.
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
@@ -73,11 +74,7 @@ impl Browser {
                 if let Some(rect) = laid_out.rect(badge_id) {
                     badges.paint(ui.painter(), rect.left_center());
                 }
-                if laid_out
-                    .response
-                    .on_hover_text(strings.get("browser-add-hint"))
-                    .clicked()
-                {
+                if laid_out.response.on_hover_text(hint.as_str()).clicked() {
                     clicked = Some(recipe.id.clone());
                 }
             }

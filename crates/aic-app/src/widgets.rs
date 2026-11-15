@@ -75,7 +75,8 @@ pub fn image_atom(
 #[derive(Clone, Default)]
 struct IconCache(Arc<Mutex<Textures>>);
 
-type Textures = HashMap<(ImageKind, String), Option<TextureHandle>>;
+/// By kind, then by ID, so a lookup borrows the ID instead of building a key every frame.
+type Textures = HashMap<ImageKind, HashMap<String, Option<TextureHandle>>>;
 
 /// Drops every decoded icon, after a switch to other data.
 pub fn forget_icons(ctx: &egui::Context) {
@@ -93,8 +94,13 @@ pub fn icon_texture(
         d.get_temp_mut_or_default::<IconCache>(Id::new("icon-cache"))
             .clone()
     });
-    let key = (kind, id.to_owned());
-    if let Some(found) = cache.0.lock().expect("icon cache lock").get(&key) {
+    if let Some(found) = cache
+        .0
+        .lock()
+        .expect("icon cache lock")
+        .get(&kind)
+        .and_then(|textures| textures.get(id))
+    {
         return found.clone();
     }
     let texture = catalog.image(kind, id).and_then(decode).map(|image| {
@@ -108,7 +114,9 @@ pub fn icon_texture(
         .0
         .lock()
         .expect("icon cache lock")
-        .insert(key, texture.clone());
+        .entry(kind)
+        .or_default()
+        .insert(id.to_owned(), texture.clone());
     texture
 }
 

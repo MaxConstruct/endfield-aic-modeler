@@ -415,12 +415,17 @@ impl Canvas {
             pin_cache: HashMap::new(),
             title_edit: &mut self.title_edit,
             events: Vec::new(),
+            limit_texts: (
+                strings.get("node-no-limit"),
+                strings.get("node-limit-label"),
+            ),
         };
         let response = SnarlWidget::new()
             .id(snarl_id(self.id, level))
             .style(self.style)
             .show(view, &mut viewer, ui);
         let mut events = viewer.events;
+        let pin_cache = viewer.pin_cache;
         let node_clicked = events
             .iter()
             .any(|e| matches!(e, CanvasEvent::Select(_) | CanvasEvent::Toggle(_)));
@@ -437,6 +442,7 @@ impl Canvas {
             solution,
             view,
             pins: &pins,
+            pin_cache: &pin_cache,
             selection,
         };
         let layer = LayerId::new(ui.layer_id().order, snarl_id(self.id, level));
@@ -926,6 +932,8 @@ struct Viewer<'a> {
     /// The workspace name being typed in a card's menu.
     title_edit: &'a mut String,
     events: Vec<CanvasEvent>,
+    /// Every card's limit field's hint and name, looked up once a frame.
+    limit_texts: (String, String),
 }
 
 impl Viewer<'_> {
@@ -1115,19 +1123,21 @@ impl Viewer<'_> {
         let Some(item) = item else {
             return (throttled, rate);
         };
-        let mut hint = names::item(self.catalog, item.as_str()).to_owned();
-        if throttled {
-            hint.push('\n');
-            hint.push_str(&self.strings.get("throttle-marker-hint"));
-        }
         // A double-click on the port opens its menu: the limit as a rate, and clearing its links.
-        let response = ui
-            .interact(
-                rect,
-                self.id.with(("port-row", id, side, item)),
-                Sense::click(),
-            )
-            .on_hover_text(hint);
+        let mut response = ui.interact(
+            rect,
+            self.id.with(("port-row", id, side, item)),
+            Sense::click(),
+        );
+        // Every card has ports: their hints are only built for the one under the pointer.
+        if response.hovered() || response.is_tooltip_open() {
+            let mut hint = names::item(self.catalog, item.as_str()).to_owned();
+            if throttled {
+                hint.push('\n');
+                hint.push_str(&self.strings.get("throttle-marker-hint"));
+            }
+            response = response.on_hover_text(hint);
+        }
         // Beside the pin, on the node's edge; last frame's spot is close enough.
         let pin_center = self.pins.borrow().get(&pin).copied();
         // egui-snarl owns the pin's own clicks, and a primary click on a pin does nothing there,
@@ -1198,8 +1208,8 @@ impl Viewer<'_> {
             buffer,
             current: limit,
             width: crisp(76.0),
-            hint: self.strings.get("node-no-limit"),
-            label: self.strings.get("node-limit-label"),
+            hint: self.limit_texts.0.clone(),
+            label: self.limit_texts.1.clone(),
         };
         if let (_, Some(typed)) = field.show(ui)
             && (typed.is_some() || !required)
@@ -1899,6 +1909,8 @@ struct LinkLabels<'a> {
     solution: &'a Solution,
     view: &'a Snarl<Member>,
     pins: &'a HashMap<PinKey, Pos2>,
+    /// The pins snarl drew this frame, to find each wire's ports without another walk.
+    pin_cache: &'a HashMap<(Member, Side), Vec<PinTarget>>,
     selection: Option<&'a Selection>,
 }
 
@@ -1936,10 +1948,14 @@ impl LinkLabels<'_> {
                 continue;
             };
             // Two nodes can be linked by more than one item; each wire belongs to its pins' ports.
-            let target = |member: Member, side: Side, index: usize| {
-                pin_targets(self.graph, self.catalog, member, side)
+            let target = |member: Member, side: Side, index: usize| match self
+                .pin_cache
+                .get(&(member, side))
+            {
+                Some(pins) => pins.get(index).cloned(),
+                None => pin_targets(self.graph, self.catalog, member, side)
                     .into_iter()
-                    .nth(index)
+                    .nth(index),
             };
             let (Some(from), Some(to)) = (
                 target(self.view[out_pin.node], Side::Output, out_pin.output),
