@@ -7,8 +7,22 @@ pub fn short(value: Option<f64>) -> String {
     let Some(v) = value else {
         return String::new();
     };
-    let text = format!("{:.2}", round2(v));
-    text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    let rounded = round2(v);
+    // Every rate on the canvas goes through here every frame: whole hundredths are written as
+    // integers, which is much cheaper than formatting a float. Past 1e13 a hundredth is near the
+    // float's precision (and NaN or infinity isn't a number of hundredths), so `{:.2}` decides.
+    if rounded.is_nan() || rounded.abs() >= 1e13 {
+        let text = format!("{rounded:.2}");
+        return text.trim_end_matches('0').trim_end_matches('.').to_owned();
+    }
+    let hundredths = (rounded * 100.0).round() as i64;
+    let sign = if hundredths < 0 { "-" } else { "" };
+    let (whole, fraction) = (hundredths.abs() / 100, hundredths.abs() % 100);
+    match fraction {
+        0 => format!("{sign}{whole}"),
+        tenths if tenths % 10 == 0 => format!("{sign}{whole}.{}", tenths / 10),
+        _ => format!("{sign}{whole}.{fraction:02}"),
+    }
 }
 
 /// A value as it shows in a field the player edits: up to four decimals, trailing zeros dropped.
@@ -53,6 +67,33 @@ mod tests {
         assert_eq!(editable(5.0), "5");
         assert_eq!(editable(225.0), "225");
         assert_eq!(editable(1.0 / 3.0), "0.3333");
+    }
+
+    #[test]
+    fn short_writes_what_two_decimals_of_the_float_would() {
+        let by_float = |v: f64| {
+            let text = format!("{:.2}", round2(v));
+            text.trim_end_matches('0').trim_end_matches('.').to_owned()
+        };
+        let mut values = vec![
+            0.0, -0.0, 0.004, -0.004, 0.005, -0.005, 0.995, 9.995, -1.125, 1e12,
+        ];
+        values.extend([
+            1e13,
+            -1e13,
+            3e15,
+            f64::MAX,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ]);
+        // A spread of rates, their thirds and sevenths, signs and sizes.
+        for i in -20_000..20_000 {
+            let v = f64::from(i) * 0.0137;
+            values.extend([v, v / 3.0, v / 7.0, v * 1e5 / 7.0]);
+        }
+        for v in values {
+            assert_eq!(short(Some(v)), by_float(v), "{v}");
+        }
     }
 
     #[test]
