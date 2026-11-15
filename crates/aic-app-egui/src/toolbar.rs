@@ -76,7 +76,7 @@ impl Editor {
     /// The shortcut whose button is lit, if its moment isn't over.
     pub fn flashing(&self) -> Option<Command> {
         self.flash
-            .filter(|(_, at)| at.elapsed() < FLASH)
+            .filter(|(_, at)| self.flash_holds || at.elapsed() < FLASH)
             .map(|(shortcut, _)| shortcut)
     }
 

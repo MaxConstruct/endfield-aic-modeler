@@ -42,6 +42,8 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
 fn hide_performance(harness: &mut Harness<'_, App>) {
     if let Some(editor) = harness.state_mut().editor_mut() {
         editor.set_show_performance(false);
+        // A lit button stays lit, however fast the test runs.
+        editor.hold_flash(true);
     }
 }
 
@@ -1402,6 +1404,9 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
     );
     assert_eq!(ed.document().view().wires().count(), 3);
     fit_view(&mut harness);
+    // That snapshot was recorded with no lit button.
+    editor(&mut harness).end_flash();
+    harness.run();
     snapshot_graph(&mut harness, "workspace_inside");
 
     // Panning moves the nodes, not the port tiles: they hold still in the same frame, numbers
