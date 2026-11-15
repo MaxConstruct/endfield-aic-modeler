@@ -1180,6 +1180,41 @@ fn data_folder_app() -> Harness<'static, App> {
     harness
 }
 
+/// The saved data version is there but doesn't load: the newest loads instead, and everything
+/// says so, the settings window and the next save included.
+#[test]
+fn a_saved_data_version_that_fails_to_load_is_not_kept_as_the_choice() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures");
+    let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
+    let mut storage = MemoryStorage::default();
+    let saved = aic_app::data::DataChoice {
+        version: Some("broken".into()),
+        language: None,
+    };
+    eframe::set_value(&mut storage, aic_app::data::STORAGE_KEY, &saved);
+    let mut harness = Harness::builder()
+        .with_size(WINDOW_SIZE)
+        .build_eframe(move |cc| {
+            aic_app::theme::install(&cc.egui_ctx);
+            App::from_folder(Strings::english(), folder.clone(), Some(&storage))
+        });
+    hide_performance(&mut harness);
+    harness.run();
+    assert_eq!(editor(&mut harness).catalog().version(), "v1.10.0");
+    assert_eq!(
+        editor(&mut harness).data_choice(),
+        Some(&aic_app::data::DataChoice::default()),
+        "the choice is what loaded"
+    );
+    harness.get_by_label_contains("Could not load that data");
+
+    let mut next = MemoryStorage::default();
+    eframe::App::save(harness.state_mut(), &mut next);
+    let kept: Option<aic_app::data::DataChoice> =
+        eframe::get_value(&next, aic_app::data::STORAGE_KEY);
+    assert_eq!(kept, Some(aic_app::data::DataChoice::default()));
+}
+
 #[test]
 fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
     let mut harness = data_folder_app();

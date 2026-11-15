@@ -20,6 +20,16 @@ pub struct DataChoice {
     pub language: Option<String>,
 }
 
+/// The data [`DataFolder::open`] loaded.
+#[derive(Debug)]
+pub struct Loaded {
+    pub catalog: Catalog,
+    /// The version and language that loaded.
+    pub choice: DataChoice,
+    /// Why the chosen data didn't load, when the newest loaded in its place.
+    pub failed: Option<LoadError>,
+}
+
 /// Where the data versions come from.
 #[derive(Debug, Clone)]
 pub enum DataSource {
@@ -100,6 +110,28 @@ impl DataFolder {
         .unwrap_or_default()
     }
 
+    /// Opens the data last chosen: that version and language, or, when they are there but fail
+    /// to load, the newest version in English. The choice it returns is the one that loaded, so
+    /// that the settings and the next save name the data in use.
+    pub fn open(&self, choice: DataChoice) -> Result<Loaded, LoadError> {
+        match self.load(&choice) {
+            Ok(catalog) => Ok(Loaded {
+                catalog,
+                choice,
+                failed: None,
+            }),
+            Err(error) => {
+                let newest = DataChoice::default();
+                let catalog = self.load(&newest)?;
+                Ok(Loaded {
+                    catalog,
+                    choice: newest,
+                    failed: Some(error),
+                })
+            }
+        }
+    }
+
     /// Loads the chosen version in the chosen language, falling back to English when that
     /// version has no such language.
     pub fn load(&self, choice: &DataChoice) -> Result<Catalog, LoadError> {
@@ -136,6 +168,27 @@ mod tests {
         assert_eq!(folder.version(&choice).name, folder.versions[0].name);
         let catalog = folder.load(&choice).expect("loads");
         assert_eq!(catalog.version(), folder.versions[0].name);
+    }
+
+    #[test]
+    fn a_chosen_version_that_fails_to_load_opens_the_newest_and_says_so() {
+        let folder = DataFolder::at(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures"),
+        )
+        .unwrap();
+        let broken = DataChoice {
+            version: Some("broken".into()),
+            language: None,
+        };
+        let opened = folder.open(broken).expect("the newest loads");
+        assert_eq!(opened.catalog.version(), folder.versions[0].name);
+        assert_eq!(opened.choice, DataChoice::default());
+        assert!(opened.failed.is_some());
+
+        let newest = DataChoice::default();
+        let opened = folder.open(newest.clone()).expect("loads");
+        assert_eq!(opened.choice, newest);
+        assert!(opened.failed.is_none());
     }
 
     #[test]

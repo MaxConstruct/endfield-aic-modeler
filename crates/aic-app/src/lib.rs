@@ -97,19 +97,28 @@ impl App {
             Ok(folder) => folder,
             Err(message) => return Self::new(strings, Err(message), storage),
         };
-        // A chosen version that no longer loads falls back to the newest.
-        let catalog = folder
-            .load(&choice)
-            .or_else(|_| folder.load(&DataChoice::default()))
-            .map_err(|error| error.to_string());
+        // A chosen version that no longer loads falls back to the newest, which is then the choice.
+        let (catalog, loaded) = match folder.open(choice) {
+            Ok(loaded) => (Ok(loaded.catalog), Some((loaded.choice, loaded.failed))),
+            Err(error) => (Err(error.to_string()), None),
+        };
         let mut app = Self::new(strings, catalog, storage);
-        if let State::Ready(editor) = &mut app.state {
+        let mut failed = None;
+        if let (State::Ready(editor), Some((choice, error))) = (&mut app.state, loaded) {
             editor.set_data_folder(folder, choice);
+            failed = error;
         }
         if cfg!(target_arch = "wasm32") {
             app.open_browser_files(storage);
         } else {
             app.open_drafts_dir(storage);
+        }
+        // After the reopen, which sets or clears the status: the data error is the one to see.
+        if let (State::Ready(editor), Some(error)) = (&mut app.state, failed) {
+            let message = app
+                .strings
+                .format("data-switch-failed", &[("error", &error.to_string())]);
+            editor.session.set_status(Some(message));
         }
         app
     }
