@@ -21,9 +21,15 @@ fn fixture(path: &str) -> PathBuf {
 }
 
 fn harness(version_dir: &Path) -> Harness<'static, App> {
+    harness_stepping(version_dir, 0.25)
+}
+
+/// A harness whose clock moves `step_dt` seconds a frame (kittest's default is a quarter second).
+fn harness_stepping(version_dir: &Path, step_dt: f32) -> Harness<'static, App> {
     let catalog = aic_data::load(version_dir, "en").expect("data loads");
     let mut harness = Harness::builder()
         .with_size(WINDOW_SIZE)
+        .with_step_dt(step_dt)
         .build_eframe(|cc| {
             aic_app::theme::install(&cc.egui_ctx);
             App::new(Strings::english(), Ok(catalog), None)
@@ -1821,6 +1827,10 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     harness.get_by_label("Duplicate").click();
     harness.run();
     assert_eq!(node_count(&mut harness), 2);
+    // Off the toolbar: egui draws a button's hover from the frame before, so a button the key
+    // disables would show a hover fill for one frame.
+    harness.event(eframe::egui::Event::PointerGone);
+    harness.run();
 
     // Frame by frame, by kittest's clock (a quarter second a step): the key goes down, the next
     // frame draws its button lit, and the button goes dark once its moment is over.
@@ -1862,7 +1872,8 @@ fn next_frame_in(harness: &Harness<'_, App>) -> std::time::Duration {
 /// The player keeps the app open beside the game: when nothing happens, it draws nothing.
 #[test]
 fn an_idle_app_asks_for_no_frames_even_after_a_lit_button() {
-    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    // A twentieth of a second a frame, so there are frames while the button is lit.
+    let mut harness = harness_stepping(&aic_editor::testing::fixture_dir(), 0.05);
     let dir = temp_dir("idle");
     editor(&mut harness).set_drafts_dir(Some(dir.clone()));
     smelter(&mut harness, 0.0, 0.0);
@@ -1870,14 +1881,31 @@ fn an_idle_app_asks_for_no_frames_even_after_a_lit_button() {
     harness.get_by_label("✔ Saved as a draft");
     assert_eq!(next_frame_in(&harness), std::time::Duration::MAX);
 
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
-    harness.step();
+    // Key events ask for a frame of their own, so the frame asked for is checked once they are
+    // handled: the key goes down, the next frame lights the button, and only the flash is left.
     let ctx = harness.ctx.clone();
-    assert!(
-        next_frame_in(&harness) <= std::time::Duration::from_millis(400),
-        "a lit button asks for the frame that puts it out"
+    let a = |pressed: bool| eframe::egui::Event::Key {
+        key: Key::A,
+        pressed,
+        modifiers: Modifiers::COMMAND,
+        repeat: false,
+        physical_key: None,
+    };
+    harness.event(eframe::egui::Event::ModifiersChanged(Modifiers::COMMAND));
+    harness.event(a(true));
+    harness.run_steps(3);
+    assert_eq!(
+        editor(&mut harness).flashing(&ctx),
+        Some(aic_editor::Command::SelectAll)
     );
-    harness.run_steps(2);
+    let wait = next_frame_in(&harness);
+    assert!(
+        wait > std::time::Duration::ZERO && wait <= std::time::Duration::from_millis(400),
+        "a lit button asks for the frame that puts it out, got {wait:?}"
+    );
+    harness.event(a(false));
+    harness.event(eframe::egui::Event::ModifiersChanged(Modifiers::NONE));
+    harness.run_steps(10);
     assert_eq!(editor(&mut harness).flashing(&ctx), None);
     assert_eq!(
         next_frame_in(&harness),

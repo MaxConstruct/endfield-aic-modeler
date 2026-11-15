@@ -115,10 +115,7 @@ impl App {
         }
         // After the reopen, which sets or clears the status: the data error is the one to see.
         if let (State::Ready(editor), Some(error)) = (&mut app.state, failed) {
-            let message = app
-                .strings
-                .format("data-switch-failed", &[("error", &error.to_string())]);
-            editor.session.set_status(Some(message));
+            editor.session.report_data_failure(&error);
         }
         app
     }

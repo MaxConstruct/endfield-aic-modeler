@@ -195,6 +195,16 @@ impl Session {
         self.status = status;
     }
 
+    /// Says in the status bar that the chosen data didn't load: a data switch that failed, or a
+    /// saved choice [`DataFolder::open`] replaced. At startup, call it after the last document
+    /// reopens, which sets or clears the status.
+    pub fn report_data_failure(&mut self, error: &aic_data::LoadError) {
+        self.status = Some(
+            self.strings
+                .format("data-switch-failed", &[("error", &error.to_string())]),
+        );
+    }
+
     /// Whether anything is copied.
     pub fn has_clipboard(&self) -> bool {
         self.clipboard.is_some()
@@ -327,10 +337,7 @@ impl Session {
                 true
             }
             Err(error) => {
-                self.status = Some(
-                    self.strings
-                        .format("data-switch-failed", &[("error", &error.to_string())]),
-                );
+                self.report_data_failure(&error);
                 false
             }
         }
