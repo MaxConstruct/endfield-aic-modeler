@@ -337,7 +337,10 @@ impl Session {
     /// field has focus), so a save never lands in the middle of a drag or of typing a number. A
     /// `Poll::Wait` is when to call again.
     pub fn autosave(&mut self, now: Instant, busy: bool, view: Option<CanvasView>) -> Poll {
-        let waiting = self.needs_saving(view) && !busy;
+        // With no file and no drafts folder there is nowhere to save: no timer, so an idle window
+        // stays asleep.
+        let somewhere = self.doc.path().is_some() || self.keeps_drafts();
+        let waiting = somewhere && self.needs_saving(view) && !busy;
         match self.files.autosave.poll(now, waiting) {
             Poll::Run => {
                 self.save_now(now, view);
@@ -626,6 +629,17 @@ mod tests {
         let later = start + AUTOSAVE_INTERVAL;
         assert_eq!(rig.session.autosave(later, false, None), Poll::Idle);
         assert!(!rig.session.needs_saving(None));
+    }
+
+    #[test]
+    fn with_nowhere_to_save_autosave_does_not_keep_waking() {
+        let mut session = Session::new(fixture_catalog(), Availability::default());
+        session.add_node(smelter(), Pos::default(), None);
+        let start = Instant::now();
+        let _ = session.autosave(start, false, None);
+        // No file and no drafts folder: a timer would only wake an idle window to do nothing.
+        let soon = start + Duration::from_secs(1);
+        assert_eq!(session.autosave(soon, false, None), Poll::Idle);
     }
 
     #[test]

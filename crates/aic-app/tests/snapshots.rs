@@ -1819,6 +1819,39 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// The frame after which egui would draw again on its own, with no input: never, when idle.
+fn next_frame_in(harness: &Harness<'_, App>) -> std::time::Duration {
+    harness.output().viewport_output[&eframe::egui::ViewportId::ROOT].repaint_delay
+}
+
+/// The player keeps the app open beside the game: when nothing happens, it draws nothing.
+#[test]
+fn an_idle_app_asks_for_no_frames_even_after_a_lit_button() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let dir = temp_dir("idle");
+    editor(&mut harness).set_drafts_dir(Some(dir.clone()));
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    harness.get_by_label("✔ Saved as a draft");
+    assert_eq!(next_frame_in(&harness), std::time::Duration::MAX);
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.step();
+    let ctx = harness.ctx.clone();
+    assert!(
+        next_frame_in(&harness) <= std::time::Duration::from_millis(400),
+        "a lit button asks for the frame that puts it out"
+    );
+    harness.run_steps(2);
+    assert_eq!(editor(&mut harness).flashing(&ctx), None);
+    assert_eq!(
+        next_frame_in(&harness),
+        std::time::Duration::MAX,
+        "and nothing after that"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The player's Buckflower graph from real data: a limit on the middle planter settles everything
 /// linked to it (ADR 0006).
 #[test]
