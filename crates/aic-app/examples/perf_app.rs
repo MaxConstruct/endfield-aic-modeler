@@ -8,9 +8,14 @@
 //!
 //! Pass: frames stay under about 8 ms (PLAN.md, M4). Keep the window in front: macOS stops drawing
 //! a hidden window, and the run then never finishes. `PERF_NODES=300` changes the graph size.
+//!
+//! `PERF_IDLE=20` instead leaves the app alone for 20 seconds, with vsync on as in the real app,
+//! and prints how many frames it drew and what asked for them: an idle app should draw none.
+//! `PERF_MINIMIZE=1` minimizes the window for that time.
 
 use std::collections::HashMap;
-use std::time::Instant;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use aic_app::i18n::Strings;
 use aic_app::{App, load_catalog};
@@ -43,10 +48,67 @@ struct PerfApp {
     /// Time spent building the UI each frame, without painting it.
     ui_times: HashMap<usize, Vec<f64>>,
     live: Option<NodeId>,
+    idle: Option<Idle>,
+}
+
+/// The idle run: frames drawn after the warm-up, and what asked for each.
+struct Idle {
+    seconds: u64,
+    minimize: bool,
+    started: bool,
+    seen: Arc<Mutex<Seen>>,
+}
+
+#[derive(Default)]
+struct Seen {
+    frames: usize,
+    causes: HashMap<String, usize>,
+}
+
+impl PerfApp {
+    fn idle_ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        eframe::App::ui(&mut self.app, ui, frame);
+        let ctx = ui.ctx();
+        let idle = self.idle.as_mut().expect("idle run");
+        self.frame += 1;
+        if idle.started {
+            let mut seen = idle.seen.lock().expect("not poisoned");
+            seen.frames += 1;
+            for cause in ctx.repaint_causes() {
+                *seen.causes.entry(cause.to_string()).or_default() += 1;
+            }
+        } else if self.frame < WARMUP {
+            // Let the first solve, icons and the auto-fit settle, then leave it alone.
+            ctx.request_repaint();
+        } else {
+            idle.started = true;
+            if idle.minimize {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
+            // A minimized window draws nothing, so the count is read and the run ended from here.
+            let (seen, seconds) = (idle.seen.clone(), idle.seconds);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(seconds));
+                let seen = seen.lock().expect("not poisoned");
+                println!(
+                    "idle {seconds} s: {} frames ({:.2} per second)",
+                    seen.frames,
+                    seen.frames as f64 / seconds as f64
+                );
+                for (cause, count) in &seen.causes {
+                    println!("  {count:>5}  {cause}");
+                }
+                std::process::exit(0);
+            });
+        }
+    }
 }
 
 impl eframe::App for PerfApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        if self.idle.is_some() {
+            return self.idle_ui(ui, frame);
+        }
         let now = Instant::now();
         if let Some(last) = self.last
             && self.frame >= WARMUP
@@ -86,6 +148,9 @@ impl eframe::App for PerfApp {
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if self.idle.is_some() {
+            return;
+        }
         let Some(phase) = PHASES.get(self.phase) else {
             return;
         };
@@ -212,15 +277,27 @@ fn main() -> eframe::Result {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(200);
+    let idle = std::env::var("PERF_IDLE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map(|seconds| Idle {
+            seconds,
+            minimize: std::env::var("PERF_MINIMIZE").is_ok_and(|v| v == "1"),
+            started: false,
+            seen: Arc::default(),
+        });
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1600.0, 900.0]),
         ..Default::default()
     };
-    options.wgpu_options.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
+    if idle.is_none() {
+        options.wgpu_options.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
+    }
     eframe::run_native(
         "perf app",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            aic_app::theme::install(&cc.egui_ctx);
             let mut app = App::new(Strings::english(), catalog, None);
             let live = build(&mut app, target);
             Ok(Box::new(PerfApp {
@@ -231,6 +308,7 @@ fn main() -> eframe::Result {
                 times: HashMap::new(),
                 ui_times: HashMap::new(),
                 live,
+                idle,
             }))
         }),
     )
