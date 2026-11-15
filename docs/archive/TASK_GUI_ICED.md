@@ -1,5 +1,28 @@
 # Task plan: an iced frontend beside the egui one
 
+> **Archived 2026-11-15. The iced frontend was dropped** (ADR 0010). Phase A, the `aic-editor` crate,
+> was kept; the crate `aic-app-egui` was renamed back to `aic-app`. The iced crate and the B2 spike
+> are on the tag `exp/iced-spike`, not on `main`. This file is kept as the record of the B2 spike.
+>
+> The review of the B2 spike corrected its write-up (section 9, "B2 spike results") as follows:
+>
+> - The slow frames are GPU time in iced_nodegraph_sdf's fragment shader, confirmed by sampling
+>   (about 60% of the main thread waits in `nextDrawable`, about 64% of a headless run in
+>   `Device::poll`). At scale 2 and zoom 1, net of a 2-card baseline: node shadows about 12 ms,
+>   the grid about 4 ms, card fill, border and pins about 0.6 ms per visible card, all links
+>   about 1 ms, text about 1 ms. Even with no shadow, grid or text, about 22 visible cards need
+>   about 13 ms of GPU.
+> - The CPU is not the blocker: with host culling it is about 1 ms. Much of the 6.7 ms "draw" was the
+>   spike's own `pin_style` closure calling `default_pin_style` for every pin every frame.
+> - The 2-card floor (bimodal: 8.3 ms, with about 30% of frames at 25 ms) is iced's own: iced_wgpu
+>   0.14 hard-codes `desired_maximum_frame_latency: 1`, so the Metal layer gets 2 drawables.
+>   `ICED_PRESENT_MODE` does not help. egui on the same machine and day: 5.6 to 8.6 ms for 300 nodes.
+> - Tests `q3_a` and `q11` in the spike prove less than the table claims (`q3_a` compares the host's
+>   own numbers; `q11` has an assertion that can't fail), and Q9 was judged by eye.
+> - The "BindGroupLayout does not exist" panic with two renderers in one process is a real
+>   iced_nodegraph_sdf bug: its GPU cache compares wgpu devices, and wgpu 27 compares them by id only.
+> - The real-window runs may have been taken with the screen locked.
+
 Planned 2026-11-15 on branch `exp/iced`. This file is the work queue for agents building a second
 desktop UI for AIC Modeler in [iced](https://iced.rs) 0.14 with
 [iced_nodegraph](https://crates.io/crates/iced_nodegraph) 0.5, next to the existing egui UI. The
@@ -960,6 +983,126 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
   workspace test calls `Editor::end_flash` right before the `workspace_inside` snapshot. No PNG was
   re-recorded and no tolerance changed; production behaviour is the same.
 
+- (2026-11-15, B1) `iced_test`'s `Simulator::snapshot` always renders at scale 2 (hard-coded), so
+  `empty_window-wgpu.png` and `error_screen-wgpu.png` are 2560x1600, not 1280x800 as 6.6 says. The
+  Simulator's viewport is still 1280x800 logical.
+- (2026-11-15, B1) The window before C1 shows only the app name on the canvas colour (no shell exists
+  yet), so there is nothing to compare with egui's `empty_graph.png` except fonts and colours: the
+  canvas is `color::CANVAS` and the text the Inter Display SemiBold cut at heading size. Closing the
+  main window exits the daemon without saving (autosave and save-on-close are C10).
+- (2026-11-15, B1) `settings.json` holds `aic_editor::Settings` only; the iced view layout joins it
+  with C14. A new iced-only string, `settings-unreadable`, is under `# iced only` in `en.ftl`.
+  `theme.rs` has the style functions of 6.4 (buttons rest/selected, field, canvas, panel, card,
+  popover, window, divider, text colours) but nothing calls them yet.
+
+### B2 spike results (2026-11-15)
+
+Machine: Apple M1 Pro, built-in Liquid Retina XDR display (scale 2: the 1280x800 window is
+2560x1600 px). Release build. Code: `crates/aic-app-iced/examples/spike/` (the spike),
+`crates/aic-app-iced/tests/spike.rs` (headless evidence, macOS only), `iced_nodegraph` 0.5.0.
+Run it: `cargo run --release -p aic-app-iced --example spike` (by hand), `-- --bench` (frame times in
+a real window), `-- --headless` (the same scripts on a virtual 60 Hz clock, each frame phase timed),
+`-- --shots DIR` (window screenshots). Env switches for experiments: `SPIKE_CARDS`, `SPIKE_LINKS`,
+`SPIKE_ONLY`, `SPIKE_VARIANT=no-input,no-labels,no-pin-text,no-pin-content,lean,line,cull`.
+
+**Verdict (a recommendation; Max decides): No-go on size.** Question 1 fails by a factor of four to
+seven and none of the tuning tried brings it near 8 ms. Everything else passes or has a workaround
+that doesn't fork the crate. Tasks C3-C7 and C12 should not start on iced_nodegraph as it is.
+The cost is in iced_nodegraph's own SDF drawing, not in what the host builds (see question 1), so a
+fork is not obviously the fix either. Options for Max: (a) find out why the SDF pass costs about 1 ms
+per visible card on this GPU (ask upstream, or profile with Instruments); (b) re-plan C3-C7 and C12
+on a custom iced widget (`canvas` or a `shader`), keeping the host-side designs below, which carry
+over; (c) accept a much smaller graph (nothing measured says where the line is: 60 cards already
+took 42 ms).
+
+| # | Question | Result | Evidence |
+|---|---|---|---|
+| 1 | 300 cards, 600 links, live rates: 8 ms | **fail** | Below. |
+| 2 | Link labels | **workaround, pass** | Canvas overlay in a `stack!` with the view's camera and the host's own pin positions (card layout is fixed-size). The library's cubic is point-symmetric about the chord's midpoint for pins facing each other, so the label goes at the chord midpoint: measured on a render, the curve's centre is within 0.25 px of it, and the label's pill centre is within 0.35 px of the midpoint at zoom 0.5, 1 and 1.5 (`q2_*`). Untested: links routed through anchors, pins on top/bottom sides. Cards of varying height need the host to know the height. |
+| 3 | Workspace ports pinned to canvas edges | **workaround, pass** | The host recomputes the port nodes' world rectangles from the camera in every `view`, sized by 1/zoom so they keep their screen size. Port fill spans x 16..2543 px and starts at y 240 px at zoom 0.5, 1 and 2 (`q3_*`); after a wheel zoom the recomputed screen positions are identical; the dashed links to them are drawn attached (screenshot). Not run: a live drag in a real window (the graph's own camera moves at once and the ports follow on the next `view`, which iced builds before it draws). |
+| 4 | Mouse map | **workaround, pass** | Natively impossible: left-press on empty canvas starts a box select (hard-wired), `pan_button` only moves panning to another button, and a `mouse_area` around the graph never sees a press the graph captured. Works with `Tap`, a 300-line wrapper widget (`examples/spike/tap.rs`) that sees events first and hit-tests against the host's geometry: left-drag on empty pans, left-click on empty clears the selection, right-drag box-selects (host draws and computes it: `[1, 2, 21, 22]`), right-click opens the picker, Shift+click on a card toggles (native, `Node::selected` host-fed), middle-drag still pans natively (`q4_*`). Cost: the host must hit-test pins and cards itself, so card geometry must be knowable without layout. |
+| 5 | Port gestures | **workaround, pass** | Same `Tap`: double-click a pin (the first click still reaches the graph and, without movement, unplugs nothing), right-click a pin, Cmd+press a pin removes its links and starts no wire (Cmd+press on a cable is the library's edge cut, so the wrapper must take it first); an ordinary drag from the same pin still links (`q5_*`). |
+| 6 | Dropped wire | **pass** | `on_drag_start(DragInfo::Edge)`, `on_drag_update`, `on_drag_end` with no snap: the picker opens at the last cursor point (360, 330 = where it was dropped) from that port (`q6`). Catch: dragging an existing link off a pin (unplug) gives no `on_drag_start`, only `on_disconnect` and `on_drag_end`. |
+| 7 | Live `on_connect` into one link on release | **pass** | The host holds the snapped pair and the unplugged links and commits at `on_drag_end`. Snap, away, snap elsewhere, release gives the callbacks start, connect, disconnect, connect, end and exactly one link; snap then release away gives none; pulling a linked pin off and dropping on nothing removes that link once; pulling it off and back changes nothing (`q7`). |
+| 8 | Text field in a card | **pass, one workaround** | Typing, Delete, Backspace, Cmd+A and a drag inside the field produce only field edits: no move, no select, no delete. Cmd+D leaked through the focused field as `on_clone` (observed `CloneNodes([0])`), so the spike sets `Keymap::clone_selection = None` and leaves Duplicate to the host's shortcuts; with the key off nothing leaked. Without a focused field Delete reaches `on_delete` (`q8`). |
+| 9 | Text at 25 / 100 / 200 % | **pass** | Sharp at 200 % and legible, small, at 25 %, at scale 2 in the headless snapshots and in real-window screenshots (`main-zoom-*.png`, 2560x1600). Scale 1 not looked at (this Mac is Retina only). |
+| 10 | Host-owned selection and camera | **pass** | `Node::selected` and `.camera()` with `on_select` and `on_camera`: one model, two widgets with their own cameras (card 0 at x 80 px in the left pane at zoom 1, at 1321 px in the right pane at zoom 0.5), a selection set in the model shows in both, a wheel tick in the right pane reports camera view 1 only, and a zoom slider moves the camera to where the model says (`q10_*`). |
+| 11 | Two graphs at once, second window | **pass** | Two panes: above. Second window: `iced::daemon` + `window::open`, view 2 with its own camera, drawn in its own window (screenshot `second-window.png`, 1800x1200 px); a wheel tick there reports camera view 2 (`q11`). Not run: real mouse input in the second window. |
+
+**Question 1: frame times.** Real window, release build, vsync off, 300 cards (300 px wide, 5 ports a
+side with an item icon and a rate, a text field), 600 links, 600 labels drawn as an overlay, a rate on
+every port and link that changes every 20 frames. Input is scripted but goes through the widgets'
+own `update` (the `Tap` wrapper feeds synthetic pointer events to the graph at every redraw), so pan,
+zoom, node drag and wire drag run the real code. Every frame rebuilds the view, because the frame
+counter publishes a message (a real idle window wouldn't redraw at all). macOS limits a winit
+window's loop to a floor here: the same run with 2 cards gave 14.7 to 16.4 ms mean, p95 26 ms
+(PLAN M4's egui spike measured 5 to 8 ms intervals on this machine, so the floor is on the
+iced/winit side; whatever it is, it makes the real-window intervals an upper bound and is why the
+headless table below exists).
+
+| scenario (300 cards) | frames | mean ms | p95 ms | max ms | graph CPU ms (`on_info`) | cards in view |
+|---|---|---|---|---|---|---|
+| idle, zoom 1.0 | 85 | 46.8 | 83.6 | 86.5 | 8.0 | 22 |
+| idle, all in view (0.19) | 68 | 58.7 | 76.1 | 116.2 | 11.3 | 302 |
+| pan, zoom 1.0 | 84 | 47.8 | 86.1 | 90.6 | 8.1 | 25 |
+| pan, all in view | 68 | 58.4 | 66.2 | 111.9 | 11.4 | 302 |
+| zoom sweep 1.0 to 0.19 | 94 | 42.8 | 50.7 | 87.9 | 8.4 | 56 |
+| drag a node, zoom 1.0 | 86 | 46.6 | 85.4 | 88.9 | 8.1 | 22 |
+| drag a node, all in view | 68 | 58.8 | 74.6 | 108.5 | 11.7 | 302 |
+| drag a new wire, zoom 1.0 | 85 | 47.0 | 83.8 | 87.3 | 8.2 | 25 |
+| drag a new wire, all in view | 68 | 58.8 | 80.3 | 108.8 | 11.5 | 302 |
+
+The same scripts headless (virtual 60 Hz, no display pacing, every phase timed, render at scale 2
+including a read-back of the 16 MB image; a 2-card app costs 20.7 ms to render and read back, so
+subtract that from the render column):
+
+| scenario | view | build | update | draw | CPU mean | CPU p95 | render + read-back mean |
+|---|---|---|---|---|---|---|---|
+| idle, zoom 1.0 | 0.95 | 0.91 | 0.36 | 6.79 | 9.0 | 12.9 | 48.8 |
+| idle, all in view | 0.99 | 0.93 | 0.38 | 8.12 | 10.4 | 14.3 | 71.1 |
+| pan, zoom 1.0 | 0.96 | 0.93 | 0.64 | 6.87 | 9.4 | 13.4 | 49.5 |
+| pan, all in view | 0.98 | 0.94 | 0.68 | 8.01 | 10.6 | 14.8 | 71.8 |
+| zoom sweep | 0.99 | 0.97 | 0.66 | 7.07 | 9.7 | 13.8 | 54.3 |
+| drag a node, zoom 1.0 | 0.96 | 0.92 | 0.64 | 6.90 | 9.4 | 13.3 | 49.0 |
+| drag a node, all in view | 0.98 | 0.91 | 0.74 | 8.08 | 10.7 | 14.6 | 71.5 |
+| drag a wire, zoom 1.0 | 1.14 | 1.13 | 1.50 | 7.30 | 11.1 | 14.3 | 53.3 |
+| drag a wire, all in view | 0.98 | 0.95 | 0.76 | 8.28 | 11.0 | 14.7 | 78.5 |
+
+What costs what (headless, idle, zoom 1.0 unless said):
+- CPU is about 9 ms before any GPU work: 6.7 ms of it is iced_nodegraph's own `draw` (background 0.8,
+  foreground 2.7, geometry 2.7, SDF prepare 0.3 ms). It scales with the number of nodes, whether or
+  not they are on screen: 100 cards drew in 2.5 ms, 300 in 6.7 ms. The 606 links cost 0.7 ms of it.
+- The host's own work is small: building the view takes 1.0 ms, diff and layout 0.9 ms.
+- Removing text, text fields and labels changed nothing (render 53.9, 53.4, 53.3 ms). The GPU cost
+  is the SDF pass. It grows with pixels (scale 1: 17.2 ms against 53.9 at scale 2) and with visible
+  nodes (22 visible cards cost about 33 ms net at scale 2, 4 to 5 visible cards about 13).
+- Tuning tried. A lean style (no node shadow, no link glow): render 53 to 41 ms. Host-side culling,
+  pushing only the cards on screen and links with both ends on screen: CPU falls to 1.0 ms at zoom
+  1.0 but the render stays at 41 to 52 ms, and with everything in view (zoom 0.19) culling does
+  nothing. In a real window, culled plus lean at zoom 1.0 gave 34.3 ms mean (p95 36) against the
+  14.7 ms floor of 2 cards: still about 20 ms over, with 1 ms of CPU, which points at the GPU.
+  Straight links instead of cubics changed nothing.
+- Not measured: GPU time itself (no timestamp queries; the GPU share is inferred from CPU being
+  1 ms in the culled run; and the real-window floor above is unexplained). Even read at its most
+  generous, the headless CPU alone (9 to 11 ms mean, p95 13 to 15) is over 8 ms. Not tried: fewer pins per card, a window at scale 1 (headless at scale 1:
+  CPU 9.6 ms plus about 8.7 ms net render), another GPU. M4's egui numbers were on this machine and
+  passed 8 ms (5.2 to 8.1 ms mean with all 300 nodes on screen), so the target is the one the plan
+  set.
+
+Other things found:
+- iced_nodegraph_sdf caches its GPU resources by device id, and two wgpu instances in one process
+  hand out equal ids, so a second `Simulator` that renders an SDF frame panics with
+  "BindGroupLayout does not exist". The spike's tests render on one shared headless renderer. C-phase
+  snapshot tests must do the same (or run one per process).
+- Links are drawn under all nodes, so a link between far-apart cards is mostly hidden behind the
+  cards in between.
+- `Simulator::snapshot` is hard-wired to scale 2, which also makes every pin dot and edge test
+  measure physical pixels (halve them).
+- With `can_connect` set the item check and `default_can_connect` compose as the skill says; the
+  spike's first run joined unequal items by mistake and the same tests caught it.
+- Window screenshots of the runs are not committed (2560x1600 PNGs); `-- --shots DIR` regenerates
+  them. The headless tests write theirs to `target/tmp/`.
+
 ---
 
 ## 10. Status
@@ -974,8 +1117,8 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
 | A5 | `Session`: selection, editing, `Command` | A4 | done 2026-11-15 |
 | A6 | `Session`: files, autosave, settings | A5 | done 2026-11-15 |
 | A7 | `scripts/check-frontends.sh` | A2 | done 2026-11-15 |
-| B1 | `aic-app-iced` skeleton | A3, A6, A7 | todo |
-| B2 | iced_nodegraph spike (gate) | B1 | todo |
+| B1 | `aic-app-iced` skeleton | A3, A6, A7 | done 2026-11-15 |
+| B2 | iced_nodegraph spike (gate) | B1 | doing 2026-11-15: results written (section 9), verdict No-go on size, waiting for Max |
 | C1 | Shell | B2 | todo |
 | C2 | Recipe browser | C1 | todo |
 | C3 | Canvas: cards and ports | B2, C1 | todo |

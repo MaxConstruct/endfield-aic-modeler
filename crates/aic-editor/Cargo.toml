@@ -1,13 +1,13 @@
 [package]
 name = "aic-editor"
-description = "App logic shared by the UIs. No GUI dependency."
+description = "The app logic of AIC Modeler, without drawing. No GUI dependency."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [features]
-# Test fixtures (`aic_editor::testing`) for the UIs' own tests.
+# Test fixtures (`aic_editor::testing`) for the app's own tests.
 testing = []
 
 [dependencies]

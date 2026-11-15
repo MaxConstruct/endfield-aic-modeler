@@ -1,5 +1,5 @@
 //! Words for what the solver and the graph report: refusals, warnings and rates. Pure `Strings`
-//! formatting of core types, so every UI says the same thing.
+//! formatting of core types, kept apart from the drawing.
 
 use aic_core::{Graph, Issue, LinkError, NodeKind, Side, UndeterminedReason, Warning};
 use aic_data::{Catalog, ItemId};

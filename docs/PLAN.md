@@ -13,15 +13,16 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 - [0003](adr/0003-limits-and-maximize.md): player values are limits, and the solver maximizes.
 - [0004](adr/0004-throughput-measured-at-origins-and-sinks.md): pass-1 throughput is measured at origins and sinks.
 - [0008](adr/0008-views-are-layout-not-document.md): views are layout state, not part of the document.
-- [0009](adr/0009-two-frontends-one-editor-crate.md): two frontends share one GUI-free editor crate.
+- [0010](adr/0010-one-frontend-editor-crate-stays.md): one UI (egui) over a GUI-free editor crate; supersedes [0009](adr/0009-two-frontends-one-editor-crate.md).
 
 Tech:
 
 - Language: Rust (stable, edition 2024)
-- UI: `egui` via `eframe`, with `egui-snarl` for the node canvas. This is the shipping UI. An iced
-  frontend (iced 0.14 + iced_nodegraph) is being built beside it as an experiment, over a shared
-  GUI-free `aic-editor` crate; see [ADR 0009](adr/0009-two-frontends-one-editor-crate.md) and
-  [`TASK_GUI_ICED.md`](TASK_GUI_ICED.md).
+- UI: `egui` via `eframe`, with `egui-snarl` for the node canvas. This is the shipping UI. Its
+  app logic lives in the GUI-free `aic-editor` crate. An iced frontend (iced 0.14 + iced_nodegraph)
+  was tried beside it and dropped after its performance spike failed; see
+  [ADR 0010](adr/0010-one-frontend-editor-crate-stays.md) and
+  [`archive/TASK_GUI_ICED.md`](archive/TASK_GUI_ICED.md).
 - Solver: linear programming via `good_lp` (pure-Rust `microlp` backend by default)
 - Data: copied by hand into `data/<version>/`. The first set comes from
   [endfield-calc/factoriolab](https://github.com/endfield-calc/factoriolab) `src/data/aef/`, but the app
@@ -195,9 +196,8 @@ endfield-aic-modeler/
 └─ crates/
    ├─ aic-data/               # parse + normalize -> Catalog; native discovery. deps: serde, serde_json, thiserror, indexmap
    ├─ aic-core/               # Graph model, validation, sections, solver. deps: aic-data, good_lp, serde, slotmap
-   ├─ aic-editor/             # App logic shared by the UIs, no GUI dependency: document, session, selection, commands, files, Fluent strings, style tokens, built-in data (ADR 0009)
+   ├─ aic-editor/             # App logic, no GUI dependency: document, session, selection, commands, files, Fluent strings, style tokens, built-in data (ADR 0010)
    ├─ aic-app/                # eframe + egui-snarl UI. deps: aic-editor, eframe, egui-snarl, egui_dock, rfd
-   ├─ aic-app-iced/           # EXPERIMENT (ADR 0009, docs/TASK_GUI_ICED.md): iced + iced_nodegraph UI. deps: aic-editor, iced, iced_nodegraph, rfd
    └─ aic-extract/            # LATER (M8): CLI that converts other sources into data/<version>/
 ```
 

@@ -1,5 +1,5 @@
 //! The design tokens of `DESIGN.md` as plain data: colors, radii, type sizes, spacing, shadows and
-//! the fonts. No toolkit here; each UI converts these to its own types. This file is the source of
+//! the fonts. No toolkit here; the app converts these to egui's types. This file is the source of
 //! truth for the look (`DESIGN.md` explains the choices).
 
 /// An sRGB color, red, green, blue, alpha, each 0 to 255.

@@ -1,5 +1,7 @@
 # Two frontends share one GUI-free editor crate
 
+**Superseded by [ADR 0010](0010-one-frontend-editor-crate-stays.md):** the iced frontend was dropped after its spike; `aic-editor` stays.
+
 The app gets a second desktop UI, built in iced 0.14 with iced_nodegraph 0.5, next to the egui one. PLAN M4 said that a failed performance spike would reopen the framework question and that iced was the comparison; the egui spike passed, and the iced UI is now an experiment to see how it compares, not a replacement. Both UIs sit on one crate, `aic-editor`, that holds everything an editor does that isn't drawing: the document and its undo, the selection, editing commands, files and autosave, the Fluent strings, number formatting, settings models, the design tokens and the built-in data. It has no GUI dependency and stays wasm-clean.
 
 ```

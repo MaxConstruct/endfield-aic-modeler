@@ -1,4 +1,4 @@
-//! Fixtures for tests, in this crate and in the UIs (feature `testing`).
+//! Fixtures for tests, in this crate and in the app (feature `testing`).
 
 use std::path::PathBuf;
 

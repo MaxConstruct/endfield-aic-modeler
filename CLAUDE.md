@@ -18,4 +18,4 @@ Read before working:
 6. **Use the glossary's terms in code.** `Facility`, not `Machine`. `Link`, not `Edge`. `Region`, not `Location`. Only `raw.rs` uses factoriolab's names.
 7. **Every user-facing UI string goes through Fluent.** No string literals in widgets.
 8. **Player values are limits and the solver maximizes** (ADR 0003). Never reintroduce exact targets or a "minimize facilities" objective.
-9. Every milestone ends with `cargo test --workspace`, `cargo clippy --workspace -- -D warnings` and `scripts/check-frontends.sh` (no crate gets a dependency ADR 0009 forbids) passing.
+9. Every milestone ends with `cargo test --workspace`, `cargo clippy --workspace -- -D warnings` and `scripts/check-frontends.sh` (no crate gets a dependency ADR 0010 forbids) passing.

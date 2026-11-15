@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# Fails when a crate has a dependency it must not have (ADR 0009). The rules are the table in
-# docs/TASK_GUI_ICED.md section 3:
+# Fails when a crate has a dependency it must not have (ADR 0010):
 #
-#   aic-data       no other aic crate, no GUI crate
-#   aic-core       no aic-editor, no UI crate, no GUI crate
-#   aic-editor     no UI crate, no GUI crate (it stays wasm-clean and toolkit-free)
-#   aic-app   no iced
-#   aic-app-iced   no egui, no eframe
+#   aic-data     no other aic crate, no GUI crate
+#   aic-core     no aic-editor, no aic-app, no GUI crate
+#   aic-editor   no aic-app, no GUI crate (it stays wasm-clean and toolkit-free)
 #
 # "GUI crate" is egui*, eframe, iced*, wgpu, winit and rfd. Normal, build and dev dependencies all
 # count, so a test-only egui_kittest in aic-editor fails too, and so do dependencies of other
-# targets (wasm32) and of optional features. A crate that doesn't exist yet
-# (aic-app-iced, before task B1) is skipped.
+# targets (wasm32) and of optional features.
 #
 #   scripts/check-frontends.sh
 set -euo pipefail
@@ -20,29 +16,20 @@ set -f
 
 cd "$(dirname "$0")/.."
 
-# Crates no lower layer may depend on, and the toolkits.
-ui_crates='aic-editor aic-app aic-app-iced'
-egui_crates='egui egui-* egui_* eframe'
-iced_crates='iced iced_* iced-*'
-gui_crates="$egui_crates $iced_crates wgpu winit rfd"
+ui_crates='aic-editor aic-app'
+gui_crates='egui egui-* egui_* eframe iced iced_* iced-* wgpu winit rfd'
 
 # The crates the named crate must not depend on.
 forbidden_for() {
     case "$1" in
         aic-data) echo "aic-core $ui_crates $gui_crates" ;;
         aic-core) echo "$ui_crates $gui_crates" ;;
-        aic-editor) echo "aic-app aic-app-iced $gui_crates" ;;
-        aic-app) echo "aic-app-iced $iced_crates" ;;
-        aic-app-iced) echo "aic-app $egui_crates" ;;
+        aic-editor) echo "aic-app $gui_crates" ;;
     esac
 }
 
 failed=0
-for crate in aic-data aic-core aic-editor aic-app aic-app-iced; do
-    if [ "$crate" = aic-app-iced ] && [ ! -d crates/aic-app-iced ]; then
-        echo "skip  $crate (not created yet)"
-        continue
-    fi
+for crate in aic-data aic-core aic-editor; do
     tree="$(cargo tree -p "$crate" -e normal,dev,build --target all --all-features --prefix none --color never)"
     # The crate names, one per line: the first word of each line of the tree.
     names="$(printf '%s\n' "$tree" | awk '{print $1}' | sort -u)"

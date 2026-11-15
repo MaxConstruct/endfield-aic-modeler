@@ -1,5 +1,5 @@
-//! App logic shared by the UIs: everything an editor does that isn't drawing. No GUI dependency, and
-//! it builds for the web (ADR 0009).
+//! App logic: everything the editor does that isn't drawing. No GUI dependency, and it builds for the
+//! web (ADR 0010).
 
 pub mod browser;
 pub mod command;
