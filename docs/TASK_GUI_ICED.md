@@ -948,18 +948,17 @@ Add to this list as you go: date, task, what differs from egui or the plan, and 
   in (`now: Instant`), so autosave can be tested without sleeping.
 - (2026-11-15, A6) `crop_png` (plan section 4, `export.rs`) is not in any A task and wasn't moved;
   egui keeps its export code. Whoever builds iced's export (C13) can move it then.
-- (2026-11-15, A2, unrelated bug, cause found in review, still open) Some egui kittest snapshots
-  (`workspace_inside`, `workspace_card`, sometimes `a_new_port_starts_without_an_item_and_an_unlinked_port_warns`
-  and `a_view_of_a_dissolved_workspace_goes_back_to_the_top`) fail on some runs of an unchanged tree
-  (also before Phase A). The cause is not machine flakiness: a toolbar button lit by a key press
-  (Cmd+A, Cmd+G) goes dark after 400 ms of wall-clock time (`toolbar.rs` `FLASH`, `Instant::elapsed`).
-  The stored PNGs show the button LIT (`workspace_inside.png` has Select all lit,
-  `workspace_card.png` has Make workspace lit), so a run that is slow enough to pass 400 ms between
-  the key and the snapshot fails by about 505 px. Timing the flash by egui's clock (tried, then
-  reverted) makes it deterministic, but unlit, because kittest's `run()` keeps stepping while the
-  flash asks for a repaint; that fails every time against the stored lit PNGs. Fixing it without
-  re-recording means freezing the flash in tests (a test-only switch) or changing the tests to wait
-  out the flash and re-recording the PNGs; both need Max's decision.
+- (2026-11-15, A2, unrelated bug, fixed in review) The egui snapshot test
+  `a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports` failed on some runs of an
+  unchanged tree, in `workspace_inside` by about 507 px. The cause: a toolbar button lit by a key
+  press goes dark after 400 ms of wall-clock time (`toolbar.rs` `FLASH`, `Instant::elapsed`), and
+  kittest steps by 0.25 s per frame, so the two race. `workspace_inside.png` was recorded with no
+  button lit; on a fast run the button was still lit and the difference passed the 500 px
+  tolerance. Three other PNGs (`workspace_card`, `workspace_new_port`, `views_workspace_beside_top`)
+  were recorded with a lit button. The fix: `Editor::hold_flash` is a test-only switch that keeps a
+  flash lit until the next key press replaces it, the snapshot harness turns it on, and the
+  workspace test calls `Editor::end_flash` right before the `workspace_inside` snapshot. No PNG was
+  re-recorded and no tolerance changed; production behaviour is the same.
 
 ---
 
