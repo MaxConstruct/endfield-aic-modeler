@@ -19,3 +19,10 @@ Read before working:
 7. **Every user-facing UI string goes through Fluent.** No string literals in widgets.
 8. **Player values are limits and the solver maximizes** (ADR 0003). Never reintroduce exact targets or a "minimize facilities" objective.
 9. Every milestone ends with `cargo test --workspace`, `cargo clippy --workspace -- -D warnings` and `scripts/check-frontends.sh` (no crate gets a dependency ADR 0010 forbids) passing.
+
+## Working here
+
+- **Keep the app light.** Players run it beside the game, most of them on Windows, so it competes with the game for CPU and GPU. Idle must cost nothing: no repaint loops, and no work redone every frame that could be done once per solve or edit. A frame while interacting stays under 8 ms. Measure with `cargo run --release -p aic-app --example perf_app`; `PERF_HEADLESS=1` times the UI's CPU work alone, and `PERF_IDLE=1` and `PERF_MINIMIZE=1` check that idle and minimized windows stop drawing.
+- **Look at the UI through kittest snapshots**, not a launched window. Run `UPDATE_SNAPSHOTS=1 cargo test -p aic-app`, then read `crates/aic-app/tests/snapshots/<name>.png`. Add a snapshot test for each new screen or state you need to see, and review changed PNGs before calling a UI change done. `UPDATE_SNAPSHOTS=1` only rewrites images whose diff passes kittest's threshold, so after a theme or color change delete `crates/aic-app/tests/snapshots/*.png` first, then regenerate. Keep `egui_kittest` on the same minor version as eframe.
+- **Load the Rust skills before a milestone.** From m01–m15 (ownership, type-driven design, error handling, domain, ecosystem, domain errors, anti-patterns), plus `tdd`. Skip the ones that don't apply, such as concurrency when nothing is async, and say which you skipped.
+- **Commit trailers:** end commit messages with the `Co-Authored-By: Claude …` line only. Leave out the `Claude-Session:` link, in pull request descriptions too.
