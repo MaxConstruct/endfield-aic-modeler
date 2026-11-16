@@ -644,6 +644,46 @@ Done, except where noted.
     only on hover and Fluent lookups once a frame. Windowed frames stay about 6 ms mean, 8 ms p95,
     within run-to-run noise. Culling the recipe browser's off-screen rows (about 5% of a frame)
     was tried and dropped: it hides them from AccessKit and moved the snapshots.
+  - 2026-11-16, Windows 11: i5-11400 (6 cores), RTX 4070 Ti, Balanced power plan, with Chrome
+    (10+ tabs), Discord and music open, as when the game runs beside the app. Background load makes
+    single runs noisy, so compare builds only in alternating runs. `perf_app` only; `perf_spike` not
+    yet run here.
+    - Headless was 12.5–13.7 ms idle and 19.9–21.4 ms live values: 3–3.5x the Mac and over the
+      8 ms budget. Windowed (vsync off) 17 / 14 / 20 ms for idle / pan / live values.
+    - GPU is not the cost: 2.4% mean, 4.6% max of the 4070 Ti while redrawing nonstop, 0% idle.
+      Idle draws about 0.8 frames a second (5 of 16 from input events, the rest uncaused, likely
+      from Windows itself); the released app idles at 0.1–1% of one core, with spikes to 6% from
+      background noise whichever allocator is in.
+    - Profiled the headless run with samply (`cargo build --profile profiling`; record with
+      Windows' own `wpr -start CPU -filemode` as administrator, then `samply import` the `.etl`;
+      samply's own recording needs xperf from the Windows Performance Toolkit). About 32% of
+      CPU time was in the Windows heap (`ntdll` allocate and free), spread over hundreds of call
+      sites in epaint text and meshes, microlp and `aic_core::solve`. egui-snarl drawing nodes
+      was about 49% (it lays out every node each frame, on screen or not), the solve 20% (the live
+      half solves every frame on purpose), egui's context lock about 10%, SipHash in our
+      `HashMap`s about 3%. egui deep-copies every text galley each frame (`TextShape::transform`
+      calls `Arc::make_mut` because the snarl layer is transformed for zoom): about 2–3%.
+    - **mimalloc** as the global allocator in `aic-app` (lib.rs, so examples and tests use it
+      too; not on wasm). Headless, 8 alternating runs with the background apps open: idle 12.9 →
+      10.3 ms (−20%), live values 19.9 → 14.6 ms (−26%). Again with them closed (only the IDE),
+      where runs vary under 1%: idle 11.7 → 9.0 ms (−23%; p95 13.7 → 10.1), live values 17.9 →
+      13.0 ms (−27%; p95 19.4 → 14.6). So background load cost about 10–15%. The released app
+      idles under 1% of one core with either allocator (the spread is a few frames' worth).
+      Memory, quiet PC: working set 176–185 → about 200 MB, private 401–414 → 465 MB, since
+      mimalloc keeps freed pages for reuse. The Mac numbers above predate it; re-measure there.
+    - `lto = "fat"` + `codegen-units = 1`: headless idle 13.7 → 12.3 ms (−10%), live values 21.4 →
+      20.0 ms (−7%), at about 6 minutes a release build. Kept out of `release` so it and `profiling`
+      stay quick; applied last, to packaged builds only (see Next).
+  - Next, in order:
+    1. Draw only the nodes on screen. egui-snarl 0.12 lays out all of them every frame
+       (`ui.rs`, the `draw_order` loop); culling needs a patched or upstreamed egui-snarl, and
+       wires to off-screen nodes still need their pin positions (last frame's, say).
+    2. Faster hashing for our own maps: `FxHashMap` (`rustc-hash` 2, already in the tree) where
+       keys are IDs, per the perf book's hashing chapter; then `clippy::disallowed_types` to keep
+       std `HashMap` out.
+    3. Last, when the optimizing is done: a release-like Cargo profile with `lto = "fat"` and
+       `codegen-units = 1` for `scripts/package-*`. Not named `dist`: that is `target/dist/`, where
+       the packaging scripts already write.
 
 ### M8: `aic-extract` CLI
 - `aic-extract <source-kind> <input> --out data/<version>/` writes `data.json` (factoriolab format,

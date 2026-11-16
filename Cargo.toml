@@ -12,3 +12,10 @@ publish = false
 aic-data = { path = "crates/aic-data" }
 aic-core = { path = "crates/aic-core" }
 aic-editor = { path = "crates/aic-editor" }
+
+# Release with line tables, so a profiler can name the lines a frame spends its time on:
+# `cargo build --profile profiling -p aic-app --example perf_app`, then profile
+# `target/profiling/examples/perf_app` (see docs/PLAN.md, M7).
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"

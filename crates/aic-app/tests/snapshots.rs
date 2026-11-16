@@ -11,13 +11,47 @@ use aic_app::picker::Origin;
 use aic_app::store::BrowserFiles;
 use aic_app::{App, WINDOW_SIZE};
 use aic_core::{Graph, NodeId, NodeKind, Port, PortRef, Side, Solution};
-use egui_kittest::Harness;
+use egui_kittest::{Harness, HarnessBuilder};
 use egui_kittest::kittest::Queryable;
 
 const TOLERANCE: f64 = 1e-6;
 
 fn fixture(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(path)
+}
+
+/// Every harness in this file starts here instead of `Harness::builder()`, so only one test at a
+/// time uses the GPU.
+///
+/// Each harness renders through its own wgpu device. With many tests making and using devices at
+/// once, the process sometimes dies with an access violation on Windows (seen on an NVIDIA card,
+/// about one run in three); one test at a time never did. The first harness a test builds takes
+/// the GPU lock, which stays with the test's thread until that thread ends. libtest runs every
+/// test on a thread of its own, so the lock goes when the test does, and a test that builds a
+/// second harness doesn't wait on itself.
+fn builder<State>() -> HarnessBuilder<State> {
+    gpu::hold_for_this_test();
+    Harness::builder()
+}
+
+mod gpu {
+    use std::cell::RefCell;
+    use std::sync::{Mutex, MutexGuard, PoisonError};
+
+    static GPU: Mutex<()> = Mutex::new(());
+
+    thread_local! {
+        static HELD: RefCell<Option<MutexGuard<'static, ()>>> = const { RefCell::new(None) };
+    }
+
+    pub fn hold_for_this_test() {
+        HELD.with_borrow_mut(|held| {
+            if held.is_none() {
+                // A test that failed while holding the lock leaves nothing behind to guard.
+                *held = Some(GPU.lock().unwrap_or_else(PoisonError::into_inner));
+            }
+        });
+    }
 }
 
 fn harness(version_dir: &Path) -> Harness<'static, App> {
@@ -27,7 +61,7 @@ fn harness(version_dir: &Path) -> Harness<'static, App> {
 /// A harness whose clock moves `step_dt` seconds a frame (kittest's default is a quarter second).
 fn harness_stepping(version_dir: &Path, step_dt: f32) -> Harness<'static, App> {
     let catalog = aic_data::load(version_dir, "en").expect("data loads");
-    let mut harness = Harness::builder()
+    let mut harness = builder()
         .with_size(WINDOW_SIZE)
         .with_step_dt(step_dt)
         .build_eframe(|cc| {
@@ -173,7 +207,7 @@ fn flow(solution: &Solution, node: NodeId, item: &str, side: Side) -> Option<f64
 
 #[test]
 fn load_error_screen() {
-    let mut harness = Harness::builder()
+    let mut harness = builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
             aic_app::theme::install(&cc.egui_ctx);
@@ -880,7 +914,7 @@ fn the_port_menu_clears_the_ports_links() {
 #[test]
 fn inspector_starts_closed() {
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").expect("data loads");
-    let mut harness = Harness::builder()
+    let mut harness = builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
             aic_app::theme::install(&cc.egui_ctx);
@@ -1175,7 +1209,7 @@ fn round_up_shows_whole_facilities_and_how_busy_they_are() {
 fn data_folder_app() -> Harness<'static, App> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures");
     let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
-    let mut harness = Harness::builder()
+    let mut harness = builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(move |cc| {
             aic_app::theme::install(&cc.egui_ctx);
@@ -1198,7 +1232,7 @@ fn a_saved_data_version_that_fails_to_load_is_not_kept_as_the_choice() {
         language: None,
     };
     eframe::set_value(&mut storage, aic_app::data::STORAGE_KEY, &saved);
-    let mut harness = Harness::builder()
+    let mut harness = builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(move |cc| {
             aic_app::theme::install(&cc.egui_ctx);
@@ -1714,7 +1748,7 @@ fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes(
 
     // As at startup: the document is reopened before the first frame is drawn.
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
-    let mut again = Harness::builder()
+    let mut again = builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
             aic_app::theme::install(&cc.egui_ctx);
@@ -2282,7 +2316,7 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
     eframe::App::save(harness.state_mut(), &mut storage);
 
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
-    let mut again = Harness::builder()
+    let mut again = builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
             aic_app::theme::install(&cc.egui_ctx);
@@ -2477,7 +2511,7 @@ fn the_layout_of_the_views_is_kept_with_the_settings() {
     eframe::App::save(harness.state_mut(), &mut storage);
 
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
-    let mut again = Harness::builder()
+    let mut again = builder()
         .with_size(WINDOW_SIZE)
         .build_eframe(|cc| {
             aic_app::theme::install(&cc.egui_ctx);

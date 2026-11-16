@@ -21,6 +21,14 @@ pub mod views;
 mod web;
 mod widgets;
 
+/// mimalloc instead of the system allocator on the desktop. A frame makes many small allocations
+/// (egui text and meshes, the solver's model), and on Windows the system heap took about a third
+/// of each frame's CPU time. Declared here rather than in `main.rs`, so the perf examples and the
+/// tests run on the same allocator as the app.
+#[cfg(not(target_arch = "wasm32"))]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 use std::path::PathBuf;

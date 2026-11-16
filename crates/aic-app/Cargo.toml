@@ -36,6 +36,10 @@ web-sys = { version = "0.3", features = [
     "Window",
 ] }
 
+# The allocator on the desktop: Windows' own heap took about a third of each frame (PLAN.md, M7).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mimalloc = "0.1.52"
+
 [dev-dependencies]
 aic-editor = { workspace = true, features = ["testing"] }
 egui_kittest = { version = "0.36", features = ["wgpu", "snapshot", "eframe"] }
