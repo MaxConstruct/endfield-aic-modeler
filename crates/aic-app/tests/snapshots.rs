@@ -11,8 +11,8 @@ use aic_app::picker::Origin;
 use aic_app::store::BrowserFiles;
 use aic_app::{App, WINDOW_SIZE};
 use aic_core::{Graph, NodeId, NodeKind, Port, PortRef, Side, Solution};
-use egui_kittest::{Harness, HarnessBuilder};
 use egui_kittest::kittest::Queryable;
+use egui_kittest::{Harness, HarnessBuilder};
 
 const TOLERANCE: f64 = 1e-6;
 
@@ -207,16 +207,14 @@ fn flow(solution: &Solution, node: NodeId, item: &str, side: Side) -> Option<f64
 
 #[test]
 fn load_error_screen() {
-    let mut harness = builder()
-        .with_size(WINDOW_SIZE)
-        .build_eframe(|cc| {
-            aic_app::theme::install(&cc.egui_ctx);
-            App::new(
-                Strings::english(),
-                Err("no data folder found (tried ./data)".into()),
-                None,
-            )
-        });
+    let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
+        aic_app::theme::install(&cc.egui_ctx);
+        App::new(
+            Strings::english(),
+            Err("no data folder found (tried ./data)".into()),
+            None,
+        )
+    });
     harness.run();
     harness.get_by_label("Could not load game data");
     harness.snapshot("load_error");
@@ -914,12 +912,10 @@ fn the_port_menu_clears_the_ports_links() {
 #[test]
 fn inspector_starts_closed() {
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").expect("data loads");
-    let mut harness = builder()
-        .with_size(WINDOW_SIZE)
-        .build_eframe(|cc| {
-            aic_app::theme::install(&cc.egui_ctx);
-            App::new(Strings::english(), Ok(catalog), None)
-        });
+    let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
+        aic_app::theme::install(&cc.egui_ctx);
+        App::new(Strings::english(), Ok(catalog), None)
+    });
     harness.run();
     assert!(harness.query_by_label("Totals").is_none());
 }
@@ -1209,12 +1205,10 @@ fn round_up_shows_whole_facilities_and_how_busy_they_are() {
 fn data_folder_app() -> Harness<'static, App> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures");
     let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
-    let mut harness = builder()
-        .with_size(WINDOW_SIZE)
-        .build_eframe(move |cc| {
-            aic_app::theme::install(&cc.egui_ctx);
-            App::from_folder(Strings::english(), folder.clone(), None)
-        });
+    let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
+        aic_app::theme::install(&cc.egui_ctx);
+        App::from_folder(Strings::english(), folder.clone(), None)
+    });
     hide_performance(&mut harness);
     harness.run();
     harness
@@ -1232,12 +1226,10 @@ fn a_saved_data_version_that_fails_to_load_is_not_kept_as_the_choice() {
         language: None,
     };
     eframe::set_value(&mut storage, aic_app::data::STORAGE_KEY, &saved);
-    let mut harness = builder()
-        .with_size(WINDOW_SIZE)
-        .build_eframe(move |cc| {
-            aic_app::theme::install(&cc.egui_ctx);
-            App::from_folder(Strings::english(), folder.clone(), Some(&storage))
-        });
+    let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
+        aic_app::theme::install(&cc.egui_ctx);
+        App::from_folder(Strings::english(), folder.clone(), Some(&storage))
+    });
     hide_performance(&mut harness);
     harness.run();
     assert_eq!(editor(&mut harness).catalog().version(), "v1.10.0");
@@ -1748,14 +1740,12 @@ fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes(
 
     // As at startup: the document is reopened before the first frame is drawn.
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
-    let mut again = builder()
-        .with_size(WINDOW_SIZE)
-        .build_eframe(|cc| {
-            aic_app::theme::install(&cc.egui_ctx);
-            let mut app = App::new(Strings::english(), Ok(catalog), None);
-            app.editor_mut().unwrap().reopen(&path);
-            app
-        });
+    let mut again = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
+        aic_app::theme::install(&cc.egui_ctx);
+        let mut app = App::new(Strings::english(), Ok(catalog), None);
+        app.editor_mut().unwrap().reopen(&path);
+        app
+    });
     again.run();
     let ws = editor(&mut again);
     let id = ws.document().graph().nodes().keys().next().unwrap();
@@ -2316,12 +2306,10 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
     eframe::App::save(harness.state_mut(), &mut storage);
 
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
-    let mut again = builder()
-        .with_size(WINDOW_SIZE)
-        .build_eframe(|cc| {
-            aic_app::theme::install(&cc.egui_ctx);
-            App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
-        });
+    let mut again = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
+        aic_app::theme::install(&cc.egui_ctx);
+        App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
+    });
     again.run();
     assert_eq!(node_count(&mut again), 1);
     assert!(editor(&mut again).document().is_draft());
@@ -2511,12 +2499,10 @@ fn the_layout_of_the_views_is_kept_with_the_settings() {
     eframe::App::save(harness.state_mut(), &mut storage);
 
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
-    let mut again = builder()
-        .with_size(WINDOW_SIZE)
-        .build_eframe(|cc| {
-            aic_app::theme::install(&cc.egui_ctx);
-            App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
-        });
+    let mut again = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
+        aic_app::theme::install(&cc.egui_ctx);
+        App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
+    });
     again.run();
     let keys = views(&mut again);
     assert_eq!(keys.len(), 3);

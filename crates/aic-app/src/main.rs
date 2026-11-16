@@ -11,6 +11,9 @@ use aic_app::WINDOW_SIZE;
 use aic_app::data::DataFolder;
 use aic_app::i18n::Strings;
 
+#[cfg(windows)]
+mod startup_cloak;
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     let strings = Strings::english();
@@ -22,10 +25,16 @@ fn main() -> eframe::Result {
             .with_inner_size(WINDOW_SIZE),
         ..Default::default()
     };
+    // eframe keeps the window hidden until its first frame, but on Windows restoring a maximized
+    // window shows it blank for a moment while it's built; cloak it until then.
+    #[cfg(windows)]
+    startup_cloak::install(&title);
     eframe::run_native(
         &title,
         options,
         Box::new(|cc| {
+            #[cfg(windows)]
+            startup_cloak::reveal();
             aic_app::theme::install(&cc.egui_ctx);
             Ok(Box::new(App::from_folder(strings, folder, cc.storage)))
         }),
