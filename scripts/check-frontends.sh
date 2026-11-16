@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Fails when a crate has a dependency it must not have (ADR 0010):
+# Fails when a crate has a dependency it must not have (ADR 0010, ADR 0011):
 #
 #   aic-data     no other aic crate, no GUI crate
-#   aic-core     no aic-editor, no aic-app, no GUI crate
-#   aic-editor   no aic-app, no GUI crate (it stays wasm-clean and toolkit-free)
+#   aic-core     no aic-editor, no aic-node-graph, no aic-app, no GUI crate
+#   aic-editor   no aic-node-graph, no aic-app, no GUI crate (it stays wasm-clean and toolkit-free)
 #
-# "GUI crate" is egui*, eframe, iced*, wgpu, winit and rfd. Normal, build and dev dependencies all
-# count, so a test-only egui_kittest in aic-editor fails too, and so do dependencies of other
-# targets (wasm32) and of optional features.
+# "GUI crate" is egui*, eframe, iced*, wgpu, winit and rfd. aic-node-graph would also be caught
+# through its egui; it is named so the failure says which crate came in. Normal, build and dev
+# dependencies all count, so a test-only egui_kittest in aic-editor fails too, and so do
+# dependencies of other targets (wasm32) and of optional features.
 #
 #   scripts/check-frontends.sh
 set -euo pipefail
@@ -16,7 +17,7 @@ set -f
 
 cd "$(dirname "$0")/.."
 
-ui_crates='aic-editor aic-app'
+ui_crates='aic-editor aic-node-graph aic-app'
 gui_crates='egui egui-* egui_* eframe iced iced_* iced-* wgpu winit rfd'
 
 # The crates the named crate must not depend on.
@@ -24,7 +25,7 @@ forbidden_for() {
     case "$1" in
         aic-data) echo "aic-core $ui_crates $gui_crates" ;;
         aic-core) echo "$ui_crates $gui_crates" ;;
-        aic-editor) echo "aic-app $gui_crates" ;;
+        aic-editor) echo "aic-node-graph aic-app $gui_crates" ;;
     esac
 }
 

@@ -53,3 +53,5 @@ windows-sys = { version = "0.61", features = [
 [dev-dependencies]
 aic-editor = { workspace = true, features = ["testing"] }
 egui_kittest = { version = "0.36", features = ["wgpu", "snapshot", "eframe"] }
+# Performance spike only (examples/perf_spike_graph.rs): the canvas on our copy of egui_graph.
+aic-node-graph.workspace = true

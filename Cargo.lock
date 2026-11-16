@@ -160,6 +160,7 @@ dependencies = [
  "aic-core",
  "aic-data",
  "aic-editor",
+ "aic-node-graph",
  "eframe",
  "egui-snarl",
  "egui_dock",
@@ -213,6 +214,14 @@ dependencies = [
  "serde_json",
  "unic-langid",
  "web-time",
+]
+
+[[package]]
+name = "aic-node-graph"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "siphasher",
 ]
 
 [[package]]

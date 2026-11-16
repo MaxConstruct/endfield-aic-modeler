@@ -1,0 +1,16 @@
+[package]
+name = "aic-node-graph"
+description = "Node graph widget for egui. A copy of egui_graph 0.19.1 (SOURCE.md); no aic crate."
+version.workspace = true
+# egui_graph's edition, not the workspace's, so the copied code stays as upstream wrote it.
+edition = "2021"
+# egui_graph's licence (LICENSE-MIT), not the workspace's MIT OR Apache-2.0 (ADR 0011).
+license = "MIT"
+publish = false
+
+[lib]
+name = "aic_node_graph"
+
+[dependencies]
+egui = { version = "0.36", default-features = false }
+siphasher = { version = "1.0", default-features = false }

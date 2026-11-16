@@ -18,6 +18,11 @@
 //! - `SPIKE_CULL=1`: skip the widgets of off-screen nodes, allocating their last size instead.
 //! - `SPIKE_NO_LABELS=1`: no link labels.
 //! - `SPIKE_NO_LINKS=1`: no links at all.
+//! - `SPIKE_HEADLESS=1`: open no window. Build and tessellate the UI for the same phases, feeding
+//!   the same scripted input, and print the CPU time per frame (as `perf_app`'s `PERF_HEADLESS`).
+
+// Links `aic_app`, whose global allocator (mimalloc) the app runs on.
+use aic_app as _;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -94,6 +99,8 @@ struct Viewer<'a> {
     to_global: &'a mut TSTransform,
     script_transform: Option<TSTransform>,
     cull: Option<&'a mut Cull>,
+    /// Headless only, on an untimed frame: where each node was drawn.
+    record: Option<&'a mut Vec<Rect>>,
 }
 
 /// Skips the widgets of nodes that were off screen last frame, allocating their last size instead.
@@ -225,6 +232,9 @@ impl SnarlViewer<SpikeNode> for Viewer<'_> {
         if let Some(cull) = self.cull.as_deref_mut() {
             cull.node_rects.insert(node, rect);
         }
+        if let Some(record) = self.record.as_deref_mut() {
+            record.push(rect);
+        }
     }
 
     fn draw_background(
@@ -271,6 +281,10 @@ struct Spike {
     adapter: String,
     wire_drag: Option<Pos2>,
     cull: Option<Cull>,
+    /// Headless: print no windowed report.
+    headless: bool,
+    /// Headless: when set, the next frame records where each node is drawn.
+    record: Option<Vec<Rect>>,
 }
 
 impl Spike {
@@ -283,6 +297,10 @@ impl Spike {
                 format!("{} ({:?})", info.name, info.backend)
             })
             .unwrap_or_default();
+        Self::with_adapter(adapter)
+    }
+
+    fn with_adapter(adapter: String) -> Self {
         let mut snarl = Snarl::new();
         let mut ids = Vec::with_capacity(NODES);
         for i in 0..NODES {
@@ -341,6 +359,8 @@ impl Spike {
                 node_rects: HashMap::new(),
                 sizes: HashMap::new(),
             }),
+            headless: false,
+            record: None,
         }
     }
 
@@ -511,6 +531,7 @@ impl eframe::App for Spike {
                     to_global: &mut self.to_global,
                     script_transform,
                     cull: self.cull.as_mut(),
+                    record: self.record.as_mut(),
                 };
                 SnarlWidget::new()
                     .id(Id::new(CANVAS))
@@ -537,7 +558,7 @@ impl eframe::App for Spike {
         self.frame_in_phase += 1;
         if self.frame_in_phase >= WARMUP + FRAMES {
             self.finish_phase(phase);
-            if self.current().is_none() {
+            if self.current().is_none() && !self.headless {
                 self.report();
             }
         }
@@ -545,7 +566,134 @@ impl eframe::App for Spike {
     }
 }
 
+/// The headless run: UI build plus tessellation per frame, per phase, with no window and the
+/// same scripted input as the windowed run.
+fn headless() {
+    let ctx = egui::Context::default();
+    let mut spike = Spike::with_adapter(String::new());
+    spike.headless = true;
+    let screen = Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 900.0));
+    let mut time = 0.0;
+    let mut times: Vec<(Phase, Vec<f64>)> = PHASES.iter().map(|&p| (p, Vec::new())).collect();
+    // Per phase: tessellation times, and the shapes, clipped primitives and vertices of its last frame.
+    let mut tess: Vec<Vec<f64>> = vec![Vec::new(); PHASES.len()];
+    let mut counts = vec![(0, 0, 0); PHASES.len()];
+    let mut views = Vec::new();
+    let mut wire_frames = 0;
+    let mut passes = 0;
+    while let Some(phase) = spike.current() {
+        let frame_in_phase = spike.frame_in_phase;
+        // The last, untimed warm-up frame of each phase records where the nodes are drawn.
+        if frame_in_phase == WARMUP - 1 {
+            spike.record = Some(Vec::new());
+        }
+        time += 1.0 / 60.0;
+        let mut input = egui::RawInput {
+            screen_rect: Some(screen),
+            time: Some(time),
+            ..Default::default()
+        };
+        eframe::App::raw_input_hook(&mut spike, &ctx, &mut input);
+        let passes_before = ctx.cumulative_pass_nr();
+        let started = Instant::now();
+        let output = ctx.run_ui(input, |ui| {
+            eframe::App::ui(&mut spike, ui, &mut eframe::Frame::_new_kittest());
+        });
+        let shapes = output.shapes.len();
+        let tess_started = Instant::now();
+        let primitives = ctx.tessellate(output.shapes, output.pixels_per_point);
+        let tess_ms = tess_started.elapsed().as_secs_f64() * 1000.0;
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+        if frame_in_phase >= WARMUP {
+            let index = PHASES.iter().position(|&p| p == phase).expect("a phase");
+            times[index].1.push(ms);
+            tess[index].push(tess_ms);
+            let vertices: usize = primitives
+                .iter()
+                .map(|p| match &p.primitive {
+                    egui::epaint::Primitive::Mesh(mesh) => mesh.vertices.len(),
+                    egui::epaint::Primitive::Callback(_) => 0,
+                })
+                .sum();
+            counts[index] = (shapes, primitives.len(), vertices);
+            passes += ctx.cumulative_pass_nr() - passes_before;
+            if phase == Phase::NewWire && ctx.dragged_id().is_some() {
+                wire_frames += 1;
+            }
+        }
+        if let Some(rects) = spike.record.take() {
+            let viewport = spike.to_global.inverse() * screen;
+            let in_view = rects.iter().filter(|r| r.intersects(viewport)).count();
+            let size = rects
+                .iter()
+                .map(|r| r.size())
+                .fold(egui::Vec2::ZERO, |a, b| a + b)
+                / rects.len().max(1) as f32;
+            views.push((phase, spike.to_global, in_view, rects.len(), size));
+        }
+    }
+    println!(
+        "snarl headless: {NODES} nodes, {} links, cull {}",
+        spike.snarl.wires().count(),
+        spike.cull.is_some()
+    );
+    for (phase, to_global, in_view, drawn, size) in views {
+        println!(
+            "  {:<10} at its start: scaling {:.4}, translation [{:.1} {:.1}], nodes in view \
+             {in_view}/{drawn}, mean node size [{:.1} {:.1}]",
+            format!("{phase:?}"),
+            to_global.scaling,
+            to_global.translation.x,
+            to_global.translation.y,
+            size.x,
+            size.y
+        );
+    }
+    println!("new wire: a widget drag was active in {wire_frames}/{FRAMES} timed frames");
+    println!(
+        "egui passes per timed frame: {:.3}",
+        passes as f64 / (FRAMES * PHASES.len()) as f64
+    );
+    for (index, phase) in PHASES.iter().enumerate() {
+        let (shapes, primitives, vertices) = counts[index];
+        println!(
+            "  {:<10} tessellation {:.3} ms of the frame; last frame: {shapes} shapes, \
+             {primitives} primitives, {vertices} vertices",
+            format!("{phase:?}"),
+            tess[index].iter().sum::<f64>() / tess[index].len().max(1) as f64
+        );
+    }
+    print_headless(&times);
+}
+
+/// Mean, median, p95 and max per phase, in ms.
+fn print_headless(times: &[(Phase, Vec<f64>)]) {
+    println!(
+        "{:<12} {:>9} {:>9} {:>9} {:>9}",
+        "phase", "mean ms", "median ms", "p95 ms", "max ms"
+    );
+    for (phase, times) in times {
+        let mut sorted = times.clone();
+        sorted.sort_by(f64::total_cmp);
+        let mean = sorted.iter().sum::<f64>() / sorted.len().max(1) as f64;
+        let median = sorted.get(sorted.len() / 2).copied().unwrap_or_default();
+        let p95 = sorted
+            .get((sorted.len() * 95 / 100).min(sorted.len().saturating_sub(1)))
+            .copied()
+            .unwrap_or_default();
+        let max = sorted.last().copied().unwrap_or_default();
+        println!(
+            "{:<12} {mean:>9.3} {median:>9.3} {p95:>9.3} {max:>9.3}",
+            format!("{phase:?}")
+        );
+    }
+}
+
 fn main() -> eframe::Result {
+    if std::env::var("SPIKE_HEADLESS").is_ok_and(|v| v == "1") {
+        headless();
+        return Ok(());
+    }
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1600.0, 900.0]),
         ..Default::default()
