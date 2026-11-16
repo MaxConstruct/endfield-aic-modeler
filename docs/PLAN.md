@@ -14,11 +14,15 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 - [0004](adr/0004-throughput-measured-at-origins-and-sinks.md): pass-1 throughput is measured at origins and sinks.
 - [0008](adr/0008-views-are-layout-not-document.md): views are layout state, not part of the document.
 - [0010](adr/0010-one-frontend-editor-crate-stays.md): one UI (egui) over a GUI-free editor crate; supersedes [0009](adr/0009-two-frontends-one-editor-crate.md).
+- [0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md): the canvas is drawn by `aic-node-graph`, our own copy of egui_graph, in place of egui-snarl (M11).
 
 Tech:
 
 - Language: Rust (stable, edition 2024)
-- UI: `egui` via `eframe`, with `egui-snarl` for the node canvas. This is the shipping UI. Its
+- UI: `egui` via `eframe`, with `egui-snarl` for the node canvas. This is the shipping UI. M11
+  moves the canvas to `aic-node-graph`, our copy of egui_graph
+  ([ADR 0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md)); until it lands, this file
+  describes the egui-snarl canvas. Its
   app logic lives in the GUI-free `aic-editor` crate. An iced frontend (iced 0.14 + iced_nodegraph)
   was tried beside it and dropped after its performance spike failed; see
   [ADR 0010](adr/0010-one-frontend-editor-crate-stays.md) and
@@ -674,10 +678,26 @@ Done, except where noted.
     - `lto = "fat"` + `codegen-units = 1`: headless idle 13.7 → 12.3 ms (−10%), live values 21.4 →
       20.0 ms (−7%), at about 6 minutes a release build. Kept out of `release` so it and `profiling`
       stay quick; applied last, to packaged builds only (see Next).
+  - 2026-11-17, same Windows PC, background apps open: egui-snarl against egui_graph 0.19.1 on
+    the M4 spike's graph (300 nodes, 600 links, a rate label on every port and link).
+    `SPIKE_HEADLESS=1` on `perf_spike` (egui-snarl) and `perf_spike_graph` (egui_graph) times UI
+    build plus tessellation with no window; both on mimalloc. Means of 6 alternating runs:
+    - Zoomed in (`SPIKE_SCALE=1.0`, 35 of 300 nodes on screen): idle 10.75 ms for egui-snarl,
+      8.86 ms with the spike's own culling (`SPIKE_CULL=1`), 4.73 ms for egui_graph's
+      `Node::show_or_cull`. Live values 12.02 / 9.71 / 5.40 ms. egui_graph without culling
+      (`Node::show`) was 9.93 ms idle, so the gain is the culling.
+    - All 300 on screen: idle 15.54 ms for egui-snarl, 18.66 ms for egui_graph. The gap is
+      tessellating links: egui_graph cuts a link into a point every 5 graph units at any zoom,
+      418k vertices a frame against egui-snarl's 180k. A point every 5 screen pixels
+      (`SPIKE_EDGE_DPP=5`, which is `Edge::distance_per_point(5.0 / zoom)`) gave 15.39 ms against
+      15.55 ms. Without links the two were level (11.86 / 11.73 ms).
+    - egui_graph's two sublayers per node, its memory lock and its position animation were each
+      timed and removed in a scratch copy: together under 0.5 ms, inside the noise.
+    - So culling brings a zoomed-in view under the 8 ms budget, and nothing here helps a view of
+      the whole graph, about 15 ms in both. The spike's cards are plainer than the app's (no
+      icons, fewer widgets); the app's numbers will be higher on both sides.
   - Next, in order:
-    1. Draw only the nodes on screen. egui-snarl 0.12 lays out all of them every frame
-       (`ui.rs`, the `draw_order` loop); culling needs a patched or upstreamed egui-snarl, and
-       wires to off-screen nodes still need their pin positions (last frame's, say).
+    1. Draw only the nodes on screen: M11, which moves the canvas to our own copy of egui_graph.
     2. Faster hashing for our own maps: `FxHashMap` (`rustc-hash` 2, already in the tree) where
        keys are IDs, per the perf book's hashing chapter; then `clippy::disallowed_types` to keep
        std `HashMap` out.
@@ -752,6 +772,100 @@ Cmd/Ctrl+W. With one view there is no tab bar.
   other the same frame; a shared selection; a dissolved workspace's view falls back to the top.
 - Not in M10: several documents open at once, a selection per view, dockable side panels, synced
   scrolling between views, minimaps.
+
+### M11: The canvas on `aic-node-graph`
+Planned ([ADR 0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md)); the spike's numbers are
+under M7. The canvas moves from egui-snarl to `crates/aic-node-graph`, a copy of egui_graph 0.19.1
+that is ours to change. The player should notice nothing but the speed: every card, port, link,
+label, menu, shortcut and mouse habit stays as M4 to M10 left it.
+
+Work on the `exp/node-graph-optimize` branch, one commit per step. Steps 1 and 2 leave the app on
+egui-snarl and pass the milestone checks on their own. Step 3 is the switch.
+
+1. **Copy the crate in.**
+   - Copy `src/` of egui_graph at commit `1a5e2b5` (v0.19.1) to `crates/aic-node-graph/src/`,
+     with its tests and without `layout/` (the automatic layout), `examples/` and the `layout`
+     and `serde` features. Copy `LICENSE-MIT` unchanged. `Cargo.toml`: `license = "MIT"`, its
+     own `edition = "2021"`, dependencies `egui` 0.36 and `siphasher`.
+   - `SOURCE.md` in the crate: where it came from, the commit, what was left out, and a list of
+     the changes made here, kept up to date from step 2 on.
+   - Add it to the workspace. `scripts/check-frontends.sh` forbids it for `aic-data`,
+     `aic-core` and `aic-editor`. `CLAUDE.md` rule 6 names it beside `raw.rs` as code that keeps
+     another vocabulary (edge, socket), and rule 9's checks cover it like any crate.
+   - Point `perf_spike_graph` at the crate and drop the dev-dependency on the clone outside the
+     repo, which must never be committed.
+   - **Done when:** its own tests pass under `cargo test --workspace`, clippy is clean, and
+     `SPIKE_HEADLESS=1` on `perf_spike_graph` gives the numbers of 2026-11-17.
+2. **Change the widget to suit the canvas.** Each change test-first in the crate, the way its own
+   tests drive a graph one pass at a time with `RawInput`. It is our widget now, so the
+   conventions are changed in place, not made into options.
+   - **A link starts inside the card.** A node's content can name a rect as the handle of one of
+     its sockets. A press on a handle starts an edge from that socket; a press anywhere else on
+     the frame still drags the node; a release on a handle ends an edge there. The socket's own
+     half-disc can be turned off, since the card draws its ports itself.
+   - **The mouse.** A primary drag on the background pans. A click selects one node, Shift+click
+     adds or removes one, a click on the background clears. A box is drawn by a secondary drag
+     on the background, or a primary drag with Shift; Shift adds what it touches to the
+     selection and Cmd/Ctrl takes it away. A secondary click without a drag is reported, with
+     its place, for the picker. Dragging a selected node moves the selection; dragging any other
+     node moves that node alone.
+   - **Scrolling is the app's.** The widget neither pans nor zooms on the wheel; the app sets
+     `View::scene_rect` (whole 5% zoom steps around the pointer, Shift+wheel pans sideways).
+   - **The selection is the app's.** It goes in every frame and changes come back, as now
+     (`selected_nodes`, `selection_changed`). The widget stops handling Delete and Backspace.
+   - **Links by the pixel.** An edge is cut into a point every 5 screen pixels, not every 5
+     graph units.
+   - **Done when:** the crate's tests cover each of these, and `perf_spike_graph`, moved to the
+     new conventions, is no slower.
+3. **Switch the canvas.** `canvas.rs` keeps its `CanvasEvent`s, so `editor.rs` and everything
+   behind it stay as they are.
+   - `DocView` loses its second graph. A member's widget id is made from its `NodeId` or
+     `WorkspaceId`; what is left to keep in step is each member's position, and a node drag is
+     handed to the document when it ends (`GraphResponse::nodes_moved`). `ViewId` and
+     `reconcile`'s adding and removing of view nodes and wires go.
+   - A card is one closure: the tinted header, a port row per item (the item's icon as the
+     socket's handle, the rate beside it, `SocketLayout::row` lining the socket up), and the
+     body. The drawing code moves over from the `SnarlViewer` callbacks nearly as it is.
+     Cards show with `Node::show_or_cull`; the card whose limit field has focus shows with
+     `Node::show`, so typing survives the card leaving the view.
+   - Sharp text as now: cards are laid out at `VIEW_SCALE` and the zoom stops at 1 in view
+     space. egui-snarl scaled the style for us; the canvas now does it, with `egui-scale` as a
+     dependency of `aic-app` itself (today it comes in through egui-snarl).
+   - One edge per pair of ports shown, as there is one wire now. Link labels are painted with
+     the edge, at the middle of its path; a click on a label selects the link.
+   - Port clicks are the card's own widgets: a double-click opens the port menu, a right-click
+     unlinks the port or opens the picker for it. A link dropped on empty canvas
+     (`EdgeEvent::Cancelled` with the pointer over the background) opens the picker there. A
+     card's menu is its response's context menu.
+   - The camera is `View::scene_rect`, one per view and level. `Canvas::view`, `show_view`,
+     `zoom_to`, `to_screen`, `item_on_screen` and `port_on_screen` are rewritten on it and on
+     the widget's node sizes and socket places. A workspace's ports are placed on the canvas
+     edges from the camera before the graph is shown. A view that moves on screen (a tab
+     dragged, a split resized) keeps showing what it showed.
+   - Snapping, alignment guides and panning near the edge during a drag come with egui_graph.
+     Off at first, so the switch changes nothing the player sees; turning them on is a later
+     choice.
+   - Tests: every canvas snapshot is deleted, regenerated and looked at. A test that finds an
+     off-screen card by its label brings it into view first. New: a snapshot of a zoomed-in
+     view with cards cut by the edge, and a test that a link to a card out of view still ends
+     at its port.
+   - **Done when:** the M4 "done when" graphs can be rebuilt by hand as before, the canvas
+     tests of M4 to M10 pass, and each view of a split shows and edits the graph.
+4. **Take egui-snarl out.** The dependency, `examples/perf_spike.rs` (the egui_graph spike
+   takes its name), the egui-snarl style in `theme.rs`, and its name in this file's Tech,
+   workspace and crate-version sections, `CLAUDE.md`, `DESIGN.md` and `PRODUCT.md`.
+5. **Measure and write it down** here, on Windows and the Mac, with `perf_app`.
+   - Zoomed in to part of the 201-node graph: under 8 ms a frame while panning and with live
+     values, headless and windowed. `perf_app` needs a zoomed-in phase for this.
+   - The whole graph on screen: no slower than egui-snarl was (headless on the quiet PC,
+     9.0 ms idle and 13.0 ms live values).
+   - `PERF_IDLE=20` and `PERF_MINIMIZE=1` still draw no frames. egui_graph asks for repaints
+     while it animates a node's position or pans near an edge; neither may fire at rest.
+   - The web build runs (`scripts/build-web.sh`).
+
+Not in M11: a cheaper card for a view zoomed far out, which is what the whole-graph budget needs
+and is easier now that a card is ours to draw; automatic layout; selecting a link by clicking the
+link itself. The M7 list goes on from its item 2 (faster hashing) after this.
 
 ---
 

@@ -1,5 +1,7 @@
 # One frontend; the editor crate stays
 
+**Amended by [ADR 0011](0011-canvas-on-our-own-copy-of-egui-graph.md):** the canvas is drawn by `aic-node-graph`, our copy of egui_graph, in place of egui-snarl. The rest stands.
+
 ADR 0009 put a second desktop UI, in iced 0.14 with iced_nodegraph 0.5, beside the egui one, over a shared GUI-free crate, `aic-editor`. The iced UI is dropped, and egui with egui-snarl stays the only UI. `aic-editor` stays: the egui app keeps its document, undo, selection, editing commands, files, autosave, settings, Fluent strings, style tokens and built-in data there, and draws only.
 
 ```
