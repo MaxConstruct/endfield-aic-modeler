@@ -698,6 +698,7 @@ Done, except where noted.
       icons, fewer widgets); the app's numbers will be higher on both sides.
   - Next, in order:
     1. Draw only the nodes on screen: M11, which moves the canvas to our own copy of egui_graph.
+       Items 2 and 3 are now steps of M12.
     2. Faster hashing for our own maps: `FxHashMap` (`rustc-hash` 2, already in the tree) where
        keys are IDs, per the perf book's hashing chapter; then `clippy::disallowed_types` to keep
        std `HashMap` out.
@@ -865,7 +866,53 @@ egui-snarl and pass the milestone checks on their own. Step 3 is the switch.
 
 Not in M11: a cheaper card for a view zoomed far out, which is what the whole-graph budget needs
 and is easier now that a card is ours to draw; automatic layout; selecting a link by clicking the
-link itself. The M7 list goes on from its item 2 (faster hashing) after this.
+link itself. The M7 list goes on from its item 2 (faster hashing) in M12.
+
+### M12: Less work per frame
+Planned, after M11, since its first three steps touch `canvas.rs`, which M11 rewrites. It takes
+over items 2 and 3 of M7's list and adds what a read of the
+[Rust Performance Book](https://nnethercote.github.io/perf-book/) turned up (2026-11-17). On
+Windows a third of a frame's CPU time was in the heap, spread over hundreds of call sites (M7);
+mimalloc made each allocation cheaper, and this milestone makes fewer of them.
+
+Each step is measured on its own with `perf_app`, headless, in alternating runs, and its numbers
+are written here. A step that gains nothing is dropped, not kept for tidiness.
+
+1. **Find the allocation sites.** Run the headless `perf_app` once under
+   [dhat-rs](https://crates.io/crates/dhat) (it works on Windows; behind a feature of `aic-app`,
+   since it replaces the global allocator) and list the sites by allocations per frame. The
+   steps below are the ones already known; reorder them by what it shows.
+2. **IDs that cost nothing to copy or hash.** `ItemId`, `RecipeId`, `FacilityId` and `RegionId`
+   are `String` newtypes, and `Port` holds an `ItemId`. The canvas clones a `String` for every
+   port of every card each frame to build the key for `Solution::port_flow`, and the lookup
+   hashes the string. Make the IDs small integers interned in the `Catalog` (M1 foresaw
+   "interned `u32` later if profiling says so"), `Copy`, with the game ID as text one lookup
+   away. Ground rule 2 stands: an ID still is the game ID, and files, the overlay and i18n keep
+   the text. A graph must keep IDs the active data lacks (`MissingRecipe`, a save from another
+   data version), so the interner belongs to the session, not to one `Catalog`, or unknown IDs
+   get their own entries; settle that first.
+3. **Faster hashing** (M7 item 2). `FxHashMap` and `FxHashSet` (`rustc-hash` 2, already in the
+   tree) for our own maps keyed by IDs, in `aic-core`, `aic-editor` and `aic-app`. Then a
+   `clippy.toml` with
+   `disallowed-types = ["std::collections::HashMap", "std::collections::HashSet"]` to keep the
+   std ones out. No map here takes keys from outside the app, so HashDoS is not a concern. After
+   step 2, since Fx is at its best on integers.
+4. **Rates formatted once per solve.** `format::short` builds a `String` for every rate on the
+   canvas every frame, and rates change only when the solution does. Keep the formatted text
+   with the solution's generation and hand out `&str`. The same for link labels.
+5. **A test that counts.** dhat-rs's heap usage testing: one test that draws a fixed graph for a
+   frame and fails when the frame allocates more than it does today, so the count doesn't creep
+   back up.
+6. **The packaging profile** (M7 item 3): `lto = "fat"` and `codegen-units = 1` for
+   `scripts/package-*`, and try `panic = "abort"` with them. Check first that nothing relies on
+   unwinding (a `catch_unwind`, a test harness), and that a panic still leaves a message the
+   player can report. Not named `dist`. Last, when the rest is done.
+
+Looked at and left out: `-C target-cpu=native` (the build must run on players' older CPUs);
+profile-guided optimization (much setup for a build nobody downloads yet); `parking_lot` and a
+single lock for `aic-node-graph`'s memory (its locking measured under 0.1 ms for 300 nodes in the
+M11 spike); `SmallVec`, inlining attributes, bounds checks and type sizes (no profile points
+there; revisit if step 1 does).
 
 ---
 
