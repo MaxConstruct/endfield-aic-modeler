@@ -11,7 +11,7 @@ Scope: the whole editor window of aic-app: menu bar, toolbar, recipe browser, no
 
 Task: build and read factory graphs on a second 27" monitor beside the running game. Glance at counts, rates and warnings; make quick edits with mouse and keyboard; long sessions too.
 
-Constraints: egui 0.36 + egui-snarl 0.12 paint everything; styling goes through `Style`/`Visuals`, `FontDefinitions`, `SnarlStyle` and the painter. Session deliverable is the spec (DESIGN.md) plus a theme module wired into egui; component-by-component restyle comes later.
+Constraints: egui 0.36 and `aic-node-graph` (our copy of egui_graph, for the canvas) paint everything; styling goes through `Style`/`Visuals`, `FontDefinitions` and the painter. Session deliverable is the spec (DESIGN.md) plus a theme module wired into egui; component-by-component restyle comes later.
 
 Craft bar: Figma and Linear desktop apps (quiet neutral chrome, crisp 1px dividers, restrained accent, polished popovers) with Satisfactory Modeler's function.
 

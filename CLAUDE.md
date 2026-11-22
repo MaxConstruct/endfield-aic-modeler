@@ -1,6 +1,6 @@
 # AIC Modeler
 
-Graph-first factory planner for the AIC in *Arknights: Endfield*. Rust, egui + egui-snarl, LP solver via `good_lp`.
+Graph-first factory planner for the AIC in *Arknights: Endfield*. Rust, egui with `aic-node-graph` (our copy of egui_graph) for the canvas, LP solver via `good_lp`.
 
 Read before working:
 

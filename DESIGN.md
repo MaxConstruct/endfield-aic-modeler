@@ -129,7 +129,7 @@ components:
 
 # Design System: AIC Modeler
 
-Native desktop app (Rust, egui 0.36 + egui-snarl 0.12, macOS and Windows). There is no CSS: every
+Native desktop app (Rust, egui 0.36, with the node canvas drawn by `aic-node-graph`, our copy of egui_graph; macOS and Windows). There is no CSS: every
 token above is a constant in `crates/aic-editor/src/style.rs` (`style::color::*`, `style::radius::*`,
 `style::text::*`; the egui app re-exports them from `theme.rs`), and the frontmatter's hex values mirror them. Token slugs map to Rust names by
 kebab-case (`text-muted` = `color::TEXT_MUTED`, `node-sink` = `color::node::SINK`). Sizes are egui
@@ -175,7 +175,7 @@ Cool-neutral graphite with semantic hues that each mean exactly one thing.
 Low-chroma, one per node kind, set in `Canvas::header_frame` via `theme::color::node`: Recipe (slate blue), Source (pink family), Sink (green family), Outpost order (amber family), Missing recipe (red family), Logistics (neutral; splitters, mergers, storage, control and workspace ports), Workspace (violet).
 
 ### Neutral
-- **Canvas** (`CANVAS`): the node canvas (`SnarlStyle::bg_frame`), darkest surface.
+- **Canvas** (`CANVAS`): the node canvas (`canvas::paint_background`), darkest surface.
 - **Panel** (`PANEL`): side panels, menu bar, toolbar, status bar (`Visuals::panel_fill`).
 - **Raised** (`RAISED`): node cards, menus, popovers, windows (`window_fill`, `theme::node_frame()`).
 - **Inset** (`INSET`): text fields and wells (`extreme_bg_color`, `text_edit_bg_color`), link labels at 90%.
@@ -220,10 +220,10 @@ Panels toggle away; the canvas never does.
 
 egui `Spacing` (in `theme::apply`): `item_spacing` 8x3, `button_padding` 8x2, `interact_size` 40x20,
 `window_margin` 10, `menu_margin` 4, `indent` 16, `icon_width` 14 (inner 8, spacing 6),
-`combo_height` 320, `ScrollStyle::thin()` (floating). Canvas: 40pt grid (`BackgroundPattern::grid`),
+`combo_height` 320, `ScrollStyle::thin()` (floating). Canvas: 40pt grid (`canvas::paint_background`),
 cards fixed at 300pt wide with 6pt inner margin, 48pt item-icon pins, 64pt facility image, 2pt wires.
-Sizes are points at 100%. The canvas is laid out at its 200% maximum and drawn shrunk (egui-snarl's
-`crisp_magnified_text`), so card text is rasterized at the size shown and stays sharp when zoomed
+Sizes are points at 100%. The canvas is laid out at its 200% maximum and drawn shrunk (the canvas
+scales the style with `egui-scale`), so card text is rasterized at the size shown and stays sharp when zoomed
 in; `canvas::crisp` converts a size, `document::VIEW_SCALE` converts positions.
 Toolbar buttons are 30x26.
 
@@ -233,7 +233,7 @@ Toolbar buttons are 30x26.
 
 Depth is tonal first: canvas < panel < raised. Shadows are short, soft and black, only on things that
 sit above the canvas or the window:
-- **Card** (offset 0,2; blur 6; black α90): `theme::node_frame()`, via `SnarlStyle::node_frame`.
+- **Card** (offset 0,2; blur 6; black α90): `theme::node_frame()`, scaled by the canvas for each card.
 - **Popover / menu** (offset 0,4; blur 14; black α120): `Visuals::popup_shadow`.
 - **Window** (offset 0,8; blur 24; black α140): `Visuals::window_shadow`; `window_highlight_topmost` off.
 

@@ -3,7 +3,7 @@
   "generatedAt": "2026-11-09T12:54:39+00:00",
   "title": "Design System: AIC Modeler",
   "extensions": {
-    "platform": "Native egui 0.36 + egui-snarl 0.12 desktop app. Tokens are Rust constants in crates/aic-editor/src/style.rs; CSS here is a preview translation only (1pt = 1px at 1x).",
+    "platform": "Native egui 0.36 desktop app; the node canvas is aic-node-graph, our copy of egui_graph. Tokens are Rust constants in crates/aic-editor/src/style.rs; CSS here is a preview translation only (1pt = 1px at 1x).",
     "colorMeta": {
       "canvas": {
         "role": "neutral",
@@ -601,7 +601,7 @@
       {
         "name": "wire",
         "value": "2pt",
-        "purpose": "Links (SnarlStyle::wire_width)."
+        "purpose": "Links (canvas::LINK_WIDTH)."
       },
       {
         "name": "selected-node",

@@ -13,10 +13,12 @@
 //! and prints how many frames it drew and what asked for them: an idle app should draw none.
 //! `PERF_MINIMIZE=1` minimizes the window for that time.
 //!
-//! `PERF_HEADLESS=1` opens no window: it builds and tessellates the UI 600 times, then 600 more
-//! with the live values changing, and prints the CPU time per frame. With no GPU and no compositor
-//! in the way its numbers vary much less from run to run. With `PERF_ZOOM=1.0` it first zooms the
-//! canvas to that zoom (1 is 100%) around its middle, so only part of the graph is on screen.
+//! `PERF_HEADLESS=1` opens no window: it builds and tessellates the UI 600 times for each phase,
+//! and prints the CPU time per frame. With no GPU and no compositor in the way its numbers vary
+//! much less from run to run.
+//!
+//! `PERF_ZOOM=1.0` first zooms the canvas to that zoom (1 is 100%) around its middle, so only part
+//! of the graph is on screen, in the windowed and the headless run alike.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -36,7 +38,7 @@ const COLUMNS: usize = 16;
 enum Phase {
     /// Nothing changes; the app redraws every frame.
     Idle,
-    /// The pointer scrolls the canvas.
+    /// Shift with the wheel pans the canvas sideways, 8 points a frame, turning every 60 frames.
     Pan,
     /// A source limit changes every frame, so every frame solves and redraws new numbers.
     LiveValues,
@@ -54,6 +56,8 @@ struct PerfApp {
     ui_times: HashMap<usize, Vec<f64>>,
     live: Option<NodeId>,
     idle: Option<Idle>,
+    /// The zoom to set once the first solve and the auto-fit have settled (`PERF_ZOOM`).
+    zoom: Option<f32>,
 }
 
 /// The idle run: frames drawn after the warm-up, and what asked for each.
@@ -132,6 +136,12 @@ impl eframe::App for PerfApp {
             let limit = 30.0 + (self.frame % 60) as f64;
             let _ = editor.document_mut().set_limit(node, Some(limit));
         }
+        if self.frame == WARMUP / 2
+            && let Some(zoom) = self.zoom.take()
+            && let Some(editor) = self.app.editor_mut()
+        {
+            editor.zoom_canvas_to(zoom);
+        }
         let started = Instant::now();
         eframe::App::ui(&mut self.app, ui, frame);
         if self.frame >= WARMUP {
@@ -156,31 +166,51 @@ impl eframe::App for PerfApp {
         if self.idle.is_some() {
             return;
         }
-        let Some(phase) = PHASES.get(self.phase) else {
+        let Some(&phase) = PHASES.get(self.phase) else {
             return;
         };
-        if *phase == Phase::Pan {
-            let center = ctx.content_rect().center();
+        input(ctx, raw_input, phase, self.frame);
+    }
+}
+
+/// A frame's scripted input. In the pan phase: the pointer below the middle of the window, and
+/// Shift with the wheel, which pans the canvas (the wheel alone zooms it). egui keeps Shift down
+/// until told otherwise, so the next phase lets go of it, once egui's smoothed scroll has run
+/// out: what is left of it would zoom without Shift.
+fn input(ctx: &egui::Context, raw_input: &mut egui::RawInput, phase: Phase, frame: usize) {
+    if phase != Phase::Pan {
+        if !ctx.input(|i| i.is_scrolling()) {
             raw_input
                 .events
-                .push(egui::Event::PointerMoved(center + vec2(0.0, 100.0)));
-            let step = if (self.frame / 60).is_multiple_of(2) {
-                8.0
-            } else {
-                -8.0
-            };
-            raw_input.events.push(egui::Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                delta: vec2(step, 0.0),
-                modifiers: egui::Modifiers::NONE,
-                phase: egui::TouchPhase::Move,
-            });
+                .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
         }
+        return;
     }
+    let center = ctx.content_rect().center();
+    raw_input
+        .events
+        .push(egui::Event::PointerMoved(center + vec2(0.0, 100.0)));
+    let step = if (frame / 60).is_multiple_of(2) {
+        8.0
+    } else {
+        -8.0
+    };
+    raw_input
+        .events
+        .push(egui::Event::ModifiersChanged(egui::Modifiers::SHIFT));
+    raw_input.events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(step, 0.0),
+        modifiers: egui::Modifiers::SHIFT,
+        phase: egui::TouchPhase::Move,
+    });
 }
 
 impl PerfApp {
     fn report(&self) {
+        if let Some(view) = self.app.editor().and_then(|editor| editor.canvas_view()) {
+            println!("canvas at {:.0}%", view.zoom * 100.0);
+        }
         println!(
             "{:<12} {:>9} {:>9} {:>9} {:>9}",
             "phase", "mean ms", "p95 ms", "max ms", "ui ms"
@@ -283,21 +313,24 @@ fn headless(catalog: Result<Catalog, String>, target: usize) {
     let mut app = App::new(Strings::english(), catalog, None);
     let live = build(&mut app, target);
     let mut time = 0.0;
-    let mut frames = |app: &mut App, count: usize, live: Option<NodeId>| {
+    let mut frames = |app: &mut App, count: usize, phase: Phase, live: Option<NodeId>| {
         let mut times = Vec::with_capacity(count);
         for frame in 0..count {
-            if let (Some(node), Some(editor)) = (live, app.editor_mut()) {
+            if phase == Phase::LiveValues
+                && let (Some(node), Some(editor)) = (live, app.editor_mut())
+            {
                 let limit = 30.0 + (frame % 60) as f64;
                 let _ = editor.document_mut().set_limit(node, Some(limit));
             }
             time += 1.0 / 60.0;
-            let input = egui::RawInput {
+            let mut raw_input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 900.0))),
                 time: Some(time),
                 ..Default::default()
             };
+            input(&ctx, &mut raw_input, phase, frame);
             let started = Instant::now();
-            let output = ctx.run_ui(input, |ui| {
+            let output = ctx.run_ui(raw_input, |ui| {
                 eframe::App::ui(app, ui, &mut eframe::Frame::_new_kittest());
             });
             let _ = ctx.tessellate(output.shapes, output.pixels_per_point);
@@ -305,11 +338,10 @@ fn headless(catalog: Result<Catalog, String>, target: usize) {
         }
         times
     };
-    let _ = frames(&mut app, 60, None);
-    let zoom: Option<f32> = std::env::var("PERF_ZOOM").ok().and_then(|v| v.parse().ok());
-    if let (Some(zoom), Some(editor)) = (zoom, app.editor_mut()) {
+    let _ = frames(&mut app, 60, Phase::Idle, None);
+    if let (Some(zoom), Some(editor)) = (zoom(), app.editor_mut()) {
         editor.zoom_canvas_to(zoom);
-        let _ = frames(&mut app, 30, None);
+        let _ = frames(&mut app, 30, Phase::Idle, None);
     }
     if let Some(view) = app.editor_mut().and_then(|editor| editor.canvas_view()) {
         println!("canvas at {:.0}%", view.zoom * 100.0);
@@ -318,14 +350,20 @@ fn headless(catalog: Result<Catalog, String>, target: usize) {
         "{:<12} {:>9} {:>9} {:>9}",
         "phase", "mean ms", "median ms", "p95 ms"
     );
-    for (name, live) in [("Idle", None), ("LiveValues", live)] {
-        let mut times = frames(&mut app, 600, live);
+    for phase in PHASES {
+        let mut times = frames(&mut app, 600, phase, live);
         times.sort_by(f64::total_cmp);
         let mean = times.iter().sum::<f64>() / times.len() as f64;
         let median = times[times.len() / 2];
         let p95 = times[times.len() * 95 / 100];
+        let name = format!("{phase:?}");
         println!("{name:<12} {mean:>9.2} {median:>9.2} {p95:>9.2}");
     }
+}
+
+/// The zoom `PERF_ZOOM` asks for, if any.
+fn zoom() -> Option<f32> {
+    std::env::var("PERF_ZOOM").ok().and_then(|v| v.parse().ok())
 }
 
 fn main() -> eframe::Result {
@@ -370,6 +408,7 @@ fn main() -> eframe::Result {
                 ui_times: HashMap::new(),
                 live,
                 idle,
+                zoom: zoom(),
             }))
         }),
     )

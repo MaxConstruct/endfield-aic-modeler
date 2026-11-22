@@ -15,7 +15,6 @@ aic-node-graph.workspace = true
 eframe = { version = "0.36", features = ["persistence"] }
 # Scales an egui style: the canvas lays its cards out at its largest zoom (canvas.rs).
 egui-scale = "0.6"
-egui-snarl = "0.12"
 egui_dock = { version = "0.21.1", features = ["serde"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 indexmap = "2"

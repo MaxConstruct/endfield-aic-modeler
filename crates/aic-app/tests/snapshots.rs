@@ -66,10 +66,8 @@ fn harness_stepping(version_dir: &Path, step_dt: f32) -> Harness<'static, App> {
         .with_step_dt(step_dt)
         .build_eframe(|cc| {
             aic_app::theme::install(&cc.egui_ctx);
-            App::new(Strings::english(), Ok(catalog), None)
+            steady(App::new(Strings::english(), Ok(catalog), None))
         });
-    // The frame rate and solve time change from run to run; snapshots leave them out.
-    hide_performance(&mut harness);
     harness.run();
     // The inspector starts closed; most tests read or type into it.
     harness
@@ -79,10 +77,16 @@ fn harness_stepping(version_dir: &Path, step_dt: f32) -> Harness<'static, App> {
     harness
 }
 
-fn hide_performance(harness: &mut Harness<'_, App>) {
-    if let Some(editor) = harness.state_mut().editor_mut() {
+/// The app without the frame rate and solve time in its status bar. They change from run to run,
+/// so snapshots leave them out. They go before the first frame, which kittest draws as it builds
+/// a harness: digits drawn even once enter the font atlas in a different order each run, and a
+/// glyph drawn smaller than it was rasterized, as on a zoomed-out card, takes a little of its
+/// neighbour in the atlas.
+fn steady(mut app: App) -> App {
+    if let Some(editor) = app.editor_mut() {
         editor.set_show_performance(false);
     }
+    app
 }
 
 fn editor<'a>(harness: &'a mut Harness<'_, App>) -> &'a mut aic_app::editor::Editor {
@@ -1209,9 +1213,8 @@ fn data_folder_app() -> Harness<'static, App> {
     let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
     let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
         aic_app::theme::install(&cc.egui_ctx);
-        App::from_folder(Strings::english(), folder.clone(), None)
+        steady(App::from_folder(Strings::english(), folder.clone(), None))
     });
-    hide_performance(&mut harness);
     harness.run();
     harness
 }
@@ -1230,9 +1233,12 @@ fn a_saved_data_version_that_fails_to_load_is_not_kept_as_the_choice() {
     eframe::set_value(&mut storage, aic_app::data::STORAGE_KEY, &saved);
     let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
         aic_app::theme::install(&cc.egui_ctx);
-        App::from_folder(Strings::english(), folder.clone(), Some(&storage))
+        steady(App::from_folder(
+            Strings::english(),
+            folder.clone(),
+            Some(&storage),
+        ))
     });
-    hide_performance(&mut harness);
     harness.run();
     assert_eq!(editor(&mut harness).catalog().version(), "v1.10.0");
     assert_eq!(
@@ -1742,7 +1748,7 @@ fn a_file_without_a_camera_opened_before_the_first_frame_is_fitted_to_its_nodes(
         aic_app::theme::install(&cc.egui_ctx);
         let mut app = App::new(Strings::english(), Ok(catalog), None);
         app.editor_mut().unwrap().reopen(&path);
-        app
+        steady(app)
     });
     again.run();
     let ws = editor(&mut again);
@@ -1935,6 +1941,63 @@ fn an_idle_app_asks_for_no_frames_even_after_a_lit_button() {
         "and nothing after that"
     );
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The canvas widget can pan while a drag nears the edge and animate a card to its new place,
+/// each asking for frame after frame. The canvas turns both off: a drag held still at the edge
+/// draws nothing more, and a card moved by an undo is at its place in the next frame.
+#[test]
+fn a_drag_held_at_the_edge_and_a_moved_card_ask_for_no_frames() {
+    // A hundredth of a second a frame: kittest's quarter second would hide an animation.
+    let mut harness = harness_stepping(&aic_editor::testing::fixture_dir(), 0.01);
+    let a = smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    fit_view(&mut harness);
+    let before = node_rect(&mut harness, a);
+    let header = before.center_top() + vec2(0.0, 6.0);
+
+    // Grab the card and hold it still at the canvas's left edge. Fixed steps, not `run`, which
+    // would wait out a pan that never ends.
+    let edge = pos2(
+        editor(&mut harness).canvas_corner_on_screen().x + 4.0,
+        editor(&mut harness).canvas_center_on_screen().y,
+    );
+    harness.hover_at(header);
+    harness.run();
+    harness.event(Event::PointerButton {
+        pos: header,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    for step in 1..=4 {
+        harness.event(Event::PointerMoved(header.lerp(edge, step as f32 / 4.0)));
+    }
+    harness.run_steps(3);
+    let camera = editor(&mut harness).canvas_view();
+    harness.run_steps(3);
+    assert_eq!(editor(&mut harness).canvas_view(), camera, "the view holds");
+    assert_eq!(next_frame_in(&harness), std::time::Duration::MAX);
+    harness.event(Event::PointerButton {
+        pos: edge,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run();
+    assert_ne!(node_rect(&mut harness, a), before);
+
+    // Not with the key, which lights the toolbar's button for a moment. One frame shows the card;
+    // `run` would wait out an animation.
+    editor(&mut harness).undo();
+    harness.step();
+    assert_eq!(
+        node_rect(&mut harness, a),
+        before,
+        "the card is back at once"
+    );
+    harness.run();
+    assert_eq!(next_frame_in(&harness), std::time::Duration::MAX);
 }
 
 /// The player's Buckflower graph from real data: a limit on the middle planter settles everything
@@ -2306,7 +2369,11 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
     let mut again = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
         aic_app::theme::install(&cc.egui_ctx);
-        App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
+        steady(App::in_browser(
+            Strings::english(),
+            Ok(catalog),
+            Some(&storage),
+        ))
     });
     again.run();
     assert_eq!(node_count(&mut again), 1);
@@ -2499,7 +2566,11 @@ fn the_layout_of_the_views_is_kept_with_the_settings() {
     let catalog = aic_data::load(&aic_editor::testing::fixture_dir(), "en").unwrap();
     let mut again = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
         aic_app::theme::install(&cc.egui_ctx);
-        App::in_browser(Strings::english(), Ok(catalog), Some(&storage))
+        steady(App::in_browser(
+            Strings::english(),
+            Ok(catalog),
+            Some(&storage),
+        ))
     });
     again.run();
     let keys = views(&mut again);

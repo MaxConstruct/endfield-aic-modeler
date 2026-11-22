@@ -542,7 +542,7 @@ mod handles {
         assert_eq!(back, in_view.translate(vec2(0.0, 50.0)));
     }
 
-    /// A handle in the frame's margin, beside a label as in `perf_spike_graph`, starts an edge.
+    /// A handle in the frame's margin, beside a label as in `perf_spike`, starts an edge.
     #[test]
     fn a_handle_beside_a_label_starts_an_edge() {
         let ctx = egui::Context::default();

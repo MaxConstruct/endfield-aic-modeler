@@ -1,39 +1,41 @@
-//! M4 performance spike (throwaway). An egui-snarl canvas with 300 nodes, 600 links and 5 ports per
-//! node, each port and link showing a rate label. It drives itself through scripted phases with vsync
-//! off, prints frame times per phase, and exits.
-//!
-//! Run a release build on the machine to measure:
+//! Performance spike (throwaway): a canvas drawn with `aic_node_graph` (our copy of egui_graph)
+//! with 300 nodes, 600 links and 5 ports per node, each port and link showing a rate label.
 //!
 //! ```sh
 //! cargo run --release -p aic-app --example perf_spike
 //! ```
 //!
-//! Pass: frames stay under about 8 ms (PLAN.md, M4). Keep the window in front: macOS stops drawing
-//! a hidden window, and the run then never finishes.
+//! It was `perf_spike_graph`, written beside the M4 egui-snarl spike, which had this name. That
+//! spike went with egui-snarl in M11 (it is in git history before then). This one keeps its grid,
+//! views, card sizes and scripted phases, so its frame times still compare with the egui-snarl
+//! numbers of 2026-11-17 in `docs/PLAN.md` (M7); "the snarl spike" below is that one.
 //!
 //! Switches, all off by default:
 //!
-//! - `SPIKE_SCALE=1.0`: start zoomed in, with only part of the graph on screen. The default fits all
-//!   300 nodes on screen, the worst case.
-//! - `SPIKE_CULL=1`: skip the widgets of off-screen nodes, allocating their last size instead.
+//! - `SPIKE_SCALE=1.0`: start zoomed in, with only part of the graph on screen.
+//! - `SPIKE_CULL=1`: show nodes with `Node::show_or_cull`, which skips the content of nodes out of
+//!   view. Without it, nodes show with `Node::show`.
 //! - `SPIKE_NO_LABELS=1`: no link labels.
 //! - `SPIKE_NO_LINKS=1`: no links at all.
-//! - `SPIKE_HEADLESS=1`: open no window. Build and tessellate the UI for the same phases, feeding
-//!   the same scripted input, and print the CPU time per frame (as `perf_app`'s `PERF_HEADLESS`).
+//! - `SPIKE_EDGE_DPP=2.5`: flatten edges every 2.5 screen pixels instead of aic-node-graph's
+//!   default of 5 (`Edge::DEFAULT_DISTANCE_PER_POINT`, in screen pixels at any zoom).
+//! - `SPIKE_HEADLESS=1`: open no window; build and tessellate the UI for the same phases and print
+//!   the CPU time per frame.
+//!
+//! Each port has a handle, as the app's port icon will be, and the scripted new wire starts with a
+//! press on the handle of an output. The handle is a strip of the frame beside the port's rate
+//! label, not the label, as a label takes presses for text selection; it adds nothing to the card's
+//! layout or painting.
 
 // Links `aic_app`, whose global allocator (mimalloc) the app runs on.
 use aic_app as _;
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use std::time::Instant;
 
-use eframe::egui::{self, Color32, FontId, Id, LayerId, Pos2, Rect, Ui, emath::TSTransform, vec2};
-use egui_snarl::ui::{
-    BackgroundPattern, PinInfo, PinPlacement, SnarlPin, SnarlStyle, SnarlViewer, SnarlWidget,
-};
-use egui_snarl::{InPin, InPinId, NodeId, OutPin, OutPinId, Snarl};
+use aic_node_graph::NodeId;
+use aic_node_graph::edge::{Edge, EdgeShape};
+use aic_node_graph::node::Node;
+use eframe::egui::{self, Color32, FontId, Id, Pos2, Rect, Ui, emath::TSTransform, vec2};
 
 const NODES: usize = 300;
 const INPUTS: usize = 2;
@@ -42,6 +44,17 @@ const COLUMNS: usize = 20;
 const WARMUP: usize = 30;
 const FRAMES: usize = 240;
 const CANVAS: &str = "spike-canvas";
+/// egui-snarl's default zoom range, which the snarl spike uses.
+const MIN_SCALE: f32 = 0.2;
+const MAX_SCALE: f32 = 2.0;
+/// The size of a socket: the snarl spike's pin size of 8.
+const SOCKET_RADIUS: f32 = 4.0;
+/// The content height that makes a node as tall as the snarl spike's (182 with the frame).
+const CARD_HEIGHT: f32 = 168.0;
+/// egui-snarl draws a node's frame around its position, out by the frame's margin (window margin 6
+/// plus stroke 1); aic-node-graph draws it from its position. Placing nodes this much up and left
+/// puts the frames where snarl puts them.
+const SNARL_FRAME_MARGIN: f32 = 7.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -62,214 +75,31 @@ const PHASES: [Phase; 6] = [
     Phase::LiveValues,
 ];
 
-struct SpikeNode {
-    rates: [f64; INPUTS + OUTPUTS],
+/// A link from an output of one node to an input of another, by node index.
+struct Link {
+    from: usize,
+    output: usize,
+    to: usize,
+    input: usize,
+    selected: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum PinKey {
-    In(InPinId),
-    Out(OutPinId),
-}
-
-type PinCenters = Rc<RefCell<HashMap<PinKey, Pos2>>>;
-
-/// A pin that records where snarl drew it, so link labels can sit at the wire's midpoint.
-struct RecordingPin {
-    info: PinInfo,
-    key: PinKey,
-    centers: PinCenters,
-}
-
-impl SnarlPin for RecordingPin {
-    fn draw(
-        self,
-        snarl_style: &SnarlStyle,
-        style: &egui::Style,
-        rect: Rect,
-        painter: &egui::Painter,
-    ) -> egui_snarl::ui::PinWireInfo {
-        self.centers.borrow_mut().insert(self.key, rect.center());
-        self.info.draw(snarl_style, style, rect, painter)
-    }
-}
-
-struct Viewer<'a> {
-    centers: &'a PinCenters,
-    to_global: &'a mut TSTransform,
-    script_transform: Option<TSTransform>,
-    cull: Option<&'a mut Cull>,
-    /// Headless only, on an untimed frame: where each node was drawn.
-    record: Option<&'a mut Vec<Rect>>,
-}
-
-/// Skips the widgets of nodes that were off screen last frame, allocating their last size instead.
-struct Cull {
-    viewport: Rect,
-    node_rects: HashMap<NodeId, Rect>,
-    sizes: HashMap<(NodeId, u8, usize), egui::Vec2>,
-}
-
-impl Viewer<'_> {
-    fn content(&mut self, node: NodeId, slot: (u8, usize), ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
-        let Some(cull) = self.cull.as_deref_mut() else {
-            add(ui);
-            return;
-        };
-        let key = (node, slot.0, slot.1);
-        let off_screen = cull
-            .node_rects
-            .get(&node)
-            .is_some_and(|rect| !rect.intersects(cull.viewport));
-        if off_screen && let Some(&size) = cull.sizes.get(&key) {
-            ui.allocate_exact_size(size, egui::Sense::hover());
-            return;
-        }
-        let start = ui.cursor().min;
-        add(ui);
-        cull.sizes.insert(key, ui.min_rect().max - start);
-    }
-}
-
-fn rate_label(ui: &mut Ui, rate: f64) {
-    ui.label(format!("{rate:.2} /min"));
-}
-
-impl SnarlViewer<SpikeNode> for Viewer<'_> {
-    fn title(&mut self, _node: &SpikeNode) -> String {
-        String::new()
-    }
-
-    fn show_header(
-        &mut self,
-        node: NodeId,
-        _inputs: &[InPin],
-        _outputs: &[OutPin],
-        ui: &mut Ui,
-        _snarl: &mut Snarl<SpikeNode>,
-    ) {
-        self.content(node, (0, 0), ui, |ui| {
-            ui.label(egui::RichText::new(format!("#{}", node.0)).strong());
-        });
-    }
-
-    fn inputs(&mut self, _node: &SpikeNode) -> usize {
-        INPUTS
-    }
-
-    fn outputs(&mut self, _node: &SpikeNode) -> usize {
-        OUTPUTS
-    }
-
-    #[allow(refining_impl_trait)]
-    fn show_input(
-        &mut self,
-        pin: &InPin,
-        ui: &mut Ui,
-        snarl: &mut Snarl<SpikeNode>,
-    ) -> RecordingPin {
-        let rate = snarl[pin.id.node].rates[pin.id.input];
-        self.content(pin.id.node, (1, pin.id.input), ui, |ui| {
-            rate_label(ui, rate)
-        });
-        RecordingPin {
-            info: PinInfo::circle().with_fill(Color32::from_rgb(230, 120, 170)),
-            key: PinKey::In(pin.id),
-            centers: self.centers.clone(),
-        }
-    }
-
-    #[allow(refining_impl_trait)]
-    fn show_output(
-        &mut self,
-        pin: &OutPin,
-        ui: &mut Ui,
-        snarl: &mut Snarl<SpikeNode>,
-    ) -> RecordingPin {
-        let rate = snarl[pin.id.node].rates[INPUTS + pin.id.output];
-        self.content(pin.id.node, (2, pin.id.output), ui, |ui| {
-            rate_label(ui, rate)
-        });
-        RecordingPin {
-            info: PinInfo::circle().with_fill(Color32::from_rgb(110, 200, 120)),
-            key: PinKey::Out(pin.id),
-            centers: self.centers.clone(),
-        }
-    }
-
-    fn has_body(&mut self, _node: &SpikeNode) -> bool {
-        true
-    }
-
-    fn show_body(
-        &mut self,
-        node: NodeId,
-        _inputs: &[InPin],
-        _outputs: &[OutPin],
-        ui: &mut Ui,
-        snarl: &mut Snarl<SpikeNode>,
-    ) {
-        let rates = snarl[node].rates;
-        self.content(node, (3, 0), ui, |ui| {
-            ui.vertical(|ui| {
-                ui.label(
-                    egui::RichText::new(format!("{:.2}", rates[0] / 10.0))
-                        .size(18.0)
-                        .strong(),
-                );
-                ui.label(format!("{:.2}", rates[1]));
-            });
-        });
-    }
-
-    fn final_node_rect(
-        &mut self,
-        node: NodeId,
-        rect: Rect,
-        _ui: &mut Ui,
-        _snarl: &mut Snarl<SpikeNode>,
-    ) {
-        if let Some(cull) = self.cull.as_deref_mut() {
-            cull.node_rects.insert(node, rect);
-        }
-        if let Some(record) = self.record.as_deref_mut() {
-            record.push(rect);
-        }
-    }
-
-    fn draw_background(
-        &mut self,
-        background: Option<&BackgroundPattern>,
-        viewport: &Rect,
-        snarl_style: &SnarlStyle,
-        style: &egui::Style,
-        painter: &egui::Painter,
-        _snarl: &Snarl<SpikeNode>,
-    ) {
-        if let Some(cull) = self.cull.as_deref_mut() {
-            cull.viewport = *viewport;
-        }
-        if let Some(background) = background {
-            background.draw(viewport, snarl_style, style, painter);
-        }
-    }
-
-    fn current_transform(&mut self, to_global: &mut TSTransform, _snarl: &mut Snarl<SpikeNode>) {
-        if let Some(scripted) = self.script_transform {
-            *to_global = scripted;
-        }
-        *self.to_global = *to_global;
-    }
+/// The scripted new wire: where it started, and whether the button is down yet.
+#[derive(Clone, Copy)]
+struct WireDrag {
+    origin: Pos2,
+    pressed: bool,
 }
 
 /// Frame interval, CPU and UI times of one phase, in ms.
 type PhaseResult = (Phase, Vec<f64>, Vec<f64>, Vec<f64>);
 
 struct Spike {
-    snarl: Snarl<SpikeNode>,
-    style: SnarlStyle,
-    centers: PinCenters,
-    to_global: TSTransform,
+    view: aic_node_graph::View,
+    rates: Vec<[f64; INPUTS + OUTPUTS]>,
+    links: Vec<Link>,
+    /// The scene's transform from graph to screen, as egui-snarl's `to_global`.
+    to_global: Option<TSTransform>,
     start_transform: Option<TSTransform>,
     phase: usize,
     frame_in_phase: usize,
@@ -279,37 +109,105 @@ struct Spike {
     ui_ms: Vec<f64>,
     results: Vec<PhaseResult>,
     adapter: String,
-    wire_drag: Option<Pos2>,
-    cull: Option<Cull>,
-    /// Headless: print no windowed report.
+    wire_drag: Option<WireDrag>,
+    /// The screen position of the centre of the handle of the scripted wire's output, from the
+    /// last frame.
+    wire_pin: Option<Pos2>,
+    /// `SPIKE_EDGE_DPP`: the distance between the points of a flattened edge, in screen pixels,
+    /// if not aic-node-graph's default.
+    edge_screen_distance: Option<f32>,
+    cull: bool,
     headless: bool,
-    /// Headless: when set, the next frame records where each node is drawn.
-    record: Option<Vec<Rect>>,
+    /// Headless counters: node contents run, and frames with an edge in progress.
+    contents_shown: usize,
+    edge_in_progress: bool,
+}
+
+fn graph_id() -> Id {
+    aic_node_graph::id(CANVAS)
+}
+
+fn rate_label(ui: &mut Ui, rate: f64) {
+    ui.label(format!("{rate:.2} /min"));
+}
+
+/// The width of a port's handle: a strip of the frame's margin (6) beside the rate label.
+const HANDLE_WIDTH: f32 = 6.0;
+
+/// The handle of an input whose row is `row`: the strip left of it.
+fn input_handle(row: Rect) -> Rect {
+    Rect::from_min_max(
+        Pos2::new(row.left() - HANDLE_WIDTH, row.top()),
+        row.left_bottom(),
+    )
+}
+
+/// The handle of an output whose row is `row`: the strip right of it.
+fn output_handle(row: Rect) -> Rect {
+    Rect::from_min_max(
+        row.right_top(),
+        Pos2::new(row.right() + HANDLE_WIDTH, row.bottom()),
+    )
+}
+
+/// The transform egui-snarl starts from: the nodes' positions, with a margin of 100, fit in the
+/// canvas within its frame (`SnarlState::initial`).
+fn snarl_initial_transform(ui_rect: Rect) -> TSTransform {
+    let mut bb = Rect::NOTHING;
+    for i in 0..NODES {
+        bb.extend_with(node_pos(i));
+    }
+    let bb = bb.expand(100.0);
+    let scaling = (ui_rect.size() / bb.size())
+        .min_elem()
+        .clamp(MIN_SCALE, MAX_SCALE);
+    TSTransform::new(
+        ui_rect.center().to_vec2() - bb.center().to_vec2() * scaling,
+        scaling,
+    )
+}
+
+fn node_pos(i: usize) -> Pos2 {
+    let (col, row) = (i % COLUMNS, i / COLUMNS);
+    Pos2::new(col as f32 * 260.0, row as f32 * 200.0)
+}
+
+/// The grid of the snarl spike's background (`BackgroundPattern::grid`, 50 by 50, no angle).
+fn paint_grid(ui: &Ui, viewport: Rect) {
+    let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+    let painter = ui.painter();
+    let spacing = vec2(50.0, 50.0);
+    let min_x = (viewport.min.x / spacing.x).ceil();
+    let max_x = (viewport.max.x / spacing.x).floor();
+    for x in 0..=f32::ceil(max_x - min_x) as i64 {
+        let x = (x as f32 + min_x) * spacing.x;
+        painter.line_segment(
+            [Pos2::new(x, viewport.min.y), Pos2::new(x, viewport.max.y)],
+            stroke,
+        );
+    }
+    let min_y = (viewport.min.y / spacing.y).ceil();
+    let max_y = (viewport.max.y / spacing.y).floor();
+    for y in 0..=f32::ceil(max_y - min_y) as i64 {
+        let y = (y as f32 + min_y) * spacing.y;
+        painter.line_segment(
+            [Pos2::new(viewport.min.x, y), Pos2::new(viewport.max.x, y)],
+            stroke,
+        );
+    }
 }
 
 impl Spike {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let adapter = cc
-            .wgpu_render_state
-            .as_ref()
-            .map(|rs| {
-                let info = rs.adapter.get_info();
-                format!("{} ({:?})", info.name, info.backend)
-            })
-            .unwrap_or_default();
-        Self::with_adapter(adapter)
-    }
-
-    fn with_adapter(adapter: String) -> Self {
-        let mut snarl = Snarl::new();
-        let mut ids = Vec::with_capacity(NODES);
+    fn new(adapter: String) -> Self {
+        let rates = (0..NODES)
+            .map(|i| std::array::from_fn(|k| 1.0 + ((i * 7 + k * 13) % 97) as f64 * 0.37))
+            .collect();
+        let mut view = aic_node_graph::View::default();
         for i in 0..NODES {
-            let (col, row) = (i % COLUMNS, i / COLUMNS);
-            let rates = std::array::from_fn(|k| 1.0 + ((i * 7 + k * 13) % 97) as f64 * 0.37);
-            ids.push(snarl.insert_node(
-                Pos2::new(col as f32 * 260.0, row as f32 * 200.0),
-                SpikeNode { rates },
-            ));
+            view.layout.insert(
+                NodeId::from_u64(i as u64),
+                node_pos(i) - vec2(SNARL_FRAME_MARGIN, SNARL_FRAME_MARGIN),
+            );
         }
         // Every input gets one link: 600 links, some short, some across the canvas.
         let links = if std::env::var("SPIKE_NO_LINKS").is_ok() {
@@ -317,33 +215,23 @@ impl Spike {
         } else {
             NODES
         };
+        let mut all = Vec::new();
         for n in 0..links {
             for input in 0..INPUTS {
-                let from = (n + NODES - 1 - input * (COLUMNS + 1)) % NODES;
-                snarl.connect(
-                    OutPinId {
-                        node: ids[from],
-                        output: (n + input) % OUTPUTS,
-                    },
-                    InPinId {
-                        node: ids[n],
-                        input,
-                    },
-                );
+                all.push(Link {
+                    from: (n + NODES - 1 - input * (COLUMNS + 1)) % NODES,
+                    output: (n + input) % OUTPUTS,
+                    to: n,
+                    input,
+                    selected: false,
+                });
             }
         }
-        let style = SnarlStyle {
-            pin_placement: Some(PinPlacement::Edge),
-            pin_size: Some(8.0),
-            collapsible: Some(false),
-            bg_pattern: Some(BackgroundPattern::grid(vec2(50.0, 50.0), 0.0)),
-            ..SnarlStyle::new()
-        };
         Self {
-            snarl,
-            style,
-            centers: PinCenters::default(),
-            to_global: TSTransform::IDENTITY,
+            view,
+            rates,
+            links: all,
+            to_global: None,
             start_transform: None,
             phase: 0,
             frame_in_phase: 0,
@@ -354,13 +242,14 @@ impl Spike {
             results: Vec::new(),
             adapter,
             wire_drag: None,
-            cull: std::env::var("SPIKE_CULL").is_ok().then(|| Cull {
-                viewport: Rect::EVERYTHING,
-                node_rects: HashMap::new(),
-                sizes: HashMap::new(),
-            }),
+            wire_pin: None,
+            cull: std::env::var("SPIKE_CULL").is_ok(),
+            edge_screen_distance: std::env::var("SPIKE_EDGE_DPP")
+                .ok()
+                .and_then(|v| v.parse().ok()),
             headless: false,
-            record: None,
+            contents_shown: 0,
+            edge_in_progress: false,
         }
     }
 
@@ -384,21 +273,98 @@ impl Spike {
         }
     }
 
-    /// Paints `flow · belts` at the midpoint of every link, on top of the snarl layer.
-    fn paint_link_labels(&self, ctx: &egui::Context) {
-        let layer = LayerId::new(egui::Order::Background, Id::new(CANVAS));
-        let painter = ctx.layer_painter(layer);
-        let centers = self.centers.borrow();
-        let text_color = ctx.global_style().visuals.text_color();
-        for (out_pin, in_pin) in self.snarl.wires() {
-            let (Some(a), Some(b)) = (
-                centers.get(&PinKey::Out(out_pin)),
-                centers.get(&PinKey::In(in_pin)),
-            ) else {
-                continue;
+    fn show_nodes(&mut self, nctx: &mut aic_node_graph::NodesCtx, ui: &mut Ui) {
+        let cull = self.cull;
+        let mut shown = 0;
+        for (i, rates) in self.rates.iter().enumerate() {
+            let node = Node::from_id(NodeId::from_u64(i as u64))
+                .inputs(INPUTS)
+                .outputs(OUTPUTS)
+                .socket_radius(SOCKET_RADIUS)
+                .animation_time(0.0);
+            let content = |node_ctx: aic_node_graph::NodeCtx<'_>| {
+                shown += 1;
+                node_ctx.framed(|ui, sockets| {
+                    // The height snarl gives the same card, so the same nodes are in view.
+                    ui.set_min_height(CARD_HEIGHT);
+                    // The header, as the snarl spike's `show_header`.
+                    ui.label(egui::RichText::new(format!("#{i}")).strong());
+                    // Inputs, body and outputs side by side, as snarl's default node layout.
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            for (k, &rate) in rates[..INPUTS].iter().enumerate() {
+                                let row = sockets.row(ui, Some(k), None, |ui| rate_label(ui, rate));
+                                sockets.input_handle(k, input_handle(row.response.rect));
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{:.2}", rates[0] / 10.0))
+                                    .size(18.0)
+                                    .strong(),
+                            );
+                            ui.label(format!("{:.2}", rates[1]));
+                        });
+                        ui.vertical(|ui| {
+                            for (k, &rate) in rates[INPUTS..].iter().enumerate() {
+                                let row = sockets.row(ui, None, Some(k), |ui| rate_label(ui, rate));
+                                sockets.output_handle(k, output_handle(row.response.rect));
+                            }
+                        });
+                    });
+                })
             };
-            let flow = self.snarl[out_pin.node].rates[INPUTS + out_pin.output];
-            let mid = a.lerp(*b, 0.5);
+            if cull {
+                node.show_or_cull(nctx, ui, content);
+            } else {
+                node.show(nctx, ui, content);
+            }
+        }
+        self.contents_shown = shown;
+    }
+
+    fn show_edges(&mut self, ectx: &mut aic_node_graph::EdgesCtx, ui: &mut Ui) {
+        // In screen pixels, at any zoom.
+        let distance = self
+            .edge_screen_distance
+            .unwrap_or(Edge::DEFAULT_DISTANCE_PER_POINT);
+        for link in &self.links {
+            let a = (NodeId::from_u64(link.from as u64), link.output);
+            let b = (NodeId::from_u64(link.to as u64), link.input);
+            Edge::new(a, b)
+                .selected(link.selected)
+                .distance_per_point(distance)
+                .show(ectx, ui);
+        }
+        self.edge_in_progress = false;
+        if let Some(edge) = ectx.in_progress(ui) {
+            edge.show(ui, EdgeShape::DEFAULT);
+            self.edge_in_progress = true;
+        }
+    }
+
+    /// Paints `flow · belts` at the midpoint of every link, in graph space as the snarl spike does.
+    fn paint_link_labels(&self, ui: &Ui) {
+        let painter = ui.painter();
+        let text_color = ui.ctx().global_style().visuals.text_color();
+        let mids: Vec<(Pos2, f64)> =
+            aic_node_graph::with_graph_memory(ui.ctx(), graph_id(), |gmem| {
+                let sockets = gmem.node_sockets();
+                self.links
+                    .iter()
+                    .filter_map(|link| {
+                        let a = sockets
+                            .get(&NodeId::from_u64(link.from as u64))?
+                            .output(link.output)?;
+                        let b = sockets
+                            .get(&NodeId::from_u64(link.to as u64))?
+                            .input(link.input)?;
+                        let flow = self.rates[link.from][INPUTS + link.output];
+                        Some((a.0.lerp(b.0, 0.5), flow))
+                    })
+                    .collect()
+            });
+        for (mid, flow) in mids {
             let galley = painter.layout_no_wrap(
                 format!("{flow:.2} /min · {:.2} belts", flow / 30.0),
                 FontId::proportional(12.0),
@@ -408,6 +374,15 @@ impl Spike {
             painter.rect_filled(rect, 3.0, Color32::from_black_alpha(160));
             painter.galley(rect.min + vec2(2.0, 2.0), galley, text_color);
         }
+    }
+
+    /// The centre of the handle of the scripted wire's output, in graph space, from the graph's
+    /// memory.
+    fn wire_pin_graph(&self, ctx: &egui::Context) -> Option<Pos2> {
+        let node = NodeId::from_u64((COLUMNS * 3 + 5) as u64);
+        aic_node_graph::with_graph_memory(ctx, graph_id(), |gmem| {
+            Some(gmem.node_sockets().get(&node)?.output_handle(0)?.center())
+        })
     }
 
     fn finish_phase(&mut self, phase: Phase) {
@@ -421,8 +396,9 @@ impl Spike {
 
     fn report(&self) {
         println!(
-            "perf spike: {NODES} nodes, {} links, {} ports per node",
-            self.snarl.wires().count(),
+            "perf spike (egui_graph, cull {}): {NODES} nodes, {} links, {} ports per node",
+            self.cull,
+            self.links.len(),
             INPUTS + OUTPUTS
         );
         println!("adapter: {}", self.adapter);
@@ -449,9 +425,9 @@ impl Spike {
 impl eframe::App for Spike {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         if self.current() != Some(Phase::NewWire) {
-            if let Some(pos) = self.wire_drag.take() {
+            if let Some(drag) = self.wire_drag.take() {
                 raw_input.events.push(egui::Event::PointerButton {
-                    pos,
+                    pos: drag.origin,
                     button: egui::PointerButton::Primary,
                     pressed: false,
                     modifiers: egui::Modifiers::NONE,
@@ -462,28 +438,36 @@ impl eframe::App for Spike {
         if self.frame_in_phase < WARMUP {
             return;
         }
-        // Press on an output pin, then move the pointer around while the new wire follows it.
-        let pin = OutPinId {
-            node: NodeId(COLUMNS * 3 + 5),
-            output: 0,
-        };
-        let Some(&center) = self.centers.borrow().get(&PinKey::Out(pin)) else {
+        // Hover the handle of an output, press there on the next frame, then move the pointer
+        // around while the new wire follows it.
+        let Some(start) = self.wire_pin else {
             return;
         };
-        let start = self.to_global * center;
         let t = (self.frame_in_phase - WARMUP) as f32;
         match self.wire_drag {
             None => {
                 raw_input.events.push(egui::Event::PointerMoved(start));
+                self.wire_drag = Some(WireDrag {
+                    origin: start,
+                    pressed: false,
+                });
+            }
+            Some(WireDrag {
+                origin,
+                pressed: false,
+            }) => {
                 raw_input.events.push(egui::Event::PointerButton {
-                    pos: start,
+                    pos: origin,
                     button: egui::PointerButton::Primary,
                     pressed: true,
                     modifiers: egui::Modifiers::NONE,
                 });
-                self.wire_drag = Some(start);
+                self.wire_drag = Some(WireDrag {
+                    origin,
+                    pressed: true,
+                });
             }
-            Some(origin) => {
+            Some(WireDrag { origin, .. }) => {
                 let pos = origin + vec2(20.0 + t * 2.0, (t * 0.1).sin() * 150.0);
                 raw_input.events.push(egui::Event::PointerMoved(pos));
             }
@@ -509,14 +493,15 @@ impl eframe::App for Spike {
 
         if phase == Phase::DragNode {
             let t = self.frame_in_phase as f32;
-            if let Some(node) = self.snarl.get_node_info_mut(NodeId(COLUMNS * 4 + 6)) {
-                node.pos += vec2((t * 0.1).cos() * 6.0, (t * 0.1).sin() * 6.0);
+            let id = NodeId::from_u64((COLUMNS * 4 + 6) as u64);
+            if let Some(pos) = self.view.layout.get_mut(&id) {
+                *pos += vec2((t * 0.1).cos() * 6.0, (t * 0.1).sin() * 6.0);
             }
         }
         if phase == Phase::LiveValues {
             let t = self.frame_in_phase as f64;
-            for (i, node) in self.snarl.nodes_mut().enumerate() {
-                for (k, rate) in node.rates.iter_mut().enumerate() {
+            for (i, rates) in self.rates.iter_mut().enumerate() {
+                for (k, rate) in rates.iter_mut().enumerate() {
                     *rate = 10.0 + ((t + i as f64 + k as f64) * 0.37).sin() * 9.0;
                 }
             }
@@ -526,30 +511,47 @@ impl eframe::App for Spike {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {
-                let mut viewer = Viewer {
-                    centers: &self.centers,
-                    to_global: &mut self.to_global,
-                    script_transform,
-                    cull: self.cull.as_mut(),
-                    record: self.record.as_mut(),
-                };
-                SnarlWidget::new()
-                    .id(Id::new(CANVAS))
-                    .style(self.style)
-                    .show(&mut self.snarl, &mut viewer, ui);
+                // Set the view so that the scene has the transform snarl would: its initial fit,
+                // then the scripted one when there is one, else the last one.
+                let graph_rect = ui.available_rect_before_wrap();
+                let snarl_rect = graph_rect - egui::Frame::canvas(ui.style()).total_margin();
+                let to_global = script_transform
+                    .or(self.to_global)
+                    .unwrap_or_else(|| snarl_initial_transform(snarl_rect));
+                self.view.scene_rect = to_global.inverse() * graph_rect;
+                let mut view = std::mem::take(&mut self.view);
+                aic_node_graph::Graph::from_id(graph_id())
+                    .zoom_range(MIN_SCALE..=MAX_SCALE)
+                    .dot_grid(false)
+                    .auto_pan(None)
+                    .show(&mut view, ui, |ui, show| {
+                        // egui keeps no transform for a layer at identity.
+                        self.to_global = Some(
+                            ui.ctx()
+                                .layer_transform_to_global(ui.layer_id())
+                                .unwrap_or(TSTransform::IDENTITY),
+                        );
+                        paint_grid(ui, ui.clip_rect());
+                        show.nodes(ui, |nctx, ui| self.show_nodes(nctx, ui))
+                            .edges(ui, |ectx, ui| self.show_edges(ectx, ui));
+                        if std::env::var("SPIKE_NO_LABELS").is_err() {
+                            self.paint_link_labels(ui);
+                        }
+                    });
+                self.view = view;
             });
+        self.wire_pin = self
+            .wire_pin_graph(ui.ctx())
+            .and_then(|pos| self.to_global.map(|to_global| to_global * pos));
         if self.start_transform.is_none() && self.frame_in_phase > 5 {
             // SPIKE_SCALE=1.0 starts zoomed in, with only part of the graph on screen.
             let scale = std::env::var("SPIKE_SCALE")
                 .ok()
                 .and_then(|s| s.parse().ok());
-            self.start_transform = Some(match scale {
-                Some(scaling) => TSTransform::new(vec2(0.0, 0.0), scaling),
+            self.start_transform = match scale {
+                Some(scaling) => Some(TSTransform::new(vec2(0.0, 0.0), scaling)),
                 None => self.to_global,
-            });
-        }
-        if std::env::var("SPIKE_NO_LABELS").is_err() {
-            self.paint_link_labels(ui.ctx());
+            };
         }
         if self.frame_in_phase >= WARMUP {
             self.ui_ms.push(now.elapsed().as_secs_f64() * 1000.0);
@@ -570,7 +572,7 @@ impl eframe::App for Spike {
 /// same scripted input as the windowed run.
 fn headless() {
     let ctx = egui::Context::default();
-    let mut spike = Spike::with_adapter(String::new());
+    let mut spike = Spike::new(String::new());
     spike.headless = true;
     let screen = Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 900.0));
     let mut time = 0.0;
@@ -581,12 +583,9 @@ fn headless() {
     let mut views = Vec::new();
     let mut wire_frames = 0;
     let mut passes = 0;
+    let mut shown = vec![0; PHASES.len()];
     while let Some(phase) = spike.current() {
         let frame_in_phase = spike.frame_in_phase;
-        // The last, untimed warm-up frame of each phase records where the nodes are drawn.
-        if frame_in_phase == WARMUP - 1 {
-            spike.record = Some(Vec::new());
-        }
         time += 1.0 / 60.0;
         let mut input = egui::RawInput {
             screen_rect: Some(screen),
@@ -604,8 +603,8 @@ fn headless() {
         let primitives = ctx.tessellate(output.shapes, output.pixels_per_point);
         let tess_ms = tess_started.elapsed().as_secs_f64() * 1000.0;
         let ms = started.elapsed().as_secs_f64() * 1000.0;
+        let index = PHASES.iter().position(|&p| p == phase).expect("a phase");
         if frame_in_phase >= WARMUP {
-            let index = PHASES.iter().position(|&p| p == phase).expect("a phase");
             times[index].1.push(ms);
             tess[index].push(tess_ms);
             let vertices: usize = primitives
@@ -617,25 +616,38 @@ fn headless() {
                 .sum();
             counts[index] = (shapes, primitives.len(), vertices);
             passes += ctx.cumulative_pass_nr() - passes_before;
-            if phase == Phase::NewWire && ctx.dragged_id().is_some() {
+            shown[index] += spike.contents_shown;
+            if phase == Phase::NewWire && spike.edge_in_progress {
                 wire_frames += 1;
             }
         }
-        if let Some(rects) = spike.record.take() {
-            let viewport = spike.to_global.inverse() * screen;
+        // The last, untimed warm-up frame of each phase: where the nodes are.
+        if frame_in_phase == WARMUP - 1 {
+            let to_global = spike.to_global.unwrap_or_default();
+            let viewport = to_global.inverse() * screen;
+            let rects: Vec<Rect> = aic_node_graph::with_graph_memory(&ctx, graph_id(), |gmem| {
+                spike
+                    .view
+                    .layout
+                    .iter()
+                    .filter_map(|(id, &pos)| {
+                        Some(Rect::from_min_size(pos, *gmem.node_sizes().get(id)?))
+                    })
+                    .collect()
+            });
             let in_view = rects.iter().filter(|r| r.intersects(viewport)).count();
             let size = rects
                 .iter()
                 .map(|r| r.size())
                 .fold(egui::Vec2::ZERO, |a, b| a + b)
                 / rects.len().max(1) as f32;
-            views.push((phase, spike.to_global, in_view, rects.len(), size));
+            views.push((phase, to_global, in_view, rects.len(), size));
         }
     }
     println!(
-        "snarl headless: {NODES} nodes, {} links, cull {}",
-        spike.snarl.wires().count(),
-        spike.cull.is_some()
+        "egui_graph headless: {NODES} nodes, {} links, cull {}",
+        spike.links.len(),
+        spike.cull
     );
     for (phase, to_global, in_view, drawn, size) in views {
         println!(
@@ -649,7 +661,14 @@ fn headless() {
             size.y
         );
     }
-    println!("new wire: a widget drag was active in {wire_frames}/{FRAMES} timed frames");
+    for (index, phase) in PHASES.iter().enumerate() {
+        println!(
+            "  {:<10} node contents run per timed frame: {:.1}",
+            format!("{phase:?}"),
+            shown[index] as f64 / FRAMES as f64
+        );
+    }
+    println!("new wire: an edge was in progress in {wire_frames}/{FRAMES} timed frames");
     println!(
         "egui passes per timed frame: {:.3}",
         passes as f64 / (FRAMES * PHASES.len()) as f64
@@ -700,8 +719,18 @@ fn main() -> eframe::Result {
     };
     options.wgpu_options.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
     eframe::run_native(
-        "perf spike",
+        "perf spike graph",
         options,
-        Box::new(|cc| Ok(Box::new(Spike::new(cc)))),
+        Box::new(|cc| {
+            let adapter = cc
+                .wgpu_render_state
+                .as_ref()
+                .map(|rs| {
+                    let info = rs.adapter.get_info();
+                    format!("{} ({:?})", info.name, info.backend)
+                })
+                .unwrap_or_default();
+            Ok(Box::new(Spike::new(adapter)))
+        }),
     )
 }

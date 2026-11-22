@@ -6,8 +6,8 @@
 
 desktop
 
-Native desktop app, macOS and Windows, built with Rust + egui (eframe 0.36) and egui-snarl 0.12 for
-the node canvas. Desktop first. The wasm build (PLAN.md M9) is a "maybe later": no design effort goes
+Native desktop app, macOS and Windows, built with Rust + egui (eframe 0.36) and `aic-node-graph`
+(our copy of egui_graph) for the node canvas. Desktop first. The wasm build (PLAN.md M9) is a "maybe later": no design effort goes
 to it, but choices that would block it outright need a fallback (for example runtime system-font
 loading falls back to embedded fonts).
 
@@ -49,7 +49,7 @@ sections, workspaces with explicit ports (ADR 0007). Logical flow only, never sp
 - See `docs/PLAN.md` for scope and milestones, `GLOSSARY.md` for vocabulary, `docs/adr/` for
   decisions. UI copy uses the glossary's terms.
 - egui is immediate-mode and paints its own widgets: styling goes through `egui::Style` / `Visuals`,
-  `FontDefinitions`, `SnarlStyle` and custom `Painter` drawing, not CSS. Anything can be drawn with the
+  `FontDefinitions` and custom `Painter` drawing, not CSS. Anything can be drawn with the
   painter; standard widgets are styled globally.
 - Every user-facing string goes through Fluent (`crates/aic-editor/i18n/en.ftl`).
 - The UI never does math; it renders `aic_core::Solution`.

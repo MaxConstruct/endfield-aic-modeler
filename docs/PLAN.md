@@ -19,10 +19,9 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 Tech:
 
 - Language: Rust (stable, edition 2024)
-- UI: `egui` via `eframe`, with `egui-snarl` for the node canvas. This is the shipping UI. M11
-  moves the canvas to `aic-node-graph`, our copy of egui_graph
-  ([ADR 0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md)); until it lands, this file
-  describes the egui-snarl canvas. Its
+- UI: `egui` via `eframe`, with `aic-node-graph`, our copy of egui_graph, for the node canvas
+  ([ADR 0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md)). This is the shipping UI. Up
+  to M10 the canvas was egui-snarl, and the milestones up to then say so. Its
   app logic lives in the GUI-free `aic-editor` crate. An iced frontend (iced 0.14 + iced_nodegraph)
   was tried beside it and dropped after its performance spike failed; see
   [ADR 0010](adr/0010-one-frontend-editor-crate-stays.md) and
@@ -201,7 +200,8 @@ endfield-aic-modeler/
    ├─ aic-data/               # parse + normalize -> Catalog; native discovery. deps: serde, serde_json, thiserror, indexmap
    ├─ aic-core/               # Graph model, validation, sections, solver. deps: aic-data, good_lp, serde, slotmap
    ├─ aic-editor/             # App logic, no GUI dependency: document, session, selection, commands, files, Fluent strings, style tokens, built-in data (ADR 0010)
-   ├─ aic-app/                # eframe + egui-snarl UI. deps: aic-editor, eframe, egui-snarl, egui_dock, rfd
+   ├─ aic-node-graph/         # The node canvas widget, our copy of egui_graph 0.19.1 (ADR 0011). deps: egui, siphasher
+   ├─ aic-app/                # eframe UI. deps: aic-editor, aic-node-graph, eframe, egui-scale, egui_dock, rfd
    └─ aic-extract/            # LATER (M8): CLI that converts other sources into data/<version>/
 ```
 
@@ -210,8 +210,9 @@ will need it, and it makes the internal format easy to inspect.
 
 Crate versions (crates.io, checked 2026-11-08):
 
-- `egui-snarl = "0.12"` requires `egui ^0.36`, so **pin `eframe = "0.36"`** even though 0.37 is out.
-  Upgrade only when egui-snarl does.
+- **Pin `eframe = "0.36"`** even though 0.37 is out. The pin was egui-snarl's; now that the
+  canvas is `aic-node-graph` (on `egui` 0.36), moving to a newer egui means porting that crate
+  ourselves (ADR 0011), along with `egui_dock`, `egui-scale` and `egui_kittest`.
 - `good_lp = { version = "1.15", default-features = false, features = ["microlp"] }`. Add a `highs`
   feature later only if microlp is slow or unstable on big graphs (`highs` won't build for wasm).
 - `serde`/`serde_json` 1.x, `slotmap`, `indexmap`, `thiserror`, `image` with `webp`, `rfd`, `fluent-bundle`.
@@ -468,8 +469,10 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
     considered and rejected because the node editor crate is young with a single maintainer, and the
     graph sizes don't need it.
   - The spike is `crates/aic-app/examples/perf_spike.rs`
-    (`cargo run --release -p aic-app --example perf_spike`). It drives itself through idle, pan, zoom,
-    node drag, new-link drag and live-value phases with vsync off, prints frame times, and exits.
+    (`cargo run --release -p aic-app --example perf_spike`). (Since M11 step 4 that file is the
+    egui_graph spike, once `perf_spike_graph.rs`; this egui-snarl one is in git history.) It
+    drives itself through idle, pan, zoom, node drag, new-link drag and live-value phases with
+    vsync off, prints frame times, and exits.
     Measured 2026-11-09 on an M1 Pro (Metal), all 300 nodes on screen (the worst case): mean frame
     5.2–8.1 ms, p95 5.7–8.8 ms; about 4.5 ms of each frame is building the UI. Skipping the widgets of
     off-screen nodes saved only about 0.5 ms, because egui-snarl still lays out every node frame and
@@ -681,7 +684,8 @@ Done, except where noted.
   - 2026-11-17, same Windows PC, background apps open: egui-snarl against egui_graph 0.19.1 on
     the M4 spike's graph (300 nodes, 600 links, a rate label on every port and link).
     `SPIKE_HEADLESS=1` on `perf_spike` (egui-snarl) and `perf_spike_graph` (egui_graph) times UI
-    build plus tessellation with no window; both on mimalloc. Means of 6 alternating runs:
+    build plus tessellation with no window; both on mimalloc. (M11 step 4 deleted the egui-snarl
+    spike and renamed `perf_spike_graph` to `perf_spike`.) Means of 6 alternating runs:
     - Zoomed in (`SPIKE_SCALE=1.0`, 35 of 300 nodes on screen): idle 10.75 ms for egui-snarl,
       8.86 ms with the spike's own culling (`SPIKE_CULL=1`), 4.73 ms for egui_graph's
       `Node::show_or_cull`. Live values 12.02 / 9.71 / 5.40 ms. egui_graph without culling
@@ -775,7 +779,8 @@ Cmd/Ctrl+W. With one view there is no tab bar.
   scrolling between views, minimaps.
 
 ### M11: The canvas on `aic-node-graph`
-Steps 1 to 3 are done, 4 and 5 are to do
+Steps 1 to 4 are done. Step 5 is measured on Windows; the Mac, the full web build and live
+values under 8 ms in a window are to do
 ([ADR 0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md)); the spike's numbers are
 under M7. The canvas moves from egui-snarl to `crates/aic-node-graph`, a copy of egui_graph 0.19.1
 that is ours to change. The player should notice nothing but the speed: every card, port, link,
@@ -889,6 +894,11 @@ egui-snarl and pass the milestone checks on their own. Step 3 is the switch.
 4. **Take egui-snarl out.** The dependency, `examples/perf_spike.rs` (the egui_graph spike
    takes its name), the egui-snarl style in `theme.rs`, and its name in this file's Tech,
    workspace and crate-version sections, `CLAUDE.md`, `DESIGN.md` and `PRODUCT.md`.
+   - **Done** (2026-11-22). As built: `theme.rs` had no egui-snarl style left: the
+     `SnarlStyle` was built in `canvas.rs` and went with it in step 3, which also fixed
+     `theme.rs`'s module comment; nothing in it was dead. `Cargo.lock` lost egui-snarl alone,
+     and no feature it switched on was missed. The `.impeccable/` notes stopped naming it too.
+     Older text naming `perf_spike_graph` or the egui-snarl `perf_spike` has a note beside it.
 5. **Measure and write it down** here, on Windows and the Mac, with `perf_app`.
    - Zoomed in to part of the 201-node graph: under 8 ms a frame while panning and with live
      values, headless and windowed. `PERF_ZOOM` zooms `perf_app`'s headless run; the windowed
@@ -898,6 +908,39 @@ egui-snarl and pass the milestone checks on their own. Step 3 is the switch.
    - `PERF_IDLE=20` and `PERF_MINIMIZE=1` still draw no frames. egui_graph asks for repaints
      while it animates a node's position or pans near an edge; neither may fire at rest.
    - The web build runs (`scripts/build-web.sh`).
+   - **As built** (2026-11-22): `PERF_ZOOM` zooms the windowed run too, and the headless run
+     gained a pan phase. The pan phase holds Shift with the wheel. Before, it sent the wheel
+     alone, which the canvas takes as zoom, so its windowed "Pan" row timed zooming. A test
+     (`a_drag_held_at_the_edge_and_a_moved_card_ask_for_no_frames`) checks that a card moved by
+     an undo is in place the next frame and that a drag held at the edge asks for no frames:
+     the canvas turns the widget's animation and auto-pan off. It fails with either turned on.
+   - **Measured** 2026-11-22 on the Windows PC, background apps open, `perf_app` with the
+     201-node graph (109 links):
+     - Zoomed to 100% (`PERF_ZOOM=1.0`), headless, 4 runs alternating with egui-snarl: idle
+       2.6–2.7 ms (egui-snarl 8.2–9.5 ms), pan 2.6–2.9 ms, live values 6.8–7.2 ms with p95
+       7.7–9.5 ms (egui-snarl 12.2–12.6 ms). Under 8 ms.
+     - Zoomed to 100%, windowed with vsync off, 3 runs: idle 4.4–4.6 ms, pan 4.3–4.6 ms, of which
+       the UI is about 2 ms. Live values 8.6–8.8 ms (UI 6.2–6.4 ms), p95 9.9–10.6 ms: over the
+       8 ms budget, missed.
+     - The whole graph at 25% (`PERF_ZOOM=0.25`), headless, 4 runs alternating with egui-snarl:
+       idle 9.9–11.6 ms (egui-snarl 10.9–13.9 ms), live values 14.9–17.6 ms (16.1–18.6 ms), pan
+       9.5–11.7 ms. No slower than egui-snarl run by run. The quiet-PC numbers above (9.0 and
+       13.0 ms) were not re-measured with the background apps closed.
+     - The whole graph at 25%, windowed, 3 runs: idle 12.8–13.6 ms, pan 11.1–11.5 ms, live
+       values 15.3–15.7 ms. Over 8 ms, as expected until cards get cheaper zoomed out.
+     - `PERF_IDLE=20`, 3 runs: 1 frame in 20 s each, with no repaint asked for by the app; a
+       window event drew it. `PERF_IDLE=20 PERF_MINIMIZE=1`, 3 runs: 0 frames.
+     - Web: trunk and wasm-bindgen-cli are not installed here, so `scripts/build-web.sh` was not
+       run. `cargo check` and `cargo clippy -- -D warnings` for `-p aic-app --target
+       wasm32-unknown-unknown` pass with no warnings. To do: the full web build.
+     - To do: the Mac. Nothing was measured there for M11.
+     - Found while checking, and fixed: the `golden_07` snapshot failed in most runs with 18
+       pixels off, since step 3 made snapshots compare exactly. The cards were in the same place
+       to the bit; the font atlas was not. kittest draws a frame as it builds a harness, before
+       the tests hid the status bar's frame rate and solve time, so those digits entered the
+       atlas in a different order each run, and a glyph drawn smaller than it was rasterized
+       takes a little of its neighbour in the atlas. The tests now hide them before that frame
+       (`steady` in `snapshots.rs`). The app is unchanged.
 
 Not in M11: a cheaper card for a view zoomed far out, which is what the whole-graph budget needs
 and is easier now that a card is ours to draw; automatic layout; selecting a link by clicking the
