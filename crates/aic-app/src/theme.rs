@@ -1,4 +1,4 @@
-//! The app's look: colors, type, sizes, and the egui and egui-snarl styles built from them.
+//! The app's look: colors, type, sizes, and the egui styles built from them.
 //! `DESIGN.md` explains the choices. Every color the app paints comes from here, so a change in
 //! one place restyles the whole window.
 

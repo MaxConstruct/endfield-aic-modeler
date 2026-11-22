@@ -15,7 +15,8 @@
 //!
 //! `PERF_HEADLESS=1` opens no window: it builds and tessellates the UI 600 times, then 600 more
 //! with the live values changing, and prints the CPU time per frame. With no GPU and no compositor
-//! in the way its numbers vary much less from run to run.
+//! in the way its numbers vary much less from run to run. With `PERF_ZOOM=1.0` it first zooms the
+//! canvas to that zoom (1 is 100%) around its middle, so only part of the graph is on screen.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -305,6 +306,14 @@ fn headless(catalog: Result<Catalog, String>, target: usize) {
         times
     };
     let _ = frames(&mut app, 60, None);
+    let zoom: Option<f32> = std::env::var("PERF_ZOOM").ok().and_then(|v| v.parse().ok());
+    if let (Some(zoom), Some(editor)) = (zoom, app.editor_mut()) {
+        editor.zoom_canvas_to(zoom);
+        let _ = frames(&mut app, 30, None);
+    }
+    if let Some(view) = app.editor_mut().and_then(|editor| editor.canvas_view()) {
+        println!("canvas at {:.0}%", view.zoom * 100.0);
+    }
     println!(
         "{:<12} {:>9} {:>9} {:>9}",
         "phase", "mean ms", "median ms", "p95 ms"

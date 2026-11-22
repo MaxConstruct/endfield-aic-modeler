@@ -775,7 +775,8 @@ Cmd/Ctrl+W. With one view there is no tab bar.
   scrolling between views, minimaps.
 
 ### M11: The canvas on `aic-node-graph`
-Planned ([ADR 0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md)); the spike's numbers are
+Steps 1 to 3 are done, 4 and 5 are to do
+([ADR 0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md)); the spike's numbers are
 under M7. The canvas moves from egui-snarl to `crates/aic-node-graph`, a copy of egui_graph 0.19.1
 that is ours to change. The player should notice nothing but the speed: every card, port, link,
 label, menu, shortcut and mouse habit stays as M4 to M10 left it.
@@ -852,12 +853,46 @@ egui-snarl and pass the milestone checks on their own. Step 3 is the switch.
      at its port.
    - **Done when:** the M4 "done when" graphs can be rebuilt by hand as before, the canvas
      tests of M4 to M10 pass, and each view of a split shows and edits the graph.
+   - **As built** (2026-11-22), where it differs from the plan above:
+     - A card's position is its corner. With egui-snarl it was the corner of its content, 7
+       points in, so a file from before opens with every card 7 points up and to the left.
+     - A level is laid out once per change, not mirrored: `DocView` keeps a `Card` per member
+       with its pins and which are linked, and a `Wire` per pair of pins. The canvas reads them
+       each frame and looks nothing up in the graph for them.
+     - A drag is handed to the document every frame, as before, not when it ends: a second view
+       of the level follows it live.
+     - A level's camera is kept from the canvas's corner, so it holds when a tab moves or a
+       split is resized, for the level shown and for the ones waiting.
+     - A level first shown with cards on it is fitted to all of them, down to 20%. egui-snarl
+       stopped at 40% and showed the middle of a large graph. `Editor::fit_canvas` asks for the
+       same fit; a double-click on the background fits to the cards as drawn.
+     - Link labels are painted on a layer of their own over the cards, as they were read before.
+     - The widget gained `NodesCtx::set_position` (a workspace's ports are pinned with this
+       frame's view, after its pan), `Graph::selection_area` (the box keeps the accent colour)
+       and taps: a press and release inside one frame now selects, clears and opens the picker
+       as a slower click does. A tap did nothing after step 2.
+     - Canvas tests added, all driven with pointer events: a link dragged from pin to pin, both
+       ways; a link dropped on a pin of another item; a right click on a link and on a linked
+       port; clicks, Shift+clicks and a background click; a click on a link's label; a card's
+       menu; a double-click on a workspace's card and on the background; Shift with the wheel
+       and a pinch; typing in a card that has left the view; a link to a card out of view; a
+       link's label far from the graph's origin. Snapshots compare exactly now: wires are drawn
+       in the order of the graph's links, not a hash set's.
+   - **Measured** the same day on the Windows PC, background apps open, `perf_app` headless
+     (201 nodes, 109 links), alternating runs against egui-snarl built from the commit before
+     with the same `PERF_ZOOM`:
+     - Zoomed to 100% (`PERF_ZOOM=1.0`, part of the graph on screen), 4 runs each: idle
+       8.2–8.4 ms on egui-snarl, 2.6–2.8 ms now; live values 12.3–12.5 ms, 6.8–7.0 ms now.
+     - The whole graph on screen at 25% (`PERF_ZOOM=0.25`), 3 runs each: idle 11.0–11.3 ms,
+       10.1–10.7 ms now; live values 16.0–16.1 ms, 15.1–15.9 ms now.
+     - `PERF_IDLE=12`, windowed: 1 frame in 12 s.
 4. **Take egui-snarl out.** The dependency, `examples/perf_spike.rs` (the egui_graph spike
    takes its name), the egui-snarl style in `theme.rs`, and its name in this file's Tech,
    workspace and crate-version sections, `CLAUDE.md`, `DESIGN.md` and `PRODUCT.md`.
 5. **Measure and write it down** here, on Windows and the Mac, with `perf_app`.
    - Zoomed in to part of the 201-node graph: under 8 ms a frame while panning and with live
-     values, headless and windowed. `perf_app` needs a zoomed-in phase for this.
+     values, headless and windowed. `PERF_ZOOM` zooms `perf_app`'s headless run; the windowed
+     run still needs a zoomed-in phase.
    - The whole graph on screen: no slower than egui-snarl was (headless on the quiet PC,
      9.0 ms idle and 13.0 ms live values).
    - `PERF_IDLE=20` and `PERF_MINIMIZE=1` still draw no frames. egui_graph asks for repaints

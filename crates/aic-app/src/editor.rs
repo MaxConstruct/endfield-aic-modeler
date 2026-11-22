@@ -38,7 +38,7 @@ const PORT_MENU_GAP: f32 = 12.0;
 pub struct Editor {
     /// The catalog, the document, the selection, the clipboard and every edit that isn't drawing.
     pub(crate) session: Session,
-    /// The egui-snarl view of the focused view's level of the document.
+    /// The focused view's level of the document, laid out for the canvas.
     pub(crate) view: DocView,
     /// The focused view's canvas; the other views' wait in `views`.
     pub(crate) canvas: Canvas,
@@ -112,7 +112,7 @@ impl Editor {
         self.port_menu = None;
     }
 
-    /// Brings the focused view's snarl graph in line with the document, if it changed.
+    /// Brings the focused view's cards and wires in line with the document, if it changed.
     pub(crate) fn sync_view(&mut self) {
         self.view
             .sync(self.session.document(), self.session.catalog());
@@ -219,7 +219,6 @@ impl Editor {
         self.canvas.port_on_screen(
             &self.view,
             self.session.document(),
-            self.session.catalog(),
             node,
             side,
             &item.into(),
@@ -262,6 +261,12 @@ impl Editor {
     /// Zooms the canvas to `zoom` (1 is 100%) around its middle, from the next frame.
     pub fn zoom_canvas_to(&mut self, zoom: f32) {
         self.canvas.zoom_to(zoom);
+    }
+
+    /// Fits the canvas to where its cards are placed, from the next frame: what a level shows the
+    /// first time it is looked at.
+    pub fn fit_canvas(&mut self) {
+        self.canvas.fit();
     }
 
     /// The top-left of the canvas, on screen: where [`Self::canvas_view`]'s point is.
@@ -346,7 +351,6 @@ impl Editor {
             CanvasEvent::Disconnect(link) => self.session.disconnect(link),
             CanvasEvent::OpenPicker { origin, graph_pos } => self.open_picker(origin, graph_pos),
             CanvasEvent::Select(selection) => self.select(selection),
-            CanvasEvent::Toggle(member) => self.session.toggle(member),
             CanvasEvent::Remove(Member::Node(node)) => self.session.remove_node(node),
             CanvasEvent::Remove(Member::Workspace(workspace)) => {
                 self.session.remove_workspace(workspace);
@@ -441,7 +445,6 @@ impl Editor {
         if let Some(pin) = self.canvas.port_on_screen(
             &self.view,
             self.session.document(),
-            self.session.catalog(),
             port.node,
             port.side,
             &port.item,

@@ -157,8 +157,6 @@ fn type_limit(harness: &mut Harness<'_, App>, limit: &str) {
     harness.run();
 }
 
-/// Fits the canvas to the graph, as a double-click on the background does: egui-snarl fits the
-/// view the first time it sees the canvas.
 /// The middle of an output port's rate, left of its pin at `pin`: 24 (half the 48 icon) plus the
 /// 4 gap plus half the 54 rate, scaled by the canvas zoom.
 fn beside_output_pin(
@@ -169,18 +167,16 @@ fn beside_output_pin(
     pin - eframe::egui::vec2(55.0 * zoom, 0.0)
 }
 
+/// Fits the canvas to where the graph's cards are placed, as a level is shown the first time it
+/// is looked at.
 fn fit_view(harness: &mut Harness<'_, App>) {
-    harness
-        .ctx
-        .memory_mut(|memory| memory.data = Default::default());
+    editor(harness).fit_canvas();
     harness.run();
 }
 
-/// Snapshots a canvas with links. egui-snarl draws wires in hash-set order, so where two wires
-/// cross, the one on top changes between runs; a few hundred such pixels are allowed.
+/// Snapshots a canvas with cards on it.
 fn snapshot_graph(harness: &mut Harness<'_, App>, name: &str) {
-    let options = egui_kittest::SnapshotOptions::new().max_failed_pixels(500);
-    harness.snapshot_options(name, &options);
+    harness.snapshot(name);
 }
 
 #[track_caller]
@@ -465,15 +461,21 @@ fn dragging_a_link_onto_empty_canvas_picks_and_links_in_one_click() {
     let graph = ws.document().graph();
     let (_, link) = graph.links().iter().next().expect("linked");
     assert_eq!((link.from, link.to), (smelter, plate));
-    // The new node feeds the port, so it lands to the left of it.
+    // The new node feeds the port, so it lands to the left of it: its output side, the card's
+    // right edge, where the link was dropped.
+    let card = ws.node_on_screen(smelter).expect("the node is drawn");
+    assert!(
+        (card.right() - drop.x).abs() < 1.0,
+        "its output side sits at the drop point: {} vs {}",
+        card.right(),
+        drop.x
+    );
     let smelter_out = ws
         .port_on_screen(smelter, Side::Output, "iron_ingot")
         .expect("pin is drawn");
     assert!(
-        (smelter_out.x - drop.x).abs() < 20.0,
-        "its output side sits at the drop point: {} vs {}",
-        smelter_out.x,
-        drop.x
+        card.contains(smelter_out) && card.right() - smelter_out.x < 30.0,
+        "its output pin is inside that edge: {smelter_out:?} in {card:?}"
     );
     snapshot_graph(&mut harness, "added_from_port");
 }
@@ -1426,12 +1428,8 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
         .selection()
         .and_then(Selection::single_workspace)
         .expect("the new workspace is selected");
-    assert_eq!(
-        ed.document().view().nodes().count(),
-        3,
-        "two nodes became one card"
-    );
-    assert_eq!(ed.document().view().wires().count(), 2);
+    assert_eq!(ed.document().cards().len(), 3, "two nodes became one card");
+    assert_eq!(ed.document().wires().len(), 2);
     // A workspace changes nothing for the solver.
     let after = ed.document().solution().clone();
     for node in [ingot, plate] {
@@ -1463,11 +1461,11 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
     let ed = editor(&mut harness);
     assert_eq!(ed.document().level(), Some(workspace));
     assert_eq!(
-        ed.document().view().nodes().count(),
+        ed.document().cards().len(),
         4,
         "the two nodes and the two ports"
     );
-    assert_eq!(ed.document().view().wires().count(), 3);
+    assert_eq!(ed.document().wires().len(), 3);
     fit_view(&mut harness);
     snapshot_graph(&mut harness, "workspace_inside");
 
@@ -1539,7 +1537,7 @@ fn a_workspace_holds_its_nodes_and_opens_to_show_them_between_its_ports() {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     harness.run();
     assert_eq!(
-        editor(&mut harness).document().view().nodes().count(),
+        editor(&mut harness).document().cards().len(),
         4,
         "undo takes the workspace apart again"
     );
@@ -2575,4 +2573,461 @@ fn a_recipe_of_another_region_is_offered_with_its_badge_and_warns_on_its_card() 
     editor(&mut harness).open_picker(Origin::Canvas, pos2(300.0, 300.0));
     harness.run();
     harness.snapshot("region_badges_picker");
+}
+
+// M11: the canvas on aic-node-graph (ADR 0011). What the pointer does on the canvas, driven with
+// pointer events, each in a frame of its own as a hand makes them.
+
+fn constructor(harness: &mut Harness<'_, App>, x: f32, y: f32) -> NodeId {
+    add(
+        harness,
+        NodeKind::Recipe {
+            recipe: "iron_plate".into(),
+            facility: "constructor".into(),
+            limit: None,
+        },
+        x,
+        y,
+    )
+}
+
+/// The middle of a port's icon, on screen.
+fn pin_at(harness: &mut Harness<'_, App>, node: NodeId, side: Side, item: &str) -> Pos2 {
+    editor(harness)
+        .port_on_screen(node, side, item)
+        .expect("the pin is drawn")
+}
+
+/// The canvas area on screen.
+fn canvas_rect(harness: &mut Harness<'_, App>) -> eframe::egui::Rect {
+    let corner = editor(harness).canvas_corner_on_screen();
+    let center = editor(harness).canvas_center_on_screen();
+    eframe::egui::Rect::from_min_max(corner, center + (center - corner))
+}
+
+/// A press and release of `button` at `pos` with `modifiers` held.
+fn click_at(
+    harness: &mut Harness<'_, App>,
+    button: PointerButton,
+    pos: Pos2,
+    modifiers: Modifiers,
+) {
+    harness.hover_at(pos);
+    harness.run();
+    harness.event(Event::ModifiersChanged(modifiers));
+    for pressed in [true, false] {
+        harness.event(Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers,
+        });
+    }
+    harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    harness.run();
+}
+
+/// A point on a card that drags it and selects it: the start of its header, which is on the
+/// canvas even when the card's far end is behind the inspector.
+fn header_of(harness: &mut Harness<'_, App>, node: NodeId) -> Pos2 {
+    node_rect(harness, node).left_top() + vec2(40.0, 6.0)
+}
+
+/// A point on the canvas with no card on it, in its bottom-left corner.
+fn background(harness: &mut Harness<'_, App>) -> Pos2 {
+    canvas_rect(harness).left_bottom() + vec2(20.0, -20.0)
+}
+
+/// A smelter and a constructor, not linked, fitted to the canvas.
+fn ingot_and_plate(harness: &mut Harness<'_, App>) -> (NodeId, NodeId) {
+    let ingot = smelter(harness, 0.0, 0.0);
+    let plate = constructor(harness, 500.0, 120.0);
+    harness.run();
+    fit_view(harness);
+    (ingot, plate)
+}
+
+#[test]
+fn dragging_a_link_from_one_pin_to_another_links_their_ports() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    let out = pin_at(&mut harness, ingot, Side::Output, "iron_ingot");
+    let into = pin_at(&mut harness, plate, Side::Input, "iron_ingot");
+    let before = node_pos(&mut harness, ingot);
+    drag(&mut harness, out, into, Modifiers::NONE);
+
+    let graph = editor(&mut harness).document().graph().clone();
+    let links: Vec<_> = graph.links().values().collect();
+    assert_eq!(links.len(), 1, "one link from the drag");
+    assert_eq!((links[0].from, links[0].to), (ingot, plate));
+    assert_eq!(links[0].item.as_str(), "iron_ingot");
+    assert_eq!(
+        node_pos(&mut harness, ingot),
+        before,
+        "the drag made a link, and left the card where it was"
+    );
+    assert!(!editor(&mut harness).picker_is_open());
+
+    // The other way round, from the input to the output, makes the same link.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert!(editor(&mut harness).document().graph().links().is_empty());
+    drag(&mut harness, into, out, Modifiers::NONE);
+    let graph = editor(&mut harness).document().graph().clone();
+    let links: Vec<_> = graph.links().values().collect();
+    assert_eq!(links.len(), 1);
+    assert_eq!((links[0].from, links[0].to), (ingot, plate));
+}
+
+#[test]
+fn a_link_dropped_on_a_pin_of_another_item_links_nothing() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    let out = pin_at(&mut harness, plate, Side::Output, "iron_plate");
+    let into = pin_at(&mut harness, ingot, Side::Input, "iron_ore");
+    drag(&mut harness, out, into, Modifiers::NONE);
+    assert!(editor(&mut harness).document().graph().links().is_empty());
+    assert!(
+        !editor(&mut harness).picker_is_open(),
+        "a link dropped on a card opens no picker"
+    );
+}
+
+#[test]
+fn a_right_click_on_a_link_removes_it() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    link(&mut harness, ingot, plate, "iron_ingot");
+    // The link runs level out of its port: a point a little way along it, off the card.
+    let out = pin_at(&mut harness, ingot, Side::Output, "iron_ingot");
+    let on_link = pos2(node_rect(&mut harness, ingot).right() + 12.0, out.y);
+    secondary_click_at(&mut harness, on_link);
+    assert!(editor(&mut harness).document().graph().links().is_empty());
+    assert!(
+        !editor(&mut harness).picker_is_open(),
+        "the click removed the link, and opened no picker"
+    );
+}
+
+#[test]
+fn a_right_click_on_a_linked_port_unlinks_it() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    link(&mut harness, ingot, plate, "iron_ingot");
+    let into = pin_at(&mut harness, plate, Side::Input, "iron_ingot");
+    secondary_click_at(&mut harness, into);
+    assert!(editor(&mut harness).document().graph().links().is_empty());
+    assert!(!editor(&mut harness).picker_is_open());
+}
+
+#[test]
+fn clicks_on_cards_and_the_background_select() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    let (a, b) = (
+        header_of(&mut harness, ingot),
+        header_of(&mut harness, plate),
+    );
+    let empty = background(&mut harness);
+
+    click_at(&mut harness, PointerButton::Primary, a, Modifiers::NONE);
+    assert_eq!(selected_nodes(&mut harness), vec![ingot]);
+    // Shift adds a card to the selection, and takes it out again.
+    click_at(&mut harness, PointerButton::Primary, b, Modifiers::SHIFT);
+    let mut both = vec![ingot, plate];
+    both.sort();
+    assert_eq!(selected_nodes(&mut harness), both);
+    click_at(&mut harness, PointerButton::Primary, a, Modifiers::SHIFT);
+    assert_eq!(selected_nodes(&mut harness), vec![plate]);
+    // A plain click on another card selects it alone.
+    click_at(&mut harness, PointerButton::Primary, a, Modifiers::NONE);
+    assert_eq!(selected_nodes(&mut harness), vec![ingot]);
+    click_at(&mut harness, PointerButton::Primary, empty, Modifiers::NONE);
+    assert_eq!(editor(&mut harness).selection(), None);
+}
+
+#[test]
+fn a_click_on_a_links_label_selects_the_link() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    link(&mut harness, ingot, plate, "iron_ingot");
+    let id = editor(&mut harness)
+        .document()
+        .graph()
+        .links()
+        .keys()
+        .next()
+        .unwrap();
+    // The label sits halfway between the two cards' edges.
+    let out = pin_at(&mut harness, ingot, Side::Output, "iron_ingot");
+    let into = pin_at(&mut harness, plate, Side::Input, "iron_ingot");
+    let from = pos2(node_rect(&mut harness, ingot).right(), out.y);
+    let to = pos2(node_rect(&mut harness, plate).left(), into.y);
+    click_at(
+        &mut harness,
+        PointerButton::Primary,
+        from.lerp(to, 0.5),
+        Modifiers::NONE,
+    );
+    assert_eq!(editor(&mut harness).selection(), Some(&Selection::Link(id)));
+    assert_eq!(
+        editor(&mut harness).document().graph().links().len(),
+        1,
+        "selecting a link changes nothing"
+    );
+    // A click on the background lets go of it.
+    let empty = background(&mut harness);
+    click_at(&mut harness, PointerButton::Primary, empty, Modifiers::NONE);
+    assert_eq!(editor(&mut harness).selection(), None);
+}
+
+/// The text of everything painted in the last frame that isn't clipped away, with where it is.
+fn painted_text(harness: &Harness<'_, App>) -> Vec<(String, Pos2)> {
+    use eframe::egui::Shape;
+    fn collect(shape: &Shape, clip: eframe::egui::Rect, out: &mut Vec<(String, Pos2)>) {
+        match shape {
+            Shape::Text(text) if clip.contains(text.pos) => {
+                out.push((text.galley.text().to_owned(), text.pos));
+            }
+            Shape::Vec(shapes) => shapes.iter().for_each(|s| collect(s, clip, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for clipped in &harness.output().shapes {
+        collect(&clipped.shape, clipped.clip_rect, &mut out);
+    }
+    out
+}
+
+#[test]
+fn a_links_label_is_painted_wherever_on_the_graph_the_link_is() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    // Far from the graph's origin: further than the window is wide, in any space.
+    let ingot = smelter(&mut harness, 3000.0, 2000.0);
+    let plate = constructor(&mut harness, 3500.0, 2100.0);
+    link(&mut harness, ingot, plate, "iron_ingot");
+    fit_view(&mut harness);
+    let canvas = canvas_rect(&mut harness);
+    let labels: Vec<_> = painted_text(&harness)
+        .into_iter()
+        .filter(|(text, _)| text.contains("/min ·"))
+        .collect();
+    assert_eq!(labels.len(), 1, "the link's label: {labels:?}");
+    assert_eq!(labels[0].0, "30 /min · 1 belts");
+    assert!(
+        canvas.contains(labels[0].1),
+        "on the canvas: {labels:?} in {canvas:?}"
+    );
+}
+
+#[test]
+fn a_cards_menu_removes_its_node() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    let at = header_of(&mut harness, ingot);
+    secondary_click_at(&mut harness, at);
+    assert!(
+        !editor(&mut harness).picker_is_open(),
+        "a right click on a card opens its menu, not the picker"
+    );
+    harness.get_by_label("Remove node").click();
+    harness.run();
+    let graph = editor(&mut harness).document().graph().clone();
+    assert!(graph.node(ingot).is_none());
+    assert!(graph.node(plate).is_some());
+}
+
+#[test]
+fn a_double_click_on_a_workspaces_card_opens_it() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let [_, ingot, plate, _] = plate_chain(&mut harness);
+    editor(&mut harness).select_nodes(vec![ingot, plate]);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::G);
+    harness.run();
+    let workspace = editor(&mut harness)
+        .selection()
+        .and_then(Selection::single_workspace)
+        .unwrap();
+    fit_view(&mut harness);
+    let card = editor(&mut harness)
+        .workspace_on_screen(workspace)
+        .expect("the card is drawn");
+    double_click_at(&mut harness, card.center_top() + vec2(0.0, 6.0));
+    assert_eq!(editor(&mut harness).document().level(), Some(workspace));
+}
+
+#[test]
+fn a_double_click_on_the_background_fits_the_canvas_to_its_cards() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let near = smelter(&mut harness, 400.0, 300.0);
+    let far = smelter(&mut harness, 2600.0, 1700.0);
+    harness.run();
+    editor(&mut harness).zoom_canvas_to(2.0);
+    harness.run();
+    let canvas = canvas_rect(&mut harness);
+    assert!(
+        !canvas.intersects(node_rect(&mut harness, far)),
+        "zoomed in, the far card is out of view"
+    );
+
+    let empty = background(&mut harness);
+    double_click_at(&mut harness, empty);
+    // Both cards are back on the canvas. The zoom then settles on a whole 5% step, as the
+    // status bar's slider keeps it, so a card at the edge may reach a little past it.
+    for node in [near, far] {
+        let card = node_rect(&mut harness, node);
+        assert!(canvas.contains(card.center()), "{card:?} in {canvas:?}");
+    }
+    let zoom = editor(&mut harness).canvas_view().unwrap().zoom;
+    assert!(on_a_5_percent_step(zoom), "zoom is {zoom}");
+    // The status bar shows the zoom the canvas ended at.
+    let zoom = editor(&mut harness).canvas_view().unwrap().zoom;
+    harness.get_by_label(&format!("{}%", (zoom * 100.0).round()));
+}
+
+#[test]
+fn shift_and_the_wheel_pan_and_a_pinch_zooms() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    add_from_browser(&mut harness, "Iron Plate");
+    let at = editor(&mut harness).canvas_center_on_screen();
+    let before = editor(&mut harness).canvas_view().unwrap();
+
+    harness.hover_at(at);
+    harness.step();
+    harness.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    harness.event(Event::MouseWheel {
+        unit: eframe::egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, 60.0),
+        phase: eframe::egui::TouchPhase::Move,
+        modifiers: Modifiers::SHIFT,
+    });
+    harness.run_steps(30);
+    harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    harness.run();
+    let panned = editor(&mut harness).canvas_view().unwrap();
+    assert_eq!(panned.zoom, before.zoom, "Shift and the wheel never zoom");
+    assert!(
+        (panned.x - before.x).abs() > 10.0 && (panned.y - before.y).abs() < 0.5,
+        "they pan sideways: {before:?} to {panned:?}"
+    );
+
+    // A pinch (or Ctrl and the wheel) zooms by as much as it is; the status bar's slider then
+    // settles the zoom on the nearest whole 5% step.
+    let under = graph_point(&mut harness, at);
+    harness.hover_at(at);
+    harness.step();
+    harness.event(Event::Zoom(1.37));
+    harness.run();
+    let pinched = editor(&mut harness).canvas_view().unwrap();
+    assert!(
+        (pinched.zoom - 1.35).abs() < 1e-3,
+        "a pinch of 1.37 from 100% ends at 135%: {} to {}",
+        panned.zoom,
+        pinched.zoom
+    );
+    let moved = (graph_point(&mut harness, at) - under) * pinched.zoom;
+    assert!(moved.length() < 2.0, "around the pointer: {moved:?}");
+}
+
+#[test]
+fn a_card_being_typed_in_keeps_its_field_when_it_leaves_the_view() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let frame = add_from_browser(&mut harness, "Modular Frame");
+    let role = eframe::egui::accesskit::Role::TextInput;
+    harness.get_by_role_and_label(role, "Node limit").focus();
+    harness.run();
+
+    // Pan the card out of view with the field still focused: a drag of the background with the
+    // middle button, which takes no focus.
+    let canvas = canvas_rect(&mut harness);
+    let mut at = background(&mut harness);
+    harness.hover_at(at);
+    harness.step();
+    harness.event(Event::PointerButton {
+        pos: at,
+        button: PointerButton::Middle,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    for _ in 0..6 {
+        at += vec2(300.0, 0.0);
+        harness.event(Event::PointerMoved(at));
+    }
+    harness.event(Event::PointerButton {
+        pos: at,
+        button: PointerButton::Middle,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.run();
+    let card = node_rect(&mut harness, frame);
+    assert!(!canvas.intersects(card), "{card:?} is out of {canvas:?}");
+
+    harness
+        .get_by_role_and_label(role, "Node limit")
+        .type_text("1.5");
+    harness.run();
+    assert_eq!(limit_of(&mut harness, frame), Some(1.5));
+}
+
+/// The ends of every line painted in the last frame, on screen.
+fn painted_line_ends(harness: &Harness<'_, App>) -> Vec<(Pos2, Pos2)> {
+    use eframe::egui::Shape;
+    fn collect(shape: &Shape, out: &mut Vec<(Pos2, Pos2)>) {
+        match shape {
+            Shape::Path(path) if !path.closed && path.points.len() >= 2 => {
+                out.push((path.points[0], path.points[path.points.len() - 1]));
+            }
+            Shape::Vec(shapes) => shapes.iter().for_each(|s| collect(s, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for clipped in &harness.output().shapes {
+        collect(&clipped.shape, &mut out);
+    }
+    out
+}
+
+/// Zoomed in on part of a graph: cards cut by the canvas's edge are drawn, cards out of view are
+/// skipped, and a link to a card out of view still runs to that card's port.
+#[test]
+fn a_link_to_a_card_out_of_view_still_ends_at_its_port() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let ingot = smelter(&mut harness, 380.0, 200.0);
+    // Cut by the canvas's right edge at 100%, and far out of view.
+    let cut = constructor(&mut harness, 880.0, 420.0);
+    let away = constructor(&mut harness, 2400.0, 300.0);
+    link(&mut harness, ingot, cut, "iron_ingot");
+    link(&mut harness, ingot, away, "iron_ingot");
+    harness.run();
+    let canvas = canvas_rect(&mut harness);
+    let (cut_card, away_card) = (node_rect(&mut harness, cut), node_rect(&mut harness, away));
+    assert!(canvas.intersects(cut_card) && !canvas.contains_rect(cut_card));
+    assert!(
+        !canvas.intersects(away_card),
+        "{away_card:?} is out of view"
+    );
+
+    // The card out of view is skipped: its limit field isn't there. The two in view are.
+    let fields = harness
+        .get_all_by_role_and_label(eframe::egui::accesskit::Role::TextInput, "Node limit")
+        .count();
+    assert_eq!(fields, 2, "one field per card in view");
+
+    // Its link is still drawn, from the smelter's output to the far card's input: its edge, at
+    // the height of its pin.
+    let out = pin_at(&mut harness, ingot, Side::Output, "iron_ingot");
+    let into = pin_at(&mut harness, away, Side::Input, "iron_ingot");
+    let from = pos2(node_rect(&mut harness, ingot).right(), out.y);
+    let to = pos2(away_card.left(), into.y);
+    let near = |a: Pos2, b: Pos2| (a - b).length() < 1.0;
+    let ends = painted_line_ends(&harness);
+    assert!(
+        ends.iter().any(|(a, b)| near(*a, from) && near(*b, to)),
+        "a line from {from:?} to {to:?} among {ends:?}"
+    );
+    harness.snapshot("canvas_zoomed_in");
 }

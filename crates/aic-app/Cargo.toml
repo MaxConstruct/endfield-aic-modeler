@@ -10,7 +10,11 @@ publish.workspace = true
 aic-core.workspace = true
 aic-data.workspace = true
 aic-editor.workspace = true
+# The node canvas (ADR 0011).
+aic-node-graph.workspace = true
 eframe = { version = "0.36", features = ["persistence"] }
+# Scales an egui style: the canvas lays its cards out at its largest zoom (canvas.rs).
+egui-scale = "0.6"
 egui-snarl = "0.12"
 egui_dock = { version = "0.21.1", features = ["serde"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -53,5 +57,3 @@ windows-sys = { version = "0.61", features = [
 [dev-dependencies]
 aic-editor = { workspace = true, features = ["testing"] }
 egui_kittest = { version = "0.36", features = ["wgpu", "snapshot", "eframe"] }
-# Performance spike only (examples/perf_spike_graph.rs): the canvas on our copy of egui_graph.
-aic-node-graph.workspace = true

@@ -162,6 +162,7 @@ dependencies = [
  "aic-editor",
  "aic-node-graph",
  "eframe",
+ "egui-scale",
  "egui-snarl",
  "egui_dock",
  "egui_kittest",

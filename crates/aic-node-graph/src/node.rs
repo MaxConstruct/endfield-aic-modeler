@@ -620,6 +620,19 @@ impl Node {
                     action,
                 });
 
+            // A tap: a press on the frame released within the same frame, which
+            // never shows as down on it. egui reports it as a click, and it
+            // selects as the click of a longer press does (see `end_press`). On
+            // a handle with a widget of its own, the widget takes the click.
+            } else if primary_pressed
+                && gmem.pressed.is_none()
+                && response.clicked_by(egui::PointerButton::Primary)
+            {
+                match ui.input(|i| i.modifiers.shift) {
+                    true => gmem.selection.toggle(self.id),
+                    false => gmem.selection.replace([self.id].into()),
+                }
+
             // A press on the background near this node's socket starts an edge
             // from it (see `graph_interaction`).
             } else if primary_pressed {

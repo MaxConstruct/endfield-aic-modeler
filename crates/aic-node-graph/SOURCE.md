@@ -79,6 +79,18 @@ said otherwise):
   of a zoomed view, and frames and handles were hit-tested where they were drawn before.
 - `#[allow(clippy::large_enum_variant)]` on `Content` in `node.rs`, which the larger
   `SocketLayout` made large; boxing it would allocate for every node in view.
+- `NodesCtx::set_position` places a node while the nodes show, in the view the frame shows
+  after any pan, and `NodesCtx::position` reads a node's place. The app pins a workspace's ports
+  to the edges of its canvas with them.
+- `Graph::selection_area` sets the selection box's fill and stroke. The stroke's width, given or
+  not, is now in screen pixels: the box is outlined as wide at any zoom.
+- Tests of what a canvas that draws its own cards leans on (`interaction_tests::cards`): a
+  widget that senses clicks only, on a socket's handle, gets its clicks and leaves the drag to
+  the handle.
+- A tap, a press and its release within one frame (a touchpad tap, a quick click), does what a
+  slower click does: on a node it selects, on the background it clears the selection, and with
+  the secondary button it is reported. Before, a press was only seen while its button was still
+  down at the end of the frame.
 - Tests changed to the new conventions: `selection_area::paints_above_nodes` and
   `paints_below_windows` draw the box with a secondary drag; `cull::out_of_view_node_is_removed`
   became `out_of_view_node_keeps_its_selection`; `auto_pan::immutable_graph_pans_only_for_selection`

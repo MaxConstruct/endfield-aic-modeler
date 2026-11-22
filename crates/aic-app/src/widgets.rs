@@ -204,7 +204,7 @@ impl ItemPicture {
 
     /// Paints it into `rect`, keeping its shape.
     pub fn paint(&self, painter: &Painter, rect: Rect) {
-        // egui-snarl lays a new node out once with unknown sizes, which can leave rects undefined.
+        // A card not yet laid out can hand over a rect that isn't one.
         if !rect.is_finite() {
             return;
         }

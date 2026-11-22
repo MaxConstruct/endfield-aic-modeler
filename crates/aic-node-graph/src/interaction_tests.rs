@@ -919,3 +919,282 @@ mod selection {
         assert_eq!(released.layout[&C], f.layout[&C] + delta);
     }
 }
+
+/// What a canvas that draws its own cards leans on: a clickable picture on a socket's handle, and
+/// nodes it places itself while showing them.
+mod cards {
+    use super::*;
+
+    /// One node, `A`, whose output has a handle with a click-only widget on it, as a card puts an
+    /// icon on a port. Driven one pass at a time.
+    struct Card {
+        ctx: egui::Context,
+        view: View,
+        time: f64,
+        /// Where `A` is put while it shows, in place of its layout position.
+        place: Option<Pos2>,
+    }
+
+    /// What a pass of [`Card`] showed.
+    struct Shown {
+        rect: Rect,
+        handle: Rect,
+        edge_event: Option<EdgeEvent>,
+        clicked: bool,
+        secondary_clicked: bool,
+        double_clicked: bool,
+        edge_in_progress: bool,
+        layout: crate::Layout,
+    }
+
+    impl Card {
+        fn new() -> (Self, Shown) {
+            let mut card = Self {
+                ctx: egui::Context::default(),
+                view: View {
+                    scene_rect: SCREEN,
+                    layout: [(A, pos2(100.0, 100.0))].into(),
+                },
+                time: 0.0,
+                place: None,
+            };
+            card.pass(vec![]);
+            let shown = card.pass(vec![]);
+            (card, shown)
+        }
+
+        fn pass(&mut self, events: Vec<egui::Event>) -> Shown {
+            self.time += f64::from(DT);
+            let input = egui::RawInput {
+                screen_rect: Some(SCREEN),
+                time: Some(self.time),
+                predicted_dt: DT,
+                events,
+                ..Default::default()
+            };
+            let place = self.place;
+            let mut shown = None;
+            let mut output = self.ctx.run_ui(input, |ui| {
+                Graph::new(GRAPH)
+                    .snap(None)
+                    .show(&mut self.view, ui, |ui, show| {
+                        let mut node_shown = None;
+                        let mut in_progress = false;
+                        show.nodes(ui, |nctx, ui| {
+                            if let Some(pos) = place {
+                                nctx.set_position(A, pos);
+                            }
+                            let node = Node::from_id(A).outputs(1).animation_time(0.0);
+                            let mut widget = None;
+                            let r = node.show(nctx, ui, |c| {
+                                c.framed(|ui, sockets| {
+                                    let (rect, _) =
+                                        ui.allocate_exact_size(CONTENT, egui::Sense::hover());
+                                    let handle = Rect::from_min_size(
+                                        rect.right_top() + vec2(-HANDLE.x, 8.0),
+                                        HANDLE,
+                                    );
+                                    sockets.output(0, handle);
+                                    sockets.output_handle(0, handle);
+                                    let id = ui.id().with("icon");
+                                    let icon = ui.interact(handle, id, egui::Sense::click());
+                                    widget = Some((handle, icon));
+                                })
+                            });
+                            let (handle, icon) = widget.expect("A ran");
+                            node_shown = Some((r.rect, handle, r.edge_event(), icon));
+                        })
+                        .edges(ui, |ectx, ui| in_progress = ectx.in_progress(ui).is_some());
+                        let (rect, handle, edge_event, icon) = node_shown.expect("the nodes ran");
+                        shown = Some((rect, handle, edge_event, icon, in_progress));
+                    });
+            });
+            output.textures_delta.clear();
+            let (rect, handle, edge_event, icon, edge_in_progress) = shown.expect("the graph ran");
+            Shown {
+                rect,
+                handle,
+                edge_event,
+                clicked: icon.clicked(),
+                secondary_clicked: icon.secondary_clicked(),
+                double_clicked: icon.double_clicked(),
+                edge_in_progress,
+                layout: self.view.layout.clone(),
+            }
+        }
+
+        fn hover(&mut self, pos: Pos2) {
+            self.pass(vec![egui::Event::PointerMoved(pos)]);
+            self.pass(vec![]);
+        }
+    }
+
+    /// A widget on a handle that senses clicks only leaves the press to the handle: a drag from
+    /// it starts an edge, and does not move the node.
+    #[test]
+    fn a_drag_from_a_click_widget_on_a_handle_starts_an_edge() {
+        let (mut card, first) = Card::new();
+        let at = first.handle.center();
+        card.hover(at);
+        let pressed = card.pass(vec![button(
+            PointerButton::Primary,
+            at,
+            true,
+            Modifiers::NONE,
+        )]);
+        assert_eq!(
+            pressed.edge_event,
+            Some(EdgeEvent::Started {
+                kind: SocketKind::Output,
+                index: 0,
+            })
+        );
+        card.pass(vec![egui::Event::PointerMoved(at + vec2(80.0, 30.0))]);
+        let moving = card.pass(vec![]);
+        assert!(moving.edge_in_progress);
+        assert_eq!(moving.layout[&A], first.layout[&A]);
+        assert!(!moving.clicked, "a drag is not a click on the widget");
+    }
+
+    /// The widget on the handle gets the clicks: a primary click, a secondary click and a
+    /// double click. None of them leaves an edge behind or moves the node.
+    #[test]
+    fn a_click_widget_on_a_handle_gets_its_clicks() {
+        let (mut card, first) = Card::new();
+        let at = first.handle.center();
+        card.hover(at);
+        card.pass(vec![button(
+            PointerButton::Primary,
+            at,
+            true,
+            Modifiers::NONE,
+        )]);
+        let released = card.pass(vec![button(
+            PointerButton::Primary,
+            at,
+            false,
+            Modifiers::NONE,
+        )]);
+        assert!(released.clicked);
+        assert_eq!(released.edge_event, Some(EdgeEvent::Cancelled));
+        assert!(!card.pass(vec![]).edge_in_progress);
+
+        // Straight after: the second click of a double click.
+        card.pass(vec![button(
+            PointerButton::Primary,
+            at,
+            true,
+            Modifiers::NONE,
+        )]);
+        let again = card.pass(vec![button(
+            PointerButton::Primary,
+            at,
+            false,
+            Modifiers::NONE,
+        )]);
+        assert!(again.double_clicked);
+
+        card.pass(vec![button(
+            PointerButton::Secondary,
+            at,
+            true,
+            Modifiers::NONE,
+        )]);
+        let secondary = card.pass(vec![button(
+            PointerButton::Secondary,
+            at,
+            false,
+            Modifiers::NONE,
+        )]);
+        assert!(secondary.secondary_clicked);
+        assert_eq!(secondary.edge_event, None);
+        assert_eq!(secondary.layout[&A], first.layout[&A]);
+    }
+
+    /// A position set while the nodes show is where the node shows in that same pass, so a caller
+    /// can pin a node to the view it only knows once the graph has panned.
+    #[test]
+    fn a_position_set_while_showing_places_the_node_at_once() {
+        let (mut card, first) = Card::new();
+        let to = pos2(300.0, 220.0);
+        card.place = Some(to);
+        let placed = card.pass(vec![]);
+        assert_eq!(placed.rect.min, to);
+        assert_eq!(placed.layout[&A], to);
+        assert_eq!(placed.rect.size(), first.rect.size());
+        // Its handle follows in the same pass.
+        assert_eq!(
+            placed.handle.min - placed.rect.min,
+            first.handle.min - first.rect.min
+        );
+    }
+}
+
+/// A tap: a press and its release in one pass, as a touchpad tap or a quick click arrives. It
+/// does what a slower click does.
+mod taps {
+    use super::*;
+
+    impl Harness {
+        /// A press and release of `b` at `pos` within one pass, then a pass with no input.
+        fn tap(&mut self, b: PointerButton, pos: Pos2) -> Frame {
+            self.hover(pos);
+            let m = self.modifiers;
+            let tapped = self.pass(vec![button(b, pos, true, m), button(b, pos, false, m)]);
+            let after = self.pass(vec![]);
+            // What the tap did shows in one of the two passes.
+            Frame {
+                selection_changed: tapped.selection_changed.or(after.selection_changed.clone()),
+                secondary_click: tapped.secondary_click.or(after.secondary_click),
+                ..after
+            }
+        }
+    }
+
+    #[test]
+    fn a_tap_on_a_node_selects_it() {
+        let (mut h, f) = harness(three_nodes());
+        h.tap(PointerButton::Primary, f.frame_point(A));
+        assert_eq!(h.selection, set(&[A]));
+        h.modifiers = Modifiers::SHIFT;
+        h.tap(PointerButton::Primary, f.frame_point(B));
+        assert_eq!(h.selection, set(&[A, B]));
+    }
+
+    #[test]
+    fn a_tap_on_the_background_clears_the_selection() {
+        let (mut h, f) = harness(three_nodes());
+        h.selection = set(&[A, B]);
+        let tapped = h.tap(PointerButton::Primary, BACKGROUND);
+        assert_eq!(h.selection, set(&[]));
+        assert_eq!(tapped.scene_rect, f.scene_rect, "a tap pans nothing");
+        assert_eq!(tapped.layout, f.layout);
+    }
+
+    #[test]
+    fn a_secondary_tap_on_the_background_is_reported() {
+        let (mut h, f) = harness(three_nodes());
+        let tapped = h.tap(PointerButton::Secondary, BACKGROUND);
+        let at = tapped.secondary_click.expect("the tap is reported");
+        assert!((f.to_screen * at - BACKGROUND).length() < 1e-3, "{at:?}");
+        assert_eq!(tapped.selection_changed, None);
+    }
+
+    #[test]
+    fn a_tap_on_a_handle_leaves_no_edge_behind() {
+        let (mut h, f) = harness(three_nodes());
+        let tapped = h.tap(PointerButton::Primary, f.output_handle(A));
+        assert!(!tapped.edge_in_progress);
+        assert_eq!(tapped.layout, f.layout);
+        // The next press starts afresh: a drag from the handle makes an edge.
+        let end = f.input_handle(B);
+        let released = h.drag(PointerButton::Primary, f.output_handle(A), end);
+        assert!(released.edge_events().contains(&(
+            B,
+            EdgeEvent::Ended {
+                kind: SocketKind::Input,
+                index: 0
+            }
+        )));
+    }
+}

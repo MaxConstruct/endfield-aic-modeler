@@ -3,8 +3,8 @@
 //! and asks for what depends on a level by passing it in.
 //!
 //! [`Document::generation`] counts every change to what a canvas draws, so a view that was parked
-//! can tell it must redraw. A UI with a retained view (egui-snarl) brings it in line after an edit
-//! itself.
+//! can tell it must redraw, and a UI that lays a level out once per change (its cards and wires)
+//! knows when to do it again.
 //!
 //! Undo and redo keep whole `Graph` snapshots: graphs are small, so a clone per step is cheap.
 //! Edits since the last [`Document::checkpoint`] make one step, so a drag or a typed number undoes

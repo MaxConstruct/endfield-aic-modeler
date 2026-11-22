@@ -97,6 +97,9 @@ pub struct Graph {
     /// The stroke for alignment guide lines (width in screen pixels), or `None`
     /// to derive a subtle default from the style.
     align_guide_stroke: Option<egui::Stroke>,
+    /// The fill and stroke of the selection box (width in screen pixels), or
+    /// `None` to derive them from the style.
+    selection_area: Option<(egui::Color32, egui::Stroke)>,
 }
 
 /// How the view responds when the available viewport size changes
@@ -399,6 +402,23 @@ pub struct NodesCtx<'a> {
     snap_step: f32,
 }
 
+impl NodesCtx<'_> {
+    /// Put node `id` at `pos`, in graph space, before it shows this frame.
+    ///
+    /// The position lasts like any other in [`View::layout`]. Use this for a
+    /// node that follows the view, such as one pinned to an edge of the graph
+    /// area: here the view is the one this frame shows, after any pan, which
+    /// the caller of [`Graph::show`] does not know beforehand.
+    pub fn set_position(&mut self, id: NodeId, pos: egui::Pos2) {
+        self.layout.insert(id, pos);
+    }
+
+    /// Where node `id` is, in graph space, if it has a position.
+    pub fn position(&self, id: NodeId) -> Option<egui::Pos2> {
+        self.layout.get(&id).copied()
+    }
+}
+
 /// A context to assist with the instantiation of edge widgets.
 pub struct EdgesCtx {
     graph_id: egui::Id,
@@ -519,6 +539,7 @@ impl Graph {
             align_disable_modifier: Self::DEFAULT_ALIGN_DISABLE_MODIFIER,
             align_guides: Self::DEFAULT_ALIGN_GUIDES,
             align_guide_stroke: Self::DEFAULT_ALIGN_GUIDE_STROKE,
+            selection_area: None,
         }
     }
 
@@ -721,6 +742,17 @@ impl Graph {
     /// Default: [`Self::DEFAULT_ALIGN_GUIDE_STROKE`] (`None`).
     pub fn align_guide_stroke(mut self, stroke: egui::Stroke) -> Self {
         self.align_guide_stroke = Some(stroke);
+        self
+    }
+
+    /// The fill and stroke of the selection box a secondary drag, or a primary
+    /// drag with Shift, draws.
+    ///
+    /// The stroke's width is in *screen* pixels, so the box is outlined as
+    /// wide at any zoom. When unset (the default), both come from the style's
+    /// weak text colour.
+    pub fn selection_area(mut self, fill: egui::Color32, stroke: egui::Stroke) -> Self {
+        self.selection_area = Some((fill, stroke));
         self
     }
 
@@ -1066,7 +1098,7 @@ impl Graph {
 
             // Draw the selection area if there is one.
             if let Some(sel_rect) = selection_rect {
-                paint_selection_area(sel_rect, self.id, ui);
+                paint_selection_area(sel_rect, self.id, self.selection_area, ui);
             }
 
             let mut visited = HashSet::default();
@@ -1675,22 +1707,11 @@ fn graph_interaction(
             _ => (),
         }
 
-        // The press action has ended.
-        if pointer.button_down(pressed.button) {
-            Some(pressed)
-        } else {
-            if let PressAction::Socket(socket) = pressed.action {
-                socket_press_released = Some(socket);
-            }
-            ended = Some(pressed);
-            None
-        }
+        Some(pressed)
     // Check for the beginning of a press on the background.
     } else if ptr_on_graph {
         let buttons = [egui::PointerButton::Primary, egui::PointerButton::Secondary];
-        let button = buttons
-            .into_iter()
-            .find(|&b| pointer.button_down(b) && pointer.button_pressed(b));
+        let button = buttons.into_iter().find(|&b| pointer.button_pressed(b));
         button.map(|button| {
             // Choose which press action based on the button, whether or not a
             // socket was pressed, and Shift.
@@ -1714,6 +1735,19 @@ fn graph_interaction(
     // Otherwise, there is no press.
     } else {
         None
+    };
+
+    // The press ends once its button is up: in a later frame or, for a tap, in the frame it
+    // began in.
+    let pressed = match pressed {
+        Some(pressed) if !pointer.button_down(pressed.button) => {
+            if let PressAction::Socket(socket) = pressed.action {
+                socket_press_released = Some(socket);
+            }
+            ended = Some(pressed);
+            None
+        }
+        pressed => pressed,
     };
 
     GraphInteraction {
@@ -1964,17 +1998,24 @@ fn paint_background(visible_rect: egui::Rect, ui: &mut egui::Ui) {
 /// frames and sockets. `move_to_top` sorts it after those sibling sublayers,
 /// and egui keeps all sublayers directly above their parent, so areas such
 /// as windows above the graph stay above the rectangle.
-fn paint_selection_area(sel_rect: egui::Rect, graph_id: egui::Id, ui: &egui::Ui) {
+fn paint_selection_area(
+    sel_rect: egui::Rect,
+    graph_id: egui::Id,
+    style: Option<(egui::Color32, egui::Stroke)>,
+    ui: &egui::Ui,
+) {
     let parent = ui.layer_id();
     let layer = egui::LayerId::new(parent.order, graph_id.with("selection"));
     let ctx = ui.ctx();
     ctx.set_sublayer(parent, layer);
     ctx.move_to_top(layer);
     ctx.set_transform_layer(layer, node::parent_transform(ctx, parent));
-    let color = ui.visuals().weak_text_color();
-    let fill = color.linear_multiply(0.125);
-    let width = 1.0;
-    let stroke = egui::Stroke { width, color };
+    let (fill, stroke) = style.unwrap_or_else(|| {
+        let color = ui.visuals().weak_text_color();
+        (color.linear_multiply(0.125), egui::Stroke::new(1.0, color))
+    });
+    // The width is in screen pixels: undo the scene's scale.
+    let stroke = egui::Stroke::new(stroke.width / scene_scaling(ui), stroke.color);
     ui.painter().clone().with_layer_id(layer).rect(
         sel_rect,
         0.0,
@@ -2992,6 +3033,14 @@ mod tests {
         /// last pass with the style that painted them. With `window`, a window
         /// floats above the graph.
         fn drag_selection(window: bool) -> (Vec<ClippedShape>, std::sync::Arc<egui::Style>) {
+            drag_selection_of(window, || Graph::new("graph"))
+        }
+
+        /// As [`drag_selection`], with the graph that `graph` builds each pass.
+        fn drag_selection_of(
+            window: bool,
+            graph: impl Fn() -> Graph,
+        ) -> (Vec<ClippedShape>, std::sync::Arc<egui::Style>) {
             let ctx = egui::Context::default();
             let mut view = View {
                 scene_rect: SCREEN,
@@ -3008,7 +3057,7 @@ mod tests {
                     ..Default::default()
                 };
                 let mut output = ctx.run_ui(input, |ui| {
-                    Graph::new("graph").show(&mut view, ui, |ui, show| {
+                    graph().show(&mut view, ui, |ui, show| {
                         show.nodes(ui, |nctx, ui| {
                             for id in [NodeId(0), NodeId(1)] {
                                 let node = Node::from_id(id).inputs(1).outputs(1);
@@ -3052,6 +3101,21 @@ mod tests {
         fn paints_above_nodes() {
             let (shapes, style) = drag_selection(false);
             assert_eq!(selection_ix(&shapes, &style), Some(shapes.len() - 1));
+        }
+
+        /// The selection area takes the fill and stroke the graph is given. The stroke's width is
+        /// in screen pixels, so it is as wide at any zoom.
+        #[test]
+        fn takes_the_given_fill_and_stroke() {
+            let fill = egui::Color32::from_rgb(10, 20, 30);
+            let stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(40, 50, 60));
+            let (shapes, _) =
+                drag_selection_of(false, || Graph::new("graph").selection_area(fill, stroke));
+            let area = shapes.iter().find_map(|s| match &s.shape {
+                egui::Shape::Rect(r) if r.fill == fill => Some(r.stroke),
+                _ => None,
+            });
+            assert_eq!(area, Some(stroke));
         }
 
         /// A window above the graph paints after the selection area.
