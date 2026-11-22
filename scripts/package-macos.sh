@@ -6,6 +6,9 @@
 #   scripts/package-macos.sh --universal  # Apple silicon + Intel; needs
 #                                         # `rustup target add aarch64-apple-darwin x86_64-apple-darwin`
 #
+# Built with the `packaged` profile (Cargo.toml): fat LTO, one codegen unit, panics abort. Not yet
+# run on a Mac since it moved there from `--release` (docs/PLAN.md, M12 step 6).
+#
 # The app is signed ad hoc, not notarized: on another Mac, open it the first time with right-click >
 # Open (or System Settings > Privacy & Security > Open Anyway).
 set -euo pipefail
@@ -28,15 +31,15 @@ done
 if $universal; then
     targets=(aarch64-apple-darwin x86_64-apple-darwin)
     for target in "${targets[@]}"; do
-        cargo build --release --locked -p aic-app --target "$target"
+        cargo build --profile packaged --locked -p aic-app --target "$target"
     done
     binary="target/universal/$BIN"
     mkdir -p target/universal
-    lipo -create -output "$binary" "${targets[@]/#/target/}"/release/"$BIN"
+    lipo -create -output "$binary" "${targets[@]/#/target/}"/packaged/"$BIN"
     arch="universal"
 else
-    cargo build --release --locked -p aic-app
-    binary="target/release/$BIN"
+    cargo build --profile packaged --locked -p aic-app
+    binary="target/packaged/$BIN"
     arch="$(uname -m)"
 fi
 

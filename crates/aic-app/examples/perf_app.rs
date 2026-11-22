@@ -13,12 +13,28 @@
 //! and prints how many frames it drew and what asked for them: an idle app should draw none.
 //! `PERF_MINIMIZE=1` minimizes the window for that time.
 //!
-//! `PERF_HEADLESS=1` opens no window: it builds and tessellates the UI 600 times for each phase,
-//! and prints the CPU time per frame. With no GPU and no compositor in the way its numbers vary
-//! much less from run to run.
+//! `PERF_HEADLESS=1` opens no window: it builds and tessellates the UI 600 times for each phase
+//! (`PERF_FRAMES` changes that), and prints the CPU time per frame, then the medians of its parts:
+//! building the UI, the solve inside that, and tessellating. With no GPU and no compositor in the
+//! way its numbers vary much less from run to run.
 //!
 //! `PERF_ZOOM=1.0` first zooms the canvas to that zoom (1 is 100%) around its middle, so only part
 //! of the graph is on screen, in the windowed and the headless run alike.
+//!
+//! `PERF_GRAPH=chain` builds one section in place of the usual graph of many small ones: pairs of
+//! a producer and a consumer of one item, each producer also feeding the next pair's consumer,
+//! round in a ring. `PERF_NODES` nodes in all.
+//!
+//! With the `dhat-heap` feature, the headless run also counts allocations per frame and writes
+//! dhat's file of where they were made (`dhat-heap.json`, for dhat's viewer), from the measured
+//! phases only. dhat is slow, so it draws 20 frames a phase unless `PERF_FRAMES` says otherwise,
+//! and its times are not worth reading. `PERF_PHASE=Idle` (or `Pan`, `LiveValues`) runs that phase
+//! alone, so the file is about it alone.
+//!
+//! ```sh
+//! PERF_HEADLESS=1 PERF_ZOOM=0.25 PERF_PHASE=Idle \
+//!     cargo run --release -p aic-app --features dhat-heap --example perf_app
+//! ```
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -234,26 +250,98 @@ impl PerfApp {
     }
 }
 
-/// About `target` recipe nodes in the graph's region: each recipe next to a producer of each of its
-/// inputs, linked, every recipe node limited to one facility so the whole graph solves. Returns a
-/// node whose limit the live phase changes.
+/// The graph `PERF_GRAPH` asks for, with about `target` nodes. Returns a node whose limit the live
+/// phase changes.
 fn build(app: &mut App, target: usize) -> Option<NodeId> {
+    if std::env::var("PERF_GRAPH").is_ok_and(|v| v == "chain") {
+        build_chain(app, target)
+    } else {
+        build_many(app, target)
+    }
+}
+
+/// The recipes of the graph's region, and a way to find a producer of an item among them.
+fn region_recipes(catalog: &Catalog, region: &aic_data::RegionId) -> Vec<RecipeId> {
+    catalog
+        .recipes()
+        .values()
+        .filter(|r| !r.hidden && r.available_in(region))
+        .map(|r| r.id.clone())
+        .collect()
+}
+
+fn producer_of<'a>(
+    catalog: &Catalog,
+    recipes: &'a [RecipeId],
+    item: &ItemId,
+) -> Option<&'a RecipeId> {
+    recipes.iter().find(|id| {
+        catalog
+            .recipe(id.as_str())
+            .is_some_and(|r| r.outputs.iter().any(|(out, _)| out == item))
+    })
+}
+
+/// One section of `target` recipe nodes: `target / 2` pairs of a producer and a consumer of one
+/// item, each limited to one facility. Producer `i` feeds consumer `i` and consumer `i + 1`, and
+/// the last feeds the first, so every node is linked to every other through some path.
+fn build_chain(app: &mut App, target: usize) -> Option<NodeId> {
     let editor = app.editor_mut()?;
     let catalog: Catalog = editor.catalog().clone();
     let region = editor.document().graph().region().clone();
-    let recipes: Vec<RecipeId> = catalog
-        .recipes()
-        .values()
-        .filter(|r| !r.hidden && r.available_in(&region))
-        .map(|r| r.id.clone())
-        .collect();
-    let producer_of = |item: &ItemId| {
-        recipes.iter().find(|id| {
-            catalog
-                .recipe(id.as_str())
-                .is_some_and(|r| r.outputs.iter().any(|(out, _)| out == item))
+    let recipes = region_recipes(&catalog, &region);
+    let (consumer, item, producer) = recipes.iter().find_map(|consumer| {
+        let recipe = catalog.recipe(consumer.as_str())?;
+        recipe.inputs.iter().find_map(|(item, _)| {
+            let producer = producer_of(&catalog, &recipes, item)?;
+            (producer != consumer).then(|| (consumer.clone(), item.clone(), producer.clone()))
+        })
+    })?;
+    let kind = |recipe: &RecipeId| -> Option<NodeKind> {
+        Some(NodeKind::Recipe {
+            recipe: recipe.clone(),
+            facility: catalog.recipe(recipe.as_str())?.facilities.first()?.clone(),
+            limit: Some(1.0),
         })
     };
+    let mut doc = editor.document_mut();
+    let pairs = (target / 2).max(1);
+    let mut producers = Vec::with_capacity(pairs);
+    let mut consumers = Vec::with_capacity(pairs);
+    for pair in 0..pairs {
+        let at = |row: usize| {
+            Pos2::new(
+                (pair % COLUMNS) as f32 * 360.0,
+                ((pair / COLUMNS) * 2 + row) as f32 * 260.0,
+            )
+        };
+        producers.push(doc.add_node(kind(&producer)?, at(0)));
+        consumers.push(doc.add_node(kind(&consumer)?, at(1)));
+    }
+    for (pair, &from) in producers.iter().enumerate() {
+        for to in [pair, (pair + 1) % pairs] {
+            let _ = doc.connect(
+                PortRef::new(from, item.clone()),
+                PortRef::new(consumers[to], item.clone()),
+            );
+        }
+    }
+    println!(
+        "chain: {} nodes, {} links",
+        doc.graph().nodes().len(),
+        doc.graph().links().len()
+    );
+    producers.first().copied()
+}
+
+/// About `target` recipe nodes in the graph's region: each recipe next to a producer of each of its
+/// inputs, linked, every recipe node limited to one facility so the whole graph solves.
+fn build_many(app: &mut App, target: usize) -> Option<NodeId> {
+    let editor = app.editor_mut()?;
+    let catalog: Catalog = editor.catalog().clone();
+    let region = editor.document().graph().region().clone();
+    let recipes = region_recipes(&catalog, &region);
+    let producer_of = |item: &ItemId| producer_of(&catalog, &recipes, item);
 
     // Plan first: which recipe each node runs, and which node feeds which, by index.
     let mut planned: Vec<RecipeId> = Vec::new();
@@ -306,6 +394,48 @@ fn build(app: &mut App, target: usize) -> Option<NodeId> {
     nodes.first().copied()
 }
 
+/// One headless frame, taken apart: building the UI, the solve inside it, tessellating, and with
+/// the `dhat-heap` feature the allocations of each.
+#[derive(Clone, Copy, Default)]
+struct Parts {
+    /// Building the UI and tessellating it, in ms.
+    total: f64,
+    /// Building the UI, the solve included.
+    ui: f64,
+    /// The solve at the end of the frame, if it solved.
+    solve: Option<f64>,
+    tessellate: f64,
+    /// Allocations while building the UI, and while tessellating.
+    ui_allocs: u64,
+    tessellate_allocs: u64,
+}
+
+/// Whether dhat's profiler runs: it starts after the set-up and the warm-up frames.
+#[cfg(feature = "dhat-heap")]
+static PROFILING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Blocks allocated so far, while dhat's profiler runs; 0 before it starts.
+fn allocations() -> u64 {
+    #[cfg(feature = "dhat-heap")]
+    {
+        if PROFILING.load(std::sync::atomic::Ordering::Relaxed) {
+            dhat::HeapStats::get().total_blocks
+        } else {
+            0
+        }
+    }
+    #[cfg(not(feature = "dhat-heap"))]
+    {
+        0
+    }
+}
+
+/// The middle value of `values`, sorted.
+fn median(mut values: Vec<f64>) -> f64 {
+    values.sort_by(f64::total_cmp);
+    values.get(values.len() / 2).copied().unwrap_or_default()
+}
+
 /// The headless run: the UI's CPU cost per frame, without painting it.
 fn headless(catalog: Result<Catalog, String>, target: usize) {
     let ctx = egui::Context::default();
@@ -314,13 +444,14 @@ fn headless(catalog: Result<Catalog, String>, target: usize) {
     let live = build(&mut app, target);
     let mut time = 0.0;
     let mut frames = |app: &mut App, count: usize, phase: Phase, live: Option<NodeId>| {
-        let mut times = Vec::with_capacity(count);
+        let mut parts = Vec::with_capacity(count);
         for frame in 0..count {
+            let mut solves = false;
             if phase == Phase::LiveValues
                 && let (Some(node), Some(editor)) = (live, app.editor_mut())
             {
                 let limit = 30.0 + (frame % 60) as f64;
-                let _ = editor.document_mut().set_limit(node, Some(limit));
+                solves = editor.document_mut().set_limit(node, Some(limit)).is_ok();
             }
             time += 1.0 / 60.0;
             let mut raw_input = egui::RawInput {
@@ -329,36 +460,95 @@ fn headless(catalog: Result<Catalog, String>, target: usize) {
                 ..Default::default()
             };
             input(&ctx, &mut raw_input, phase, frame);
+            let before = allocations();
             let started = Instant::now();
             let output = ctx.run_ui(raw_input, |ui| {
                 eframe::App::ui(app, ui, &mut eframe::Frame::_new_kittest());
             });
+            let built = started.elapsed();
+            let after_ui = allocations();
             let _ = ctx.tessellate(output.shapes, output.pixels_per_point);
-            times.push(started.elapsed().as_secs_f64() * 1000.0);
+            let total = started.elapsed();
+            let solve = solves
+                .then(|| app.editor().and_then(|e| e.session().last_solve()))
+                .flatten();
+            parts.push(Parts {
+                total: total.as_secs_f64() * 1000.0,
+                ui: built.as_secs_f64() * 1000.0,
+                solve: solve.map(|took| took.as_secs_f64() * 1000.0),
+                tessellate: (total - built).as_secs_f64() * 1000.0,
+                ui_allocs: after_ui - before,
+                tessellate_allocs: allocations() - after_ui,
+            });
         }
-        times
+        parts
     };
     let _ = frames(&mut app, 60, Phase::Idle, None);
     if let (Some(zoom), Some(editor)) = (zoom(), app.editor_mut()) {
         editor.zoom_canvas_to(zoom);
         let _ = frames(&mut app, 30, Phase::Idle, None);
     }
-    if let Some(view) = app.editor_mut().and_then(|editor| editor.canvas_view()) {
-        println!("canvas at {:.0}%", view.zoom * 100.0);
+    if let Some(editor) = app.editor() {
+        if let Some(view) = editor.canvas_view() {
+            println!("canvas at {:.0}%", view.zoom * 100.0);
+        }
+        println!("{} sections", editor.document().solution().sections.len());
     }
+    let only: Option<String> = std::env::var("PERF_PHASE").ok();
+    let phases: Vec<Phase> = (PHASES.into_iter())
+        .filter(|phase| {
+            only.as_ref()
+                .is_none_or(|name| *name == format!("{phase:?}"))
+        })
+        .collect();
+    let count = std::env::var("PERF_FRAMES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(if cfg!(feature = "dhat-heap") { 20 } else { 600 });
+    // Only the measured phases go in dhat's file: the profiler starts after the set-up.
+    // Whole backtraces: dhat's trimming left none at all on Windows. Build with
+    // `--profile profiling` for them to have names.
+    #[cfg(feature = "dhat-heap")]
+    let profiler = dhat::Profiler::builder().trim_backtraces(None).build();
+    #[cfg(feature = "dhat-heap")]
+    PROFILING.store(true, std::sync::atomic::Ordering::Relaxed);
     println!(
-        "{:<12} {:>9} {:>9} {:>9}",
-        "phase", "mean ms", "median ms", "p95 ms"
+        "{:<12} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9}",
+        "phase",
+        "mean ms",
+        "median ms",
+        "p95 ms",
+        "ui ms",
+        "solve ms",
+        "tess ms",
+        "ui alloc",
+        "tess alloc"
     );
-    for phase in PHASES {
-        let mut times = frames(&mut app, 600, phase, live);
-        times.sort_by(f64::total_cmp);
-        let mean = times.iter().sum::<f64>() / times.len() as f64;
-        let median = times[times.len() / 2];
-        let p95 = times[times.len() * 95 / 100];
-        let name = format!("{phase:?}");
-        println!("{name:<12} {mean:>9.2} {median:>9.2} {p95:>9.2}");
+    for phase in phases {
+        let parts = frames(&mut app, count, phase, live);
+        let of = |part: fn(&Parts) -> f64| median(parts.iter().map(part).collect());
+        let mut totals: Vec<f64> = parts.iter().map(|p| p.total).collect();
+        totals.sort_by(f64::total_cmp);
+        let mean = totals.iter().sum::<f64>() / totals.len() as f64;
+        let p95 = totals[totals.len() * 95 / 100];
+        let solves: Vec<f64> = parts.iter().filter_map(|p| p.solve).collect();
+        let solve = if solves.is_empty() {
+            "-".to_owned()
+        } else {
+            format!("{:.2}", median(solves))
+        };
+        println!(
+            "{:<12} {mean:>9.2} {:>9.2} {p95:>9.2} {:>9.2} {solve:>9} {:>9.2} {:>9.0} {:>9.0}",
+            format!("{phase:?}"),
+            of(|p| p.total),
+            of(|p| p.ui),
+            of(|p| p.tessellate),
+            of(|p| p.ui_allocs as f64),
+            of(|p| p.tessellate_allocs as f64),
+        );
     }
+    #[cfg(feature = "dhat-heap")]
+    drop(profiler);
 }
 
 /// The zoom `PERF_ZOOM` asks for, if any.

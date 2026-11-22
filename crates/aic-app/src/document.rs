@@ -124,6 +124,8 @@ pub struct DocView {
     /// The document's [`Document::generation`] this was brought in line with; `None` before it
     /// was drawn.
     synced: Option<u64>,
+    /// What the cards and wires show, worked out by the canvas once per change, in their order.
+    pub(crate) faces: crate::canvas::Faces,
 }
 
 impl DocView {
@@ -139,6 +141,7 @@ impl DocView {
             anchors: HashMap::new(),
             shown_pos: HashMap::new(),
             synced: None,
+            faces: crate::canvas::Faces::default(),
         }
     }
 
@@ -200,6 +203,8 @@ impl DocView {
             }
         }
         self.synced = Some(doc.generation());
+        // The cards are new: what they show is worked out again before they are drawn.
+        self.faces = crate::canvas::Faces::default();
     }
 
     /// Forgets the places of cards that are gone, and moves the cards the graph moved.

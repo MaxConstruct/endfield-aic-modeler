@@ -15,8 +15,8 @@ pub use graph::{
     WorkspaceId,
 };
 pub use solve::{
-    RoundUp, SectionResult, SectionStatus, Solution, StorageFlow, ThrottleReason, Totals,
-    UndeterminedReason, Warning, check_resources, solve,
+    KeptSections, RoundUp, SectionResult, SectionStatus, Solution, StorageFlow, ThrottleReason,
+    Totals, UndeterminedReason, Warning, check_resources, solve, solve_keeping,
 };
 pub use validate::Issue;
 pub use workspace::{Member, Workspace};

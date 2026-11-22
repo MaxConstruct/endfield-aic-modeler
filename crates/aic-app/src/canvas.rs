@@ -8,6 +8,7 @@
 //! `aic-node-graph` speaks of nodes, sockets and edges (ADR 0011). Here a card is one of its
 //! nodes, a port's pin is a socket with the port's icon as its handle, and a wire is an edge.
 
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 
 use aic_core::{
@@ -92,6 +93,14 @@ pub const MIN_ZOOM: f32 = 0.2;
 pub const MAX_ZOOM: f32 = VIEW_SCALE;
 /// The wheel and the slider zoom in whole steps of this: 65%, 70%, never 67%.
 pub const ZOOM_STEP: f32 = 0.05;
+/// Below this zoom a card is drawn plain: its header tint, its pins' pictures and its number,
+/// without the texts nobody can read there and without its limit field. Its small text is
+/// [`theme::text::SMALL`] points at 100% (12), so 5.4 points high at 45% and 4.8 at 40%, the next
+/// 5% step down: under about 5 pixels on a screen of one pixel per point. A plain card keeps its
+/// size and its pins' places, since it is laid out as before and only not painted.
+/// Link labels go too, but for the selected link's.
+pub const PLAIN_BELOW: f32 = 0.45;
+
 /// The zooms the status bar's − and + step through.
 const ZOOM_STEPS: [f32; 7] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -338,6 +347,7 @@ impl Canvas {
             self.pins.clear();
             self.linking = None;
         }
+        Faces::refresh(view, doc, session.round_up());
         let path = doc.level_path(level);
         let graph = doc.graph();
         let camera = self.camera(ui, level, view);
@@ -365,9 +375,16 @@ impl Canvas {
             catalog,
             strings,
             graph,
-            solution: doc.solution(),
-            selection,
+            read: Read {
+                catalog,
+                strings,
+                graph,
+                solution: doc.solution(),
+            },
             round_up: session.round_up(),
+            // Within a hundredth of a step of the threshold counts as on it.
+            plain: camera.scaling * VIEW_SCALE < PLAIN_BELOW - ZOOM_STEP * 0.01,
+            selection,
             view,
             anchors: &mut anchors,
             limit_edits: &mut self.limit_edits,
@@ -725,10 +742,313 @@ fn kind_of(side: Side) -> SocketKind {
     }
 }
 
-/// A port's rate as its pin paints it.
-struct Rate {
+/// What the cards and wires of a level show, worked out once per edit, solve or switch of the
+/// round-up view rather than every frame (PLAN.md, M12): the canvas draws from it and looks
+/// nothing up while it draws. Kept in the [`DocView`], in its cards' and wires' order. Each is
+/// worked out the first time it is drawn after a change, so a card out of view costs nothing.
+#[derive(Default)]
+pub(crate) struct Faces {
+    /// The document's generation and count of solves, and the round-up view, it is for.
+    key: Option<(u64, u64, bool)>,
+    cards: Vec<OnceCell<Face>>,
+    /// For each wire, the label of each of its links; `None` for a link with no flow to show.
+    wires: Vec<OnceCell<Vec<Option<LinkLabel>>>>,
+}
+
+impl Faces {
+    /// Forgets every face if the document, its solution or the round-up view changed since they
+    /// were worked out. The strings are the editor's for its whole life.
+    fn refresh(view: &mut DocView, doc: &Document, round_up: bool) {
+        let key = Some((doc.generation(), doc.solves(), round_up));
+        if view.faces.key == key && view.faces.cards.len() == view.cards().len() {
+            return;
+        }
+        view.faces = Faces {
+            key,
+            cards: std::iter::repeat_with(OnceCell::new)
+                .take(view.cards().len())
+                .collect(),
+            wires: std::iter::repeat_with(OnceCell::new)
+                .take(view.wires().len())
+                .collect(),
+        };
+    }
+}
+
+/// What one card shows.
+#[derive(Default)]
+struct Face {
+    /// The small line over the title: what kind of node it is.
+    kind: Option<String>,
+    /// What the card is about, or the workspace's name; `None` on a port's tile.
+    title: Option<String>,
+    /// The recipe whose region badges go before the title, when only some regions have it.
+    badges: Option<RecipeId>,
+    /// The region warnings, a line each, on the sign before the title.
+    warnings: Option<String>,
+    /// A recipe card's facility, and whether a click on it moves to another.
+    facility: Option<(String, bool)>,
+    /// A storage's balance, and its colour.
+    balance: Option<(String, Color32)>,
+    body: Body,
+    /// Each pin's rate as text and whether its node is held back there: inputs, then outputs.
+    pins: [Vec<PinFace>; 2],
+}
+
+/// What a card shows between its port columns.
+#[derive(Default)]
+enum Body {
+    /// A workspace's port tile: nothing.
+    #[default]
+    Empty,
+    /// A picture, the number the card is about, what goes under it, and the limit.
+    Numbers {
+        /// The facility's or the depot's picture, and its name on hover.
+        image: Option<(ImageKind, String, Option<String>)>,
+        /// The count or rate, or whole facilities in the round-up view; blank if undetermined.
+        number: String,
+        /// How busy the facilities are, in the round-up view.
+        busy: Option<String>,
+        /// What an outpost order earns, per coupon.
+        coupons: Vec<(ItemId, String)>,
+        /// The limit as its field shows it, and whether the node needs one.
+        limit: Option<(String, bool)>,
+    },
+    /// A storage: how much goes straight through.
+    PassThrough(String),
+    /// A recipe node whose recipe the data lacks.
+    Missing(String),
+    /// A workspace: how many nodes it holds.
+    Workspace(String),
+}
+
+/// One pin's rate as text, and whether its node is throttled at this port.
+struct PinFace {
+    rate: String,
+    throttled: bool,
+}
+
+/// The label at the middle of a link: its flow and belts, and whether it is over one belt.
+struct LinkLabel {
     text: String,
-    color: Color32,
+    over: bool,
+}
+
+/// What the faces are worked out from.
+#[derive(Clone, Copy)]
+struct Read<'a> {
+    catalog: &'a Catalog,
+    strings: &'a Strings,
+    graph: &'a Graph,
+    solution: &'a Solution,
+}
+
+impl Read<'_> {
+    fn face(&self, card: &Card, round_up: bool) -> Face {
+        let (catalog, strings) = (self.catalog, self.strings);
+        let pins = [Side::Input, Side::Output].map(|side| {
+            (card.pins(side).iter())
+                .map(|pin| self.pin(pin, side))
+                .collect()
+        });
+        let id = match card.member {
+            Member::Workspace(workspace) => {
+                let name = (self.graph.workspace_info(workspace))
+                    .map(|w| w.name.clone())
+                    .unwrap_or_default();
+                let count = (self.graph.nodes_in_workspace(workspace).into_iter())
+                    .filter(|&node| !is_port(self.graph, node))
+                    .count();
+                return Face {
+                    kind: Some(strings.get("kind-workspace")),
+                    title: Some(name),
+                    body: Body::Workspace(names::node_count(strings, count)),
+                    pins,
+                    ..Face::default()
+                };
+            }
+            Member::Node(id) => id,
+        };
+        let Some(kind) = self.graph.node(id).map(|node| &node.kind) else {
+            return Face::default();
+        };
+        if let NodeKind::WorkspacePort { side, .. } = kind {
+            let key = match side {
+                Side::Input => "kind-workspace-input",
+                Side::Output => "kind-workspace-output",
+            };
+            return Face {
+                kind: Some(strings.get(key)),
+                pins,
+                ..Face::default()
+            };
+        }
+        let warnings: Vec<String> = (self.solution.warnings.iter())
+            .filter_map(|warning| match warning {
+                Warning::Issue(
+                    issue @ (Issue::RecipeOutsideRegion { node, .. }
+                    | Issue::FacilityOutsideRegion { node, .. }),
+                ) if *node == id => Some(aic_editor::messages::issue_text(catalog, strings, issue)),
+                _ => None,
+            })
+            .collect();
+        let mut face = Face {
+            kind: (!matches!(kind, NodeKind::Recipe { .. }))
+                .then(|| strings.get(names::kind_key(kind))),
+            title: Some(names::node_subject(catalog, strings, kind)),
+            warnings: (!warnings.is_empty()).then(|| warnings.join("\n")),
+            body: self.body(id, kind, round_up),
+            pins,
+            ..Face::default()
+        };
+        if let NodeKind::Recipe {
+            recipe, facility, ..
+        } = kind
+        {
+            let found = catalog.recipe(recipe.as_str());
+            face.badges = found
+                .filter(|found| !widgets::recipe_regions(catalog, found).is_empty())
+                .map(|_| recipe.clone());
+            let choices = found.map_or(0, |found| found.facilities.len());
+            face.facility = Some((
+                names::facility(catalog, facility.as_str()).to_owned(),
+                choices > 1,
+            ));
+        }
+        if let NodeKind::Storage { .. } = kind
+            && let Some(balance) = self.solution.storage.get(&id).and_then(|s| s.balance)
+        {
+            let color = if balance >= 0.0 {
+                colors::POSITIVE
+            } else {
+                colors::NEGATIVE
+            };
+            let mut text = format::short(Some(balance));
+            if balance >= 0.0 {
+                text.insert(0, '+');
+            }
+            let text = strings.format("storage-balance", &[("balance", &text)]);
+            face.balance = Some((text, color));
+        }
+        face
+    }
+
+    fn pin(&self, pin: &PinTarget, side: Side) -> PinFace {
+        let (node, item) = (pin.node, pin.item.as_ref());
+        let flow = item.and_then(|item| {
+            let port = Port {
+                node,
+                item: item.clone(),
+                side,
+            };
+            self.solution.port_flow.get(&port).copied().flatten()
+        });
+        let throttled = (self.solution.throttle.get(&node))
+            .is_some_and(|reason| reason.side == side && Some(&reason.item) == item);
+        PinFace {
+            rate: format::short(flow),
+            throttled,
+        }
+    }
+
+    fn body(&self, id: NodeId, kind: &NodeKind, round_up: bool) -> Body {
+        let (catalog, strings, solution) = (self.catalog, self.strings, self.solution);
+        let rate = solution.rate.get(&id).copied().flatten();
+        let limit = |limit: Option<f64>, required| Some((widgets::limit_text(limit), required));
+        let numbers = |image, number: Option<f64>, limit| Body::Numbers {
+            image,
+            number: format::short(number),
+            busy: None,
+            coupons: Vec::new(),
+            limit,
+        };
+        match kind {
+            NodeKind::Recipe {
+                facility,
+                limit: most,
+                ..
+            } => {
+                let name = names::facility(catalog, facility.as_str()).to_owned();
+                let image = Some((
+                    ImageKind::Facility,
+                    facility.as_str().to_owned(),
+                    Some(name),
+                ));
+                let count = solution.facility_count.get(&id).copied().flatten();
+                match count.filter(|_| round_up).map(RoundUp::of) {
+                    Some(rounded) => Body::Numbers {
+                        image,
+                        number: rounded.facilities.to_string(),
+                        busy: Some(strings.format(
+                            "round-up-utilization",
+                            &[("percent", &format::short(Some(rounded.utilization * 100.0)))],
+                        )),
+                        coupons: Vec::new(),
+                        limit: limit(*most, false),
+                    },
+                    None => numbers(image, count, limit(*most, false)),
+                }
+            }
+            NodeKind::Source { limit: most, .. } => {
+                let image = Some((ImageKind::Node, SOURCE_IMAGE.to_owned(), None));
+                numbers(image, rate, limit(Some(*most), true))
+            }
+            NodeKind::ControlPort { limit: most, .. } => {
+                numbers(None, rate, limit(Some(*most), true))
+            }
+            NodeKind::Sink { limit: most, .. } => {
+                let image = Some((ImageKind::Node, SINK_IMAGE.to_owned(), None));
+                numbers(image, rate, limit(*most, false))
+            }
+            NodeKind::OutpostOrder { limit: most, .. } => Body::Numbers {
+                image: None,
+                number: format::short(rate),
+                busy: None,
+                coupons: (solution.coupons.get(&id).into_iter().flatten())
+                    .map(|(coupon, earned)| {
+                        let text = strings
+                            .format("outpost-earns", &[("rate", &format::short(Some(*earned)))]);
+                        (coupon.clone(), text)
+                    })
+                    .collect(),
+                limit: limit(*most, false),
+            },
+            NodeKind::Splitter { .. } | NodeKind::Merger { .. } => numbers(None, rate, None),
+            NodeKind::Storage { .. } => {
+                let through = solution.storage.get(&id).and_then(|s| s.pass_through);
+                Body::PassThrough(
+                    strings.format("storage-pass-through", &[("rate", &format::short(through))]),
+                )
+            }
+            NodeKind::WorkspacePort { .. } => Body::Empty,
+            NodeKind::MissingRecipe { .. } => Body::Missing(strings.get("kind-missing-recipe")),
+        }
+    }
+
+    /// Flow and belt count at the middle of a link, like `12.00 /min · 0.4 belts`. An
+    /// undetermined link shows no label at all.
+    fn label(&self, id: LinkId) -> Option<LinkLabel> {
+        let link = self.graph.link(id)?;
+        let flow = self.solution.link_flow.get(&id).copied().flatten()?;
+        let fluid = (self.catalog.item(link.item.as_str())).is_some_and(|item| item.is_fluid);
+        let belts = self.solution.link_belts.get(&id).copied().flatten();
+        let key = if fluid {
+            "link-label-fluid"
+        } else {
+            "link-label"
+        };
+        let text = self.strings.format(
+            key,
+            &[
+                ("flow", &format::short(Some(flow))),
+                ("belts", &format::short(belts)),
+            ],
+        );
+        Some(LinkLabel {
+            text,
+            over: belts.is_some_and(|b| b > 1.0 + 1e-9),
+        })
+    }
 }
 
 /// A small warning triangle in the top corner of a port's tile.
@@ -818,10 +1138,15 @@ struct Cards<'a> {
     catalog: &'a Catalog,
     strings: &'a Strings,
     graph: &'a Graph,
-    solution: &'a Solution,
-    selection: Option<&'a Selection>,
+    /// What the cards' faces are worked out from, the first time each is drawn.
+    read: Read<'a>,
     /// Show whole facilities and how busy they are.
     round_up: bool,
+    /// The canvas is zoomed out below [`PLAIN_BELOW`]: cards are drawn plain, links without
+    /// their labels.
+    plain: bool,
+    selection: Option<&'a Selection>,
+    /// The level's cards and what they show ([`Faces`]).
     view: &'a DocView,
     anchors: &'a mut HashMap<NodeId, Anchor>,
     limit_edits: &'a mut HashMap<NodeId, String>,
@@ -875,7 +1200,9 @@ impl Cards<'_> {
         self.pin_ports_to_edges(nodes, ui.ctx());
         let view = self.view;
         let focused = ui.memory(|m| m.focused());
-        for card in view.cards() {
+        let (read, round_up) = (self.read, self.round_up);
+        for (card, face) in view.cards().iter().zip(&view.faces.cards) {
+            let face = || face.get_or_init(|| read.face(card, round_up));
             let node = Node::from_id(card.id)
                 .inputs(card.inputs.len())
                 .outputs(card.outputs.len())
@@ -887,10 +1214,11 @@ impl Cards<'_> {
             let typing =
                 matches!(card.member, Member::Node(id) if focused == Some(self.limit_id(id)));
             if typing {
-                let shown = node.show(nodes, ui, |ctx| self.card(ctx, card));
+                let shown = node.show(nodes, ui, |ctx| self.card(ctx, card, face(), false));
                 self.after(ui, nodes, card, &shown);
             } else {
-                let shown = node.show_or_cull(nodes, ui, |ctx| self.card(ctx, card));
+                let plain = self.plain;
+                let shown = node.show_or_cull(nodes, ui, |ctx| self.card(ctx, card, face(), plain));
                 self.after(ui, nodes, card, &shown);
             }
         }
@@ -1047,10 +1375,16 @@ impl Cards<'_> {
 
     /// One card: its frame, its header, a pin for each port down its sides, and its body between
     /// them.
-    fn card(&mut self, ctx: NodeCtx<'_>, card: &Card) -> aic_node_graph::FramedResponse<()> {
+    fn card(
+        &mut self,
+        ctx: NodeCtx<'_>,
+        card: &Card,
+        face: &Face,
+        plain: bool,
+    ) -> aic_node_graph::FramedResponse<()> {
         let highlight = ctx.highlighted_sockets();
         ctx.framed_with(Self::frame(), |ui, sockets| {
-            self.card_content(ui, sockets, card, highlight);
+            self.card_content(ui, sockets, (card, face, plain), highlight);
         })
     }
 
@@ -1058,7 +1392,7 @@ impl Cards<'_> {
         &mut self,
         ui: &mut Ui,
         sockets: &mut SocketLayout,
-        card: &Card,
+        (card, face, plain): (&Card, &Face, bool),
         highlight: SocketHighlight,
     ) {
         // Borrowed from the graph, not from `self`, which the parts below draw with.
@@ -1091,7 +1425,11 @@ impl Cards<'_> {
                 .layout(egui::Layout::top_down(egui::Align::Min))
                 .id_salt("header"),
         );
-        self.header(&mut header, card.member, kind);
+        // Plain, the header is laid out as ever, for its height, and not drawn.
+        if plain {
+            header.set_invisible();
+        }
+        self.header(&mut header, card.member, face);
         let header_height = header.min_rect().height().max(crisp(HEADER_MIN));
         let header_bottom = layout.origin.y + header_height + CARD_OUTSET;
         ui.painter().set(
@@ -1126,14 +1464,15 @@ impl Cards<'_> {
                 }
                 let lit = highlight.contains(kind_of(side), index);
                 let rate = layout.rate(side, row);
+                let shows = &face.pins[usize::from(side == Side::Output)][index];
                 self.pin(
                     ui,
                     &layout,
                     (card.member, side, index),
-                    pin,
+                    (pin, shows),
                     icon,
                     rate,
-                    lit,
+                    (lit, plain),
                 );
                 bottom = bottom.max(icon.bottom());
             }
@@ -1146,7 +1485,7 @@ impl Cards<'_> {
                     .layout(egui::Layout::top_down(egui::Align::Center))
                     .id_salt("body"),
             );
-            self.body(&mut body, card.member, kind);
+            self.body(&mut body, card.member, face, plain);
             bottom = bottom.max(body.min_rect().bottom());
         }
         let content =
@@ -1166,132 +1505,70 @@ impl Cards<'_> {
     }
 
     /// A card's header: what kind of node it is, what it is about, and for a recipe its facility.
-    fn header(&mut self, ui: &mut Ui, member: Member, kind: Option<&NodeKind>) {
-        let id = match member {
-            Member::Node(id) => id,
-            Member::Workspace(workspace) => {
-                let name = (self.graph.workspace_info(workspace))
-                    .map(|w| w.name.clone())
-                    .unwrap_or_default();
-                ui.label(
-                    RichText::new(self.strings.get("kind-workspace"))
-                        .small()
-                        .weak(),
-                );
-                title_label(ui, theme::strong(name));
-                return;
-            }
-        };
-        let Some(kind) = kind else {
+    fn header(&mut self, ui: &mut Ui, member: Member, face: &Face) {
+        if let Some(kind) = &face.kind {
+            ui.label(RichText::new(kind).small().weak());
+        }
+        let Some(title) = &face.title else {
             return;
         };
-        if let NodeKind::WorkspacePort { side, .. } = kind {
-            let key = match side {
-                Side::Input => "kind-workspace-input",
-                Side::Output => "kind-workspace-output",
-            };
-            ui.label(RichText::new(self.strings.get(key)).small().weak());
+        let Member::Node(id) = member else {
+            title_label(ui, theme::strong(title));
             return;
+        };
+        self.title_row(ui, face, theme::strong(title));
+        if let Some((name, cycles)) = &face.facility {
+            self.facility_line(ui, id, name, *cycles);
         }
-        if !matches!(kind, NodeKind::Recipe { .. }) {
-            ui.label(
-                RichText::new(self.strings.get(names::kind_key(kind)))
-                    .small()
-                    .weak(),
-            );
-        }
-        let subject = names::node_subject(self.catalog, self.strings, kind);
-        self.title_row(ui, id, kind, theme::strong(subject));
-        if let NodeKind::Recipe {
-            recipe, facility, ..
-        } = kind
-        {
-            self.facility_line(ui, id, recipe, facility);
-        }
-        if let NodeKind::Storage { .. } = kind {
-            let balance = self.solution.storage.get(&id).and_then(|s| s.balance);
-            if let Some(balance) = balance {
-                let color = if balance >= 0.0 {
-                    colors::POSITIVE
-                } else {
-                    colors::NEGATIVE
-                };
-                let mut text = format::short(Some(balance));
-                if balance >= 0.0 {
-                    text.insert(0, '+');
-                }
-                ui.label(
-                    RichText::new(
-                        self.strings
-                            .format("storage-balance", &[("balance", &text)]),
-                    )
-                    .color(color)
-                    .strong(),
-                );
-            }
+        if let Some((balance, color)) = &face.balance {
+            ui.label(RichText::new(balance).color(*color).strong());
         }
     }
 
     /// A recipe card's facility, under its title where a long name has the card's width. With a
     /// choice of facilities it is a button: one click moves to the next, and the inspector has the
     /// full list.
-    fn facility_line(&mut self, ui: &mut Ui, id: NodeId, recipe: &RecipeId, facility: &FacilityId) {
-        let name = names::facility(self.catalog, facility.as_str());
+    fn facility_line(&mut self, ui: &mut Ui, id: NodeId, name: &str, cycles: bool) {
         let text = RichText::new(name).small().color(theme::color::TEXT_MUTED);
-        let facilities = self
-            .catalog
-            .recipe(recipe.as_str())
+        if !cycles {
+            ui.add(egui::Label::new(text).truncate());
+            return;
+        }
+        let button = egui::Button::new(text).frame(false).truncate();
+        if !ui.add(button).clicked() {
+            return;
+        }
+        let Some(NodeKind::Recipe {
+            recipe, facility, ..
+        }) = self.kind(id)
+        else {
+            return;
+        };
+        let facilities = (self.catalog.recipe(recipe.as_str()))
             .map(|r| r.facilities.as_slice())
             .unwrap_or_default();
-        if facilities.len() > 1 {
-            let button = egui::Button::new(text).frame(false).truncate();
-            if ui.add(button).clicked() {
-                let next = facilities
-                    .iter()
-                    .position(|f| f == facility)
-                    .map_or(0, |i| (i + 1) % facilities.len());
-                self.events
-                    .push(CanvasEvent::SetFacility(id, facilities[next].clone()));
-            }
-        } else {
-            ui.add(egui::Label::new(text).truncate());
+        let next = (facilities.iter())
+            .position(|f| f == facility)
+            .map_or(0, |i| (i + 1) % facilities.len().max(1));
+        if let Some(next) = facilities.get(next) {
+            self.events.push(CanvasEvent::SetFacility(id, next.clone()));
         }
     }
 
     /// A node's title, after a warning sign when the region lacks its recipe or facility, and the
     /// recipe's region badges when only some regions have it.
-    fn title_row(&self, ui: &mut Ui, id: NodeId, kind: &NodeKind, title: RichText) {
+    fn title_row(&self, ui: &mut Ui, face: &Face, title: RichText) {
         let catalog = self.catalog;
-        let badges = match kind {
-            NodeKind::Recipe { recipe, .. } => catalog
-                .recipe(recipe.as_str())
-                .map(|recipe| widgets::RegionBadges::new(ui, catalog, recipe, VIEW_SCALE)),
-            _ => None,
-        }
-        .filter(|badges| !badges.is_empty());
-        let warnings: Vec<String> = self
-            .solution
-            .warnings
-            .iter()
-            .filter_map(|warning| match warning {
-                Warning::Issue(
-                    issue @ (Issue::RecipeOutsideRegion { node, .. }
-                    | Issue::FacilityOutsideRegion { node, .. }),
-                ) if *node == id => Some(aic_editor::messages::issue_text(
-                    catalog,
-                    self.strings,
-                    issue,
-                )),
-                _ => None,
-            })
-            .collect();
-        if badges.is_none() && warnings.is_empty() {
+        let badges = (face.badges.as_ref())
+            .and_then(|recipe| catalog.recipe(recipe.as_str()))
+            .map(|recipe| widgets::RegionBadges::new(ui, catalog, recipe, VIEW_SCALE));
+        if badges.is_none() && face.warnings.is_none() {
             title_label(ui, title);
             return;
         }
         ui.horizontal(|ui| {
-            if !warnings.is_empty() {
-                widgets::warning_icon(ui, crisp(WARNING_ICON)).on_hover_text(warnings.join("\n"));
+            if let Some(warnings) = &face.warnings {
+                widgets::warning_icon(ui, crisp(WARNING_ICON)).on_hover_text(warnings.as_str());
             }
             if let Some(badges) = &badges {
                 badges.ui(ui);
@@ -1311,34 +1588,20 @@ impl Cards<'_> {
         ui: &mut Ui,
         layout: &CardLayout,
         key: PinKey,
-        target: &PinTarget,
+        (target, shows): (&PinTarget, &PinFace),
         icon: Rect,
         rate_rect: Rect,
-        lit: bool,
+        (lit, plain): (bool, bool),
     ) {
         let (member, side, index) = key;
         let (node, item) = (target.node, target.item.as_ref());
         let linked = (self.view.card(member)).is_some_and(|card| card.is_linked(side, index));
         self.pins.insert(key, icon.center() - layout.corner());
-
-        let flow = item.and_then(|item| {
-            let port = Port {
-                node,
-                item: item.clone(),
-                side,
-            };
-            self.solution.port_flow.get(&port).copied().flatten()
-        });
-        let throttled = (self.solution.throttle.get(&node))
-            .is_some_and(|reason| reason.side == side && Some(&reason.item) == item);
+        let throttled = shows.throttled;
         let (fill, color) = match (linked, side) {
             (true, _) => (colors::LINKED, ui.visuals().text_color()),
             (false, Side::Input) => (colors::DEPOT_IN, colors::DEPOT_IN),
             (false, Side::Output) => (colors::DEPOT_OUT, colors::DEPOT_OUT),
-        };
-        let rate = Rate {
-            text: format::short(flow),
-            color,
         };
 
         let response = ui.interact(
@@ -1374,13 +1637,15 @@ impl Cards<'_> {
                 egui::Align2::RIGHT_CENTER,
             ),
         };
-        painter.text(
-            anchor,
-            align,
-            &rate.text,
-            egui::TextStyle::Monospace.resolve(ui.style()),
-            rate.color,
-        );
+        if !plain {
+            painter.text(
+                anchor,
+                align,
+                &shows.rate,
+                egui::TextStyle::Monospace.resolve(ui.style()),
+                color,
+            );
+        }
 
         // A right click on the icon unlinks the port or, if it has no links, adds a producer or
         // consumer of its item.
@@ -1441,113 +1706,67 @@ impl Cards<'_> {
 
     /// A card's body, between its port columns: the picture, the number the card is about, and
     /// its limit.
-    fn body(&mut self, ui: &mut Ui, member: Member, kind: Option<&NodeKind>) {
-        let id = match member {
-            Member::Node(id) => id,
-            Member::Workspace(workspace) => {
-                self.workspace_body(ui, workspace);
-                return;
+    ///
+    /// Plain, it draws the picture and the number, and lays out the rest without drawing it, so
+    /// the card keeps its height.
+    fn body(&mut self, ui: &mut Ui, member: Member, face: &Face, plain: bool) {
+        match (&face.body, member) {
+            (Body::Workspace(count), Member::Workspace(workspace)) => {
+                self.workspace_body(ui, workspace, count, plain);
             }
-        };
-        let Some(kind) = kind else {
-            return;
-        };
-        let rate = self.solution.rate.get(&id).copied().flatten();
-        match kind {
-            NodeKind::Recipe {
-                facility, limit, ..
-            } => {
-                // The facility's name is in the header, under the title.
-                let name = names::facility(self.catalog, facility.as_str());
-                if let Some(image) = widgets::image(
-                    ui,
-                    self.catalog,
-                    ImageKind::Facility,
-                    facility.as_str(),
-                    crisp(FACILITY_IMAGE),
-                ) {
-                    image.on_hover_text(name);
+            (
+                Body::Numbers {
+                    image,
+                    number,
+                    busy,
+                    coupons,
+                    limit,
+                },
+                Member::Node(id),
+            ) => {
+                if let Some((kind, image, name)) = image
+                    && let Some(shown) =
+                        widgets::image(ui, self.catalog, *kind, image, crisp(FACILITY_IMAGE))
+                    && let Some(name) = name
+                {
+                    shown.on_hover_text(name.as_str());
                 }
-                let count = self.solution.facility_count.get(&id).copied().flatten();
-                match count.filter(|_| self.round_up).map(RoundUp::of) {
-                    Some(rounded) => {
-                        ui.label(
-                            RichText::new(rounded.facilities.to_string())
-                                .text_style(theme::number_style())
-                                .color(theme::color::TEXT_STRONG),
-                        );
-                        let percent = format::short(Some(rounded.utilization * 100.0));
-                        ui.label(
-                            RichText::new(
-                                self.strings
-                                    .format("round-up-utilization", &[("percent", &percent)]),
-                            )
-                            .small(),
-                        );
-                    }
-                    None => big_number(ui, count),
+                big_number(ui, number);
+                if plain {
+                    ui.set_invisible();
                 }
-                self.limit_field(ui, id, *limit, false);
-            }
-            NodeKind::Source { limit, .. } => {
-                widgets::image(
-                    ui,
-                    self.catalog,
-                    ImageKind::Node,
-                    SOURCE_IMAGE,
-                    crisp(FACILITY_IMAGE),
-                );
-                big_number(ui, rate);
-                self.limit_field(ui, id, Some(*limit), true);
-            }
-            NodeKind::ControlPort { limit, .. } => {
-                big_number(ui, rate);
-                self.limit_field(ui, id, Some(*limit), true);
-            }
-            NodeKind::Sink { limit, .. } => {
-                widgets::image(
-                    ui,
-                    self.catalog,
-                    ImageKind::Node,
-                    SINK_IMAGE,
-                    crisp(FACILITY_IMAGE),
-                );
-                big_number(ui, rate);
-                self.limit_field(ui, id, *limit, false);
-            }
-            NodeKind::OutpostOrder { limit, .. } => {
-                big_number(ui, rate);
-                for (coupon, earned) in self.solution.coupons.get(&id).into_iter().flatten() {
+                if let Some(busy) = busy {
+                    ui.label(RichText::new(busy).small());
+                }
+                for (coupon, earned) in coupons {
                     ui.horizontal(|ui| {
                         widgets::item_icon(ui, self.catalog, coupon.as_str(), crisp(16.0));
-                        let text = self
-                            .strings
-                            .format("outpost-earns", &[("rate", &format::short(Some(*earned)))]);
-                        ui.label(RichText::new(text).small());
+                        ui.label(RichText::new(earned).small());
                     });
                 }
-                self.limit_field(ui, id, *limit, false);
+                if let Some((limit, required)) = limit {
+                    self.limit_field(ui, id, limit, *required);
+                }
             }
-            NodeKind::Splitter { .. } | NodeKind::Merger { .. } => big_number(ui, rate),
-            NodeKind::Storage { .. } => {
-                let through = self.solution.storage.get(&id).and_then(|s| s.pass_through);
-                let text = self
-                    .strings
-                    .format("storage-pass-through", &[("rate", &format::short(through))]);
+            (Body::PassThrough(text), _) => {
+                if plain {
+                    ui.set_invisible();
+                }
                 ui.add(egui::Label::new(RichText::new(text).small()).truncate());
             }
-            NodeKind::WorkspacePort { .. } => {}
-            NodeKind::MissingRecipe { .. } => {
-                ui.label(
-                    RichText::new(self.strings.get("kind-missing-recipe")).color(colors::NEGATIVE),
-                );
+            (Body::Missing(text), _) => {
+                if plain {
+                    ui.set_invisible();
+                }
+                ui.label(RichText::new(text).color(colors::NEGATIVE));
             }
+            _ => {}
         }
     }
 
     /// The node's limit under its numbers, typed straight into the card. A source or control port
     /// needs one, so blanking theirs changes nothing.
-    fn limit_field(&mut self, ui: &mut Ui, id: NodeId, limit: Option<f64>, required: bool) {
+    fn limit_field(&mut self, ui: &mut Ui, id: NodeId, limit: &str, required: bool) {
         let field = LimitField {
             id: self.limit_id(id),
             buffer: self.limit_edits.entry(id).or_default(),
@@ -1564,15 +1783,12 @@ impl Cards<'_> {
     }
 
     /// A workspace's card: how many nodes it holds, and a button to open it.
-    fn workspace_body(&mut self, ui: &mut Ui, workspace: WorkspaceId) {
-        let count = self
-            .graph
-            .nodes_in_workspace(workspace)
-            .into_iter()
-            .filter(|&node| !is_port(self.graph, node))
-            .count();
+    fn workspace_body(&mut self, ui: &mut Ui, workspace: WorkspaceId, count: &str, plain: bool) {
         ui.label(RichText::new("🏭").size(crisp(FACILITY_IMAGE * 0.6)));
-        ui.label(RichText::new(aic_editor::names::node_count(self.strings, count)).small());
+        if plain {
+            ui.set_invisible();
+        }
+        ui.label(RichText::new(count).small());
         if ui
             .small_button(self.strings.get("workspace-open"))
             .clicked()
@@ -1637,7 +1853,7 @@ impl Cards<'_> {
         &mut self,
         edges: &mut EdgesCtx,
         ui: &mut Ui,
-        labels: &egui::Painter,
+        painter: &egui::Painter,
     ) -> (Option<LinkId>, bool) {
         let stroke = Stroke::new(crisp(LINK_WIDTH), colors::LINKED);
         let hovered = Stroke::new(crisp(LINK_WIDTH * LINK_HOVER), colors::LINKED);
@@ -1654,8 +1870,8 @@ impl Cards<'_> {
         let clicked_at = clicked_at.map(|pos| self.to_global.inverse() * pos);
         let mut clicked = None;
         let mut removed = false;
-        let view = self.view;
-        for wire in view.wires() {
+        let (view, plain, selection) = (self.view, self.plain, self.selection);
+        for (wire, labels) in view.wires().iter().zip(&view.faces.wires) {
             let mut middle = None;
             let response = Edge::new(
                 (wire.from.card, wire.from.index),
@@ -1679,8 +1895,20 @@ impl Cards<'_> {
             let Some(middle) = middle else {
                 continue;
             };
-            for &link in &wire.links {
-                if self.label(ui, labels, link, middle, clicked_at) {
+            // Plain, a label can't be read: only the selected link keeps its own, which is what
+            // shows the selection.
+            let shown = |link: LinkId| !plain || selection == Some(&Selection::Link(link));
+            if !wire.links.iter().any(|&link| shown(link)) {
+                continue;
+            }
+            let read = self.read;
+            let labels =
+                labels.get_or_init(|| (wire.links.iter()).map(|&link| read.label(link)).collect());
+            for (&link, label) in wire.links.iter().zip(labels) {
+                if let Some(label) = label
+                    && shown(link)
+                    && self.label(ui, painter, (link, label), middle, clicked_at)
+                {
                     clicked = Some(link);
                 }
             }
@@ -1691,46 +1919,23 @@ impl Cards<'_> {
         (clicked, removed)
     }
 
-    /// Flow and belt count at the middle of a link, like `12.00 /min · 0.4 belts`. Returns
-    /// whether the label was clicked.
+    /// A link's label at its middle ([`LinkLabel`]). Returns whether the label was clicked.
     fn label(
         &self,
         ui: &Ui,
         painter: &egui::Painter,
-        id: LinkId,
+        (id, label): (LinkId, &LinkLabel),
         middle: Pos2,
         clicked_at: Option<Pos2>,
     ) -> bool {
-        let Some(link) = self.graph.link(id) else {
-            return false;
-        };
-        // An undetermined link shows no label at all.
-        let Some(flow) = self.solution.link_flow.get(&id).copied().flatten() else {
-            return false;
-        };
-        let fluid = (self.catalog.item(link.item.as_str())).is_some_and(|item| item.is_fluid);
-        let belts = self.solution.link_belts.get(&id).copied().flatten();
-        let key = if fluid {
-            "link-label-fluid"
-        } else {
-            "link-label"
-        };
-        let text = self.strings.format(
-            key,
-            &[
-                ("flow", &format::short(Some(flow))),
-                ("belts", &format::short(belts)),
-            ],
-        );
         let visuals = ui.visuals();
-        let over = belts.is_some_and(|b| b > 1.0 + 1e-9);
-        let color = if over {
+        let color = if label.over {
             colors::WARN
         } else {
             visuals.text_color()
         };
         let font = FontId::proportional(crisp(theme::text::SMALL));
-        let galley = painter.layout_no_wrap(text, font, color);
+        let galley = painter.layout_no_wrap(label.text.clone(), font, color);
         let pad = crisp(3.0);
         let rect = Rect::from_center_size(middle, galley.size()).expand(pad);
         let selected = self.selection == Some(&Selection::Link(id));
@@ -1767,11 +1972,10 @@ fn header_tint(member: Member, kind: Option<&NodeKind>) -> Color32 {
     }
 }
 
-fn big_number(ui: &mut Ui, value: Option<f64>) {
+fn big_number(ui: &mut Ui, text: &str) {
     // A blank value still takes its line, so the card doesn't jump when it fills in.
-    let text = format::short(value);
     ui.label(
-        RichText::new(if text.is_empty() { " ".into() } else { text })
+        RichText::new(if text.is_empty() { " " } else { text })
             .text_style(theme::number_style())
             .color(theme::color::TEXT_STRONG),
     );

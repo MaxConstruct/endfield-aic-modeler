@@ -9,7 +9,7 @@ use eframe::egui::{self, Id, Key, Pos2};
 
 use crate::i18n::Strings;
 use crate::theme;
-use crate::widgets::LimitField;
+use crate::widgets::{self, LimitField};
 use aic_editor::names;
 
 /// The menu's width in points, so one opened from an input can sit left of its port.
@@ -84,7 +84,9 @@ impl PortMenu {
                             let field = LimitField {
                                 id: field_id,
                                 buffer: &mut self.buffer,
-                                current: graph.port_limit(catalog, &self.port),
+                                current: &widgets::limit_text(
+                                    graph.port_limit(catalog, &self.port),
+                                ),
                                 width: 90.0,
                                 hint: strings.get("node-no-limit"),
                                 label: strings.get("port-menu-limit-label"),
@@ -158,7 +160,7 @@ impl PortMenu {
                     let field = LimitField {
                         id: Id::new(("port-menu-share", id)),
                         buffer: self.shares.entry(id).or_default(),
-                        current: link.share(side),
+                        current: &widgets::limit_text(link.share(side)),
                         width: 60.0,
                         hint: strings.get("port-menu-share-free"),
                         label: strings.format("port-menu-share-label", &[("node", &name)]),

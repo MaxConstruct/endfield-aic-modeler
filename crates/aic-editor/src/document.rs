@@ -16,8 +16,8 @@ use std::time::Duration;
 use web_time::Instant;
 
 use aic_core::{
-    EditError, Graph, LinkError, LinkId, Member, NodeId, NodeKind, Port, PortRef, Pos, Side,
-    Solution, WorkspaceId, solve,
+    EditError, Graph, KeptSections, LinkError, LinkId, Member, NodeId, NodeKind, Port, PortRef,
+    Pos, Side, Solution, WorkspaceId, solve_keeping,
 };
 use aic_data::{Catalog, FacilityId, ItemId, RegionId};
 
@@ -40,6 +40,8 @@ const HISTORY_LIMIT: usize = 200;
 pub struct Document {
     graph: Graph,
     solution: Solution,
+    /// Each section's result at the last solve, kept for the next one while it holds.
+    kept: KeptSections,
     stale: bool,
     /// The graph as of the last checkpoint, and that state's revision.
     committed: Graph,
@@ -53,6 +55,8 @@ pub struct Document {
     edits: u64,
     /// Counts every change to what the views draw, so a view swapped in knows to draw afresh.
     generation: u64,
+    /// Counts the solves, so what shows the solution knows when it changed.
+    solves: u64,
     saved_edits: u64,
     path: Option<PathBuf>,
     /// The file is a draft in the app's own folder, not one the player chose.
@@ -70,6 +74,7 @@ impl Document {
             committed: graph.clone(),
             graph,
             solution: Solution::default(),
+            kept: KeptSections::default(),
             stale: true,
             revision: 0,
             pending: false,
@@ -78,6 +83,7 @@ impl Document {
             next_revision: 1,
             edits: 0,
             generation: 0,
+            solves: 0,
             saved_edits: 0,
             path,
             draft: false,
@@ -116,6 +122,12 @@ impl Document {
     /// it moves on.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    /// Counts the solves. [`Self::generation`] counts edits, not solves: what shows the numbers
+    /// follows both.
+    pub fn solves(&self) -> u64 {
+        self.solves
     }
 
     /// Ends the current undo step: everything changed since the last checkpoint undoes together.
@@ -178,6 +190,8 @@ impl Document {
         for (graph, _) in self.undo.iter_mut().chain(self.redo.iter_mut()) {
             graph.rebind(catalog);
         }
+        // What a section came to holds for the catalog it was solved with.
+        self.kept.clear();
         self.stale = true;
         self.generation += 1;
     }
@@ -403,14 +417,16 @@ impl Document {
         Ok(())
     }
 
-    /// Re-solves if anything changed since the last solve, and says how long it took.
+    /// Re-solves if anything changed since the last solve, and says how long it took. A section
+    /// whose nodes, links and limits are as they were keeps its result ([`KeptSections`]).
     pub fn solve_if_stale(&mut self, catalog: &Catalog) -> Option<Duration> {
         if !self.stale {
             return None;
         }
         let start = Instant::now();
-        self.solution = solve(catalog, &self.graph);
+        self.solution = solve_keeping(catalog, &self.graph, &mut self.kept);
         self.stale = false;
+        self.solves += 1;
         Some(start.elapsed())
     }
 }
@@ -538,6 +554,41 @@ mod tests {
     }
 
     #[test]
+    fn a_data_switch_solves_every_section_again() {
+        let mut doc = doc();
+        let node = doc.add_node(recipe(), origin(), None);
+        doc.solve_if_stale(&catalog());
+        let before = doc.solution().port_flow.clone();
+
+        // The same data with the smelter twice as fast: the kept section no longer holds.
+        let overlay = br#"{ "facility_speeds": { "smelter": 2 } }"#;
+        let faster = Catalog::from_bytes_with_overlay(
+            include_bytes!("../fixtures/satisfactory/vtest/data.json"),
+            Some(overlay),
+            include_bytes!("../fixtures/satisfactory/vtest/i18n/en.json"),
+            None,
+        )
+        .unwrap();
+        doc.rebind(&faster);
+        doc.solve_if_stale(&faster);
+        let port = |side| Port {
+            node,
+            item: if side == Side::Input {
+                "iron_ore"
+            } else {
+                "iron_ingot"
+            }
+            .into(),
+            side,
+        };
+        let flow = |flows: &std::collections::HashMap<Port, Option<f64>>, side| flows[&port(side)];
+        assert_eq!(
+            flow(&doc.solution().port_flow, Side::Output),
+            flow(&before, Side::Output).map(|f| f * 2.0)
+        );
+    }
+
+    #[test]
     fn a_removed_node_needs_a_new_solve() {
         let catalog = catalog();
         let mut doc = doc();
@@ -545,8 +596,10 @@ mod tests {
         doc.solve_if_stale(&catalog);
         assert!(doc.solve_if_stale(&catalog).is_none(), "nothing changed");
 
+        let solves = doc.solves();
         doc.remove_node(node);
         assert!(doc.solve_if_stale(&catalog).is_some(), "removal re-solves");
+        assert_eq!(doc.solves(), solves + 1);
     }
 
     #[test]

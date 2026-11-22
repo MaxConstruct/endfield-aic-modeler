@@ -25,9 +25,15 @@ mod widgets;
 /// (egui text and meshes, the solver's model), and on Windows the system heap took about a third
 /// of each frame's CPU time. Declared here rather than in `main.rs`, so the perf examples and the
 /// tests run on the same allocator as the app.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "dhat-heap")))]
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+/// With the `dhat-heap` feature, dhat's allocator in mimalloc's place: it counts every allocation
+/// while a `dhat::Profiler` runs, and is the system allocator otherwise. For measuring only.
+#[cfg(all(not(target_arch = "wasm32"), feature = "dhat-heap"))]
+#[global_allocator]
+static ALLOCATOR: dhat::Alloc = dhat::Alloc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;

@@ -11,11 +11,12 @@ $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"' | Select
 
 # An explicit --target keeps the static C runtime off build scripts and proc macros.
 $env:RUSTFLAGS = '-C target-feature=+crt-static'
-cargo build --release --locked -p aic-app --target $target
+# The `packaged` profile (Cargo.toml): fat LTO, one codegen unit, panics abort.
+cargo build --profile packaged --locked -p aic-app --target $target
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $dist = 'target\dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $exe = Join-Path $dist "AIC-Modeler-$version-windows-x64.exe"
-Copy-Item "target\$target\release\aic-app.exe" $exe -Force
+Copy-Item "target\$target\packaged\aic-app.exe" $exe -Force
 Write-Output $exe

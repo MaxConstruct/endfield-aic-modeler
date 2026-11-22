@@ -241,7 +241,7 @@ impl Editor {
             let field = LimitField {
                 id: egui::Id::new("inspector-limit"),
                 buffer: &mut self.limit_edit,
-                current: kind.limit(),
+                current: &widgets::limit_text(kind.limit()),
                 width: 90.0,
                 hint: strings.get("inspector-limit-hint"),
                 label: strings.get("inspector-limit"),

@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use aic_data::{Catalog, FacilityId, ItemId};
 use indexmap::IndexMap;
 
-use crate::graph::{Graph, LinkId, NodeId, NodeKind, Port, Side};
+use crate::graph::{Graph, Link, LinkId, NodeId, NodeKind, Port, Side};
 use crate::validate::Issue;
 use model::Ctx;
 use passes::{Outcome, Values};
@@ -146,6 +146,85 @@ pub enum Warning {
 /// Solves `graph`. Never fails: a section that can't be solved shows blank with a warning, and the
 /// other sections still get numbers.
 pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
+    solve_keeping(catalog, graph, &mut KeptSections::default())
+}
+
+/// What each section of the last solve came to, so that the next solve keeps it if the section's
+/// nodes, links and limits are as they were, and solves only the others. Its result is exactly
+/// what [`solve`] gives.
+///
+/// The results hold for one catalog: [`KeptSections::clear`] it when the catalog changes.
+#[derive(Default)]
+pub struct KeptSections {
+    /// Each section of the last solve, by its nodes.
+    sections: HashMap<Vec<NodeId>, Kept>,
+    /// How many sections the last solve kept.
+    kept: usize,
+}
+
+impl KeptSections {
+    /// How many sections the last solve kept rather than solved again.
+    pub fn kept(&self) -> usize {
+        self.kept
+    }
+
+    /// Forgets every section, so the next solve solves them all.
+    pub fn clear(&mut self) {
+        self.sections.clear();
+        self.kept = 0;
+    }
+}
+
+impl std::fmt::Debug for KeptSections {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeptSections")
+            .field("sections", &self.sections.len())
+            .field("kept", &self.kept)
+            .finish()
+    }
+}
+
+/// One section as it was solved: what the solve read of the graph, and what it came to.
+struct Kept {
+    /// The kind of each of the section's nodes, in section order: its limits are in it.
+    kinds: Vec<NodeKind>,
+    /// The section's links, in section order.
+    links: Vec<(LinkId, Link)>,
+    outcome: Outcome,
+    throttle: HashMap<NodeId, ThrottleReason>,
+}
+
+impl Kept {
+    fn solve(ctx: &Ctx<'_>, section: &sections::Section) -> Self {
+        let outcome = passes::solve_section(ctx, section);
+        let throttle = match &outcome {
+            Outcome::Solved(values) => throttle::reasons(ctx, section, values),
+            _ => HashMap::new(),
+        };
+        Self {
+            kinds: (section.nodes.iter())
+                .map(|&node| ctx.graph.nodes[node].kind.clone())
+                .collect(),
+            links: (section.links.iter())
+                .map(|&link| (link, ctx.graph.links[link].clone()))
+                .collect(),
+            outcome,
+            throttle,
+        }
+    }
+
+    /// Whether `section` of `graph` is what this was solved from. Its nodes are the key it was
+    /// found by.
+    fn holds_for(&self, graph: &Graph, section: &sections::Section) -> bool {
+        let nodes = (section.nodes.iter()).map(|&node| &graph.nodes[node].kind);
+        let links = (section.links.iter()).map(|&link| (link, &graph.links[link]));
+        self.kinds.iter().eq(nodes) && (self.links.iter()).map(|(id, link)| (*id, link)).eq(links)
+    }
+}
+
+/// Solves `graph` as [`solve`] does, keeping the result of every section that is as it was at the
+/// last solve with `kept`.
+pub fn solve_keeping(catalog: &Catalog, graph: &Graph, kept: &mut KeptSections) -> Solution {
     let issues = graph.validate(catalog);
     let mut left_out_nodes = HashSet::new();
     let mut left_out_links = HashSet::new();
@@ -186,16 +265,24 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
         ..Solution::default()
     };
     solution.warnings.extend(unlinked_ports(graph));
+    let mut previous = std::mem::take(&mut kept.sections);
+    kept.kept = 0;
     for (index, section) in sections::split(graph, &nodes, &links)
         .into_iter()
         .enumerate()
     {
-        let outcome = passes::solve_section(&ctx, &section);
-        let status = match &outcome {
-            Outcome::Solved(values) => {
+        let result = match previous.remove(&section.nodes) {
+            Some(result) if result.holds_for(graph, &section) => {
+                kept.kept += 1;
+                result
+            }
+            _ => Kept::solve(&ctx, &section),
+        };
+        let status = match &result.outcome {
+            Outcome::Solved(_) => {
                 solution
                     .throttle
-                    .extend(throttle::reasons(&ctx, &section, values));
+                    .extend((result.throttle.iter()).map(|(node, reason)| (*node, reason.clone())));
                 SectionStatus::Solved
             }
             Outcome::Undetermined(reason) => {
@@ -213,11 +300,12 @@ pub fn solve(catalog: &Catalog, graph: &Graph) -> Solution {
                 SectionStatus::Failed
             }
         };
-        let values = match outcome {
+        let values = match &result.outcome {
             Outcome::Solved(values) => Some(values),
             _ => None,
         };
-        record(&ctx, &section, values.as_ref(), &mut solution);
+        record(&ctx, &section, values, &mut solution);
+        kept.sections.insert(section.nodes.clone(), result);
         solution.sections.push(SectionResult {
             nodes: section.nodes,
             links: section.links,

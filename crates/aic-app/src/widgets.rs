@@ -13,13 +13,19 @@ use aic_editor::names;
 /// Colors with a meaning across the app.
 pub use crate::theme::color as colors;
 
+/// A limit as a [`LimitField`] shows it: up to four decimals, blank for none.
+pub fn limit_text(limit: Option<f64>) -> String {
+    limit.map(format::editable).unwrap_or_default()
+}
+
 /// A field for typing a limit. It shows `current` unless the player is typing in it, and returns
 /// the typed limit (`None` for blank) on the frame the text changes to something that parses. Text
 /// that doesn't parse shows red and changes nothing.
 pub struct LimitField<'a> {
     pub id: Id,
     pub buffer: &'a mut String,
-    pub current: Option<f64>,
+    /// The limit as it is, written by [`limit_text`].
+    pub current: &'a str,
     pub width: f32,
     pub hint: String,
     /// The name a screen reader (and a test) finds the field by.
@@ -29,8 +35,9 @@ pub struct LimitField<'a> {
 impl LimitField<'_> {
     pub fn show(self, ui: &mut Ui) -> (egui::Response, Option<Option<f64>>) {
         let typing = ui.memory(|m| m.has_focus(self.id));
-        if !typing {
-            *self.buffer = self.current.map(format::editable).unwrap_or_default();
+        // Copied only when it differs, so a card shown every frame doesn't allocate for it.
+        if !typing && *self.buffer != self.current {
+            self.current.clone_into(self.buffer);
         }
         let valid = parse_amount(self.buffer).is_ok();
         let mut edit = egui::TextEdit::singleline(self.buffer)
@@ -162,7 +169,8 @@ pub fn image(
     id: &str,
     size: f32,
 ) -> Option<egui::Response> {
-    catalog.image(kind, id)?;
+    // The icon cache, not the catalog: a catalog lookup builds its key every frame.
+    let _known = icon_texture(ui.ctx(), catalog, kind, id)?;
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
     paint_image(ui.painter(), catalog, kind, id, rect).then_some(response)
 }

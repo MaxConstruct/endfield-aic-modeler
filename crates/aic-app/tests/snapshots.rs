@@ -1206,6 +1206,74 @@ fn round_up_shows_whole_facilities_and_how_busy_they_are() {
     snapshot_graph(&mut harness, "round_up");
 }
 
+/// How many labels on screen read `text`.
+fn labels(harness: &Harness<'_, App>, text: &str) -> usize {
+    let label = eframe::egui::accesskit::Role::Label;
+    harness.query_all_by_role_and_label(label, text).count()
+}
+
+/// Whether some label on screen reads `text`.
+fn shows(harness: &Harness<'_, App>, text: &str) -> bool {
+    labels(harness, text) > 0
+}
+
+// M12: a card's text is worked out once per edit or solve, not every frame. It must still follow
+// everything it shows: a solve, the round-up setting, and the pointer for a port's hint.
+#[test]
+fn a_cards_text_follows_each_solve_the_round_up_setting_and_the_pointer() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let node = smelter(&mut harness, 300.0, 0.0);
+    let ore = add(
+        &mut harness,
+        NodeKind::Source {
+            item: "iron_ore".into(),
+            limit: 45.0,
+        },
+        0.0,
+        0.0,
+    );
+    link_any(
+        &mut harness,
+        PortRef::new(ore, "iron_ore"),
+        PortRef::new(node, "iron_ore"),
+    );
+    // The smelter takes 30 ore a minute: its count is the supply over 30, under its limit of 4.
+    editor(&mut harness)
+        .document_mut()
+        .set_limit(node, Some(4.0))
+        .unwrap();
+    harness.run();
+    assert!(shows(&harness, "1.5"));
+
+    editor(&mut harness)
+        .document_mut()
+        .set_limit(ore, Some(75.0))
+        .unwrap();
+    harness.run();
+    assert!(shows(&harness, "2.5"));
+    assert!(!shows(&harness, "1.5"), "the old count is gone");
+
+    editor(&mut harness).set_round_up(true);
+    harness.run();
+    assert!(shows(&harness, "3"));
+    assert!(shows(&harness, "83.33% busy"));
+    editor(&mut harness).set_round_up(false);
+    harness.run();
+    assert!(shows(&harness, "2.5"));
+    assert!(!shows(&harness, "83.33% busy"));
+
+    // The output's hint, built only under the pointer, names the item.
+    let before = labels(&harness, "Iron Ingot");
+    let pin = editor(&mut harness)
+        .port_on_screen(node, Side::Output, "iron_ingot")
+        .expect("the output pin is drawn");
+    let beside = beside_output_pin(&mut harness, pin);
+    harness.hover_at(beside);
+    harness.run();
+    harness.run_steps(40);
+    assert_eq!(labels(&harness, "Iron Ingot"), before + 1);
+}
+
 // M7: data versions, overlays and languages.
 
 fn data_folder_app() -> Harness<'static, App> {
@@ -3101,4 +3169,159 @@ fn a_link_to_a_card_out_of_view_still_ends_at_its_port() {
         "a line from {from:?} to {to:?} among {ends:?}"
     );
     harness.snapshot("canvas_zoomed_in");
+}
+
+// M12 step 4: below `canvas::PLAIN_BELOW` a card draws only its header tint, its pins' pictures and
+// its number. It keeps its size, its pins and every mouse habit.
+
+/// Zooms the canvas to `zoom` around its middle, and lets it settle.
+fn zoom_canvas(harness: &mut Harness<'_, App>, zoom: f32) {
+    editor(harness).zoom_canvas_to(zoom);
+    harness.run();
+    harness.run();
+}
+
+/// A card's size and the place of its output pin from its corner, in graph space: what must not
+/// change across the zoom where the card goes plain.
+fn card_shape(
+    harness: &mut Harness<'_, App>,
+    node: NodeId,
+) -> (eframe::egui::Vec2, eframe::egui::Vec2) {
+    let zoom = editor(harness).canvas_view().expect("drawn").zoom;
+    let rect = node_rect(harness, node);
+    let pin = pin_at(harness, node, Side::Output, "iron_ingot");
+    (rect.size() / zoom, (pin - rect.min) / zoom)
+}
+
+#[test]
+fn a_card_keeps_its_size_and_its_pins_where_it_goes_plain() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let [_, ingot, _, _] = plate_chain(&mut harness);
+    fit_view(&mut harness);
+    zoom_canvas(&mut harness, aic_app::canvas::PLAIN_BELOW);
+    let (size, pin) = card_shape(&mut harness, ingot);
+    snapshot_graph(&mut harness, "zoomed_out_full");
+
+    zoom_canvas(
+        &mut harness,
+        aic_app::canvas::PLAIN_BELOW - aic_app::canvas::ZOOM_STEP,
+    );
+    let (plain_size, plain_pin) = card_shape(&mut harness, ingot);
+    assert!(
+        (plain_size - size).length() < 1.0,
+        "{plain_size:?} against {size:?}"
+    );
+    assert!(
+        (plain_pin - pin).length() < 1.0,
+        "{plain_pin:?} against {pin:?}"
+    );
+    snapshot_graph(&mut harness, "zoomed_out_plain");
+}
+
+#[test]
+fn a_plain_card_still_selects_moves_links_and_opens_its_menu() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    zoom_canvas(
+        &mut harness,
+        aic_app::canvas::PLAIN_BELOW - aic_app::canvas::ZOOM_STEP,
+    );
+
+    let at = header_of(&mut harness, ingot);
+    click_at(&mut harness, PointerButton::Primary, at, Modifiers::NONE);
+    assert_eq!(selected_nodes(&mut harness), [ingot]);
+
+    let out = pin_at(&mut harness, ingot, Side::Output, "iron_ingot");
+    let into = pin_at(&mut harness, plate, Side::Input, "iron_ingot");
+    drag(&mut harness, out, into, Modifiers::NONE);
+    assert_eq!(editor(&mut harness).document().graph().links().len(), 1);
+
+    let before = node_pos(&mut harness, ingot);
+    let at = header_of(&mut harness, ingot);
+    drag(&mut harness, at, at + vec2(30.0, 20.0), Modifiers::NONE);
+    assert_ne!(node_pos(&mut harness, ingot), before, "the card moved");
+
+    // With nothing selected, the menu's item is the only "Remove node" on screen.
+    let empty = background(&mut harness);
+    click_at(&mut harness, PointerButton::Primary, empty, Modifiers::NONE);
+    let at = header_of(&mut harness, ingot);
+    secondary_click_at(&mut harness, at);
+    harness.get_by_label("Remove node").click();
+    harness.run();
+    assert!(
+        editor(&mut harness)
+            .document()
+            .graph()
+            .node(ingot)
+            .is_none()
+    );
+}
+
+#[test]
+fn the_card_being_typed_in_stays_whole_zoomed_out() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let frame = add_from_browser(&mut harness, "Modular Frame");
+    let role = eframe::egui::accesskit::Role::TextInput;
+    harness.get_by_role_and_label(role, "Node limit").focus();
+    harness.run();
+    zoom_canvas(
+        &mut harness,
+        aic_app::canvas::PLAIN_BELOW - aic_app::canvas::ZOOM_STEP,
+    );
+    harness
+        .get_by_role_and_label(role, "Node limit")
+        .type_text("1.25");
+    harness.run();
+    assert_eq!(limit_of(&mut harness, frame), Some(1.25));
+}
+
+#[test]
+fn a_plain_cards_limit_is_still_set_in_the_inspector() {
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, _) = ingot_and_plate(&mut harness);
+    zoom_canvas(
+        &mut harness,
+        aic_app::canvas::PLAIN_BELOW - aic_app::canvas::ZOOM_STEP,
+    );
+    let at = header_of(&mut harness, ingot);
+    click_at(&mut harness, PointerButton::Primary, at, Modifiers::NONE);
+    type_limit(&mut harness, "3");
+    assert_eq!(limit_of(&mut harness, ingot), Some(3.0));
+}
+
+#[test]
+fn below_the_plain_zoom_only_the_selected_link_keeps_its_label() {
+    use aic_app::canvas::{PLAIN_BELOW, ZOOM_STEP};
+    let mut harness = harness(&aic_editor::testing::fixture_dir());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    link(&mut harness, ingot, plate, "iron_ingot");
+    let labels = |harness: &Harness<'_, App>| {
+        (painted_text(harness).iter())
+            .filter(|(text, _)| text.contains("/min ·"))
+            .count()
+    };
+    zoom_canvas(&mut harness, PLAIN_BELOW);
+    assert_eq!(labels(&harness), 1, "at the threshold the label is drawn");
+    zoom_canvas(&mut harness, PLAIN_BELOW - ZOOM_STEP);
+    assert_eq!(labels(&harness), 0, "below it, it can't be read");
+
+    // Selected while it can be read, the link keeps its label zoomed out: it is what shows the
+    // selection on the canvas.
+    zoom_canvas(&mut harness, PLAIN_BELOW);
+    let out = pin_at(&mut harness, ingot, Side::Output, "iron_ingot");
+    let into = pin_at(&mut harness, plate, Side::Input, "iron_ingot");
+    let from = pos2(node_rect(&mut harness, ingot).right(), out.y);
+    let to = pos2(node_rect(&mut harness, plate).left(), into.y);
+    click_at(
+        &mut harness,
+        PointerButton::Primary,
+        from.lerp(to, 0.5),
+        Modifiers::NONE,
+    );
+    assert!(matches!(
+        editor(&mut harness).selection(),
+        Some(Selection::Link(_))
+    ));
+    zoom_canvas(&mut harness, PLAIN_BELOW - ZOOM_STEP);
+    assert_eq!(labels(&harness), 1, "the selected link's label");
 }

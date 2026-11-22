@@ -702,7 +702,7 @@ Done, except where noted.
       icons, fewer widgets); the app's numbers will be higher on both sides.
   - Next, in order:
     1. Draw only the nodes on screen: M11, which moves the canvas to our own copy of egui_graph.
-       Items 2 and 3 are now steps of M12.
+       Items 2 and 3 went to M12, which then left item 2 out: see there.
     2. Faster hashing for our own maps: `FxHashMap` (`rustc-hash` 2, already in the tree) where
        keys are IDs, per the perf book's hashing chapter; then `clippy::disallowed_types` to keep
        std `HashMap` out.
@@ -944,53 +944,308 @@ egui-snarl and pass the milestone checks on their own. Step 3 is the switch.
 
 Not in M11: a cheaper card for a view zoomed far out, which is what the whole-graph budget needs
 and is easier now that a card is ours to draw; automatic layout; selecting a link by clicking the
-link itself. The M7 list goes on from its item 2 (faster hashing) in M12.
+link itself. The M7 list goes on in M12.
 
 ### M12: Less work per frame
-Planned, after M11, since its first three steps touch `canvas.rs`, which M11 rewrites. It takes
-over items 2 and 3 of M7's list and adds what a read of the
-[Rust Performance Book](https://nnethercote.github.io/perf-book/) turned up (2026-11-17). On
-Windows a third of a frame's CPU time was in the heap, spread over hundreds of call sites (M7);
-mimalloc made each allocation cheaper, and this milestone makes fewer of them.
+Steps 1 to 6 are done (2026-11-22 and 23), with two targets missed: a 200-node section still
+solves in about 26 ms (step 2, left to the user), and a whole-graph idle frame makes 30.6k
+allocations, not under 16.5k, after step 3 (21.2k after step 4). The whole graph on screen is
+under 8 ms headless, idle and panning. Rewritten on 2026-11-22, after M11 and a second read of the
+[Rust Performance Book](https://nnethercote.github.io/perf-book/). Its general tips say the
+biggest gains come from algorithms and data structures, and that a hot function is sped up
+either by making it faster or by calling it less. The first plan for this milestone (integer
+IDs, `FxHashMap`, rates formatted once) made the per-frame work faster. This one does less of
+it: the two things below are redone far more often than their inputs change.
 
-Each step is measured on its own with `perf_app`, headless, in alternating runs, and its numbers
-are written here. A step that gains nothing is dropped, not kept for tidiness.
+**Measured** 2026-11-22 on the Windows PC, background apps open, headless, with a scratch copy of
+`perf_app` that timed a frame's parts and counted allocations (medians of 600 frames, one or two
+runs each, so the times are rough; the counts were the same in every run). 201 nodes, 109 links:
 
-1. **Find the allocation sites.** Run the headless `perf_app` once under
-   [dhat-rs](https://crates.io/crates/dhat) (it works on Windows; behind a feature of `aic-app`,
-   since it replaces the global allocator) and list the sites by allocations per frame. The
-   steps below are the ones already known; reorder them by what it shows.
-2. **IDs that cost nothing to copy or hash.** `ItemId`, `RecipeId`, `FacilityId` and `RegionId`
-   are `String` newtypes, and `Port` holds an `ItemId`. The canvas clones a `String` for every
-   port of every card each frame to build the key for `Solution::port_flow`, and the lookup
-   hashes the string. Make the IDs small integers interned in the `Catalog` (M1 foresaw
-   "interned `u32` later if profiling says so"), `Copy`, with the game ID as text one lookup
-   away. Ground rule 2 stands: an ID still is the game ID, and files, the overlay and i18n keep
-   the text. A graph must keep IDs the active data lacks (`MissingRecipe`, a save from another
-   data version), so the interner belongs to the session, not to one `Catalog`, or unknown IDs
-   get their own entries; settle that first.
-3. **Faster hashing** (M7 item 2). `FxHashMap` and `FxHashSet` (`rustc-hash` 2, already in the
-   tree) for our own maps keyed by IDs, in `aic-core`, `aic-editor` and `aic-app`. Then a
-   `clippy.toml` with
-   `disallowed-types = ["std::collections::HashMap", "std::collections::HashSet"]` to keep the
-   std ones out. No map here takes keys from outside the app, so HashDoS is not a concern. After
-   step 2, since Fx is at its best on integers.
-4. **Rates formatted once per solve.** `format::short` builds a `String` for every rate on the
-   canvas every frame, and rates change only when the solution does. Keep the formatted text
-   with the solution's generation and hand out `&str`. The same for link labels.
-5. **A test that counts.** dhat-rs's heap usage testing: one test that draws a fixed graph for a
-   frame and fails when the frame allocates more than it does today, so the count doesn't creep
-   back up.
+| Case | UI build | of which solve | Tessellation | Allocations |
+|---|---|---|---|---|
+| Chrome only (2 nodes) | 0.75 ms | – | 0.12 ms | 2.5k |
+| 100% zoom, idle | 2.0 ms | – | 0.7 ms | 5.5k |
+| 100% zoom, live values | 6.5 ms | 4.0 ms | 0.7 ms | 57k |
+| Whole graph (25%), idle | 7.1–7.4 ms | – | 2.3 ms | 27k |
+| Whole graph, live values | 12.2–12.7 ms | 4.1–4.2 ms | 2.5 ms | 79k |
+
+- **The solve.** Any change re-solves the whole graph, on the UI thread, at the end of the
+  frame. The `perf_app` graph is 92 small sections, which hid what one large section costs. One
+  section, a ring of producer and consumer pairs (one shape of graph, so a first look only):
+  50 nodes 3.5 ms, 100 nodes 9.3 ms, 200 nodes 27.6 ms, 400 nodes 104 ms. A real factory is
+  mostly one section. The solve is also M11's missed target: 4 of the 8.6–8.8 ms.
+- **The cards.** Every card on screen is built every frame from the graph, the catalog and the
+  solution: about 120 allocations and 40 µs a card, though what it shows changes only with a
+  solve or an edit. Each frame clones an item ID to look up every port's flow, formats every
+  rate, builds every title, and reads the solution's warnings through for every card.
+- Hashing was about 3% of CPU time in M7's profile. The cost is around the lookup (the key's
+  `String`, the formatting), not in it.
+- egui copies a text's whole layout when its layer is moved or scaled
+  (`TextShape::transform`), and every card is on such a layer: by estimate a third of a card's
+  allocations. Only fewer texts on a card avoid it.
+
+Each step is measured on its own with `perf_app`, headless, in alternating runs against the
+build before it, and its numbers are written here. A step that gains nothing is dropped, not
+kept for tidiness. Solver semantics (section 5) and every golden test stay as they are.
+
+1. **Measure what a frame is made of.**
+   - Headless `perf_app` prints, for each phase, the UI build, the solve inside it and the
+     tessellation apart.
+   - `PERF_GRAPH=chain` builds the one-section graph above in place of the usual one, with
+     `PERF_NODES` nodes.
+   - [dhat-rs](https://crates.io/crates/dhat) behind a feature of `aic-app` (it replaces the
+     global allocator, so mimalloc is off while it is on; it works on Windows). With it,
+     `perf_app` prints allocations per frame and writes dhat's file of allocation sites.
+   - **Done when:** the table above and the one-section solve times are measured again with it,
+     3 runs each, and the top allocation sites of a whole-graph idle frame and of a solve are
+     listed here.
+   - **Done** (2026-11-22). As built: headless `perf_app` prints a frame's mean, median and p95 as
+     before, then the medians of the UI build, the solve and the tessellation. `PERF_FRAMES` sets
+     the frames a phase, `PERF_PHASE=Idle` (or `Pan`, `LiveValues`) runs one phase. The feature
+     is `dhat-heap`, an optional dependency on the desktop only; it takes mimalloc's place as the
+     global allocator. dhat's profiler starts after the set-up and warm-up, so its file holds the
+     measured frames only, 20 a phase by default. Its trimming of backtraces left none at all on
+     Windows, so the run keeps whole stacks: build with `--profile profiling` for their names.
+     The site lists below were summed by a scratch script over dhat's file, not kept in the repo.
+   - **Measured** the same day on the Windows PC, background apps open, headless, 3 runs each
+     (600 frames a phase), alternating with the build before the step. Its frames took as long
+     as the old build's, run by run (100% idle 2.68–2.78 ms against 2.65–2.76 ms, whole-graph live
+     values 14.17–14.25 ms against 14.11–14.28 ms). Times are ranges of medians; allocations are
+     dhat's, the same in every run, UI build + tessellation:
+
+     | Case | Frame (mean) | UI build | of which solve | Tessellation | Allocations |
+     |---|---|---|---|---|---|
+     | Chrome only (2 nodes), idle | 0.89–1.03 ms | 0.74–0.76 ms | – | 0.12–0.13 ms | 2.5k + 0.3k |
+     | 100% zoom, idle | 2.68–2.78 ms | 1.92–1.96 ms | – | 0.65–0.66 ms | 5.5k + 0.7k |
+     | 100% zoom, live values | 6.98–7.01 ms | 6.03–6.04 ms | 3.62–3.63 ms | 0.70 ms | 57.5k + 0.7k |
+     | Whole graph (25%), idle | 9.51–9.67 ms | 6.87–6.98 ms | – | 2.28–2.30 ms | 27.1k + 5.9k |
+     | Whole graph, pan | 8.40–8.66 ms | 6.17–6.43 ms | – | 2.03–2.06 ms | 26.5k + 5.8k |
+     | Whole graph, live values | 14.17–14.25 ms | 11.20–11.33 ms | 3.65–3.68 ms | 2.34–2.36 ms | 77.9k + 5.6k |
+
+     - One section (`PERF_GRAPH=chain`, live values, 200 frames; 60 for 400 nodes), the solve:
+       50 nodes 3.2–3.3 ms, 100 nodes 8.7 ms, 200 nodes 25.3–25.7 ms, 400 nodes 95–99 ms. About
+       the probe's numbers. A 200-node frame is 28.6–28.9 ms in all.
+     - Top allocation sites of a whole-graph idle frame, 33.0k with tessellation: egui copying
+       text moved to a card's layer (`TextShape::transform`) 7.9k (24%), tessellating 5.9k (18%),
+       `LimitField::show` 2.0k, `Cards::card_content` 1.9k (its child `Ui`s and sockets), the
+       recipe browser 1.4k (a side panel), `ItemPicture::paint` 1.4k, `aic-node-graph`'s
+       `Node::show_impl` 1.2k and socket layout and painting 2.0k, `Cards::header` 1.0k,
+       `format::short` 0.9k, `big_number` 0.8k, `Strings::format` 0.7k, `Catalog::image` 0.5k.
+     - Of a solve: in a whole-graph live-values frame (84k), `throttle::max_activity` 15.6k
+       (18%: one LP per linked port of a throttled node), `passes::run` 11.5k (14%), building the
+       model 16.6k (20%, half of it `Builder::side`), `ItemId` clones for port keys 3.1k. In the
+       200-node section's frame (43.5k), `passes::run` 11.2k (26%), building the model 13.8k
+       (32%), `max_activity` 4.0k (9%), `ItemId` clones 2.8k. A frame that changes a limit also
+       clones the graph for the undo step (0.8k); that is the edit, not the solve.
+     - Not done: a CPU profile. `wpr` needs administrator, which this session did not have.
+2. **Solve less.** Profile the one-section solve first (`--profile profiling`, as in M7): is the
+   time in building the model, in the LP, or in what is recorded after it? Then, in this order,
+   stopping when a 200-node section solves in under 8 ms:
+   - **Keep each section's result.** A section whose nodes, links and limits are as they were
+     at the last solve keeps its result; only the others are solved. In `aic-core`, behind
+     `solve`'s signature or beside it, with no GUI dependency. It does nothing for a graph that
+     is one section, and everything for an edit in one of many.
+   - **Fix what the profile shows** in our own code: the model built with fewer allocations,
+     the two passes sharing what they can.
+   - **A smaller model.** Where a link is the only one at both of its ports, the two ports'
+     flows are one number: merge such variables before the LP sees them. A special case in
+     front of the general solver, which a factory's long chains are full of. Every golden test
+     must give the same numbers.
+   - **Not without asking:** solving on another thread. It changes ground rule 1's "calls
+     `solve`, renders the `Solution`" into something that waits, the web build has no threads,
+     and it wants an ADR. If the steps above leave a 200-node section over 8 ms, write down the
+     numbers and stop there.
+   - **Done, over budget** (2026-11-22): a 200-node section still takes about 26 ms. The profile
+     was not samply's: `wpr` needs administrator, which this session did not have, so a scratch
+     build timed the parts of a solve with `Instant` (300 solves, medians of the per-100 means):
+     - The 200-node chain, 25.4 ms: the second pass's LP (the even split) 20.6 ms, the first
+       pass's LP 2.6 ms, throttle reasons 1.2 ms (2 LPs), building both passes' models 0.7 ms,
+       validating, splitting, recording and the totals 0.5 ms together. 100 nodes: 8.8 ms, of
+       which the second pass 6.7 ms. So four fifths is inside microlp's second pass, which holds
+       the first pass's optimum and evens out 200 fan groups; our own code is under a tenth.
+     - The usual graph's live values (92 sections), 3.7 ms: throttle reasons 1.8 ms (130 LPs a
+       solve), the first passes 1.0 ms, recording 0.2 ms; no section there has a fan group.
+   - As built: **each section's result is kept.** `aic_core::solve_keeping(catalog, graph,
+     &mut KeptSections)` keeps a section whose nodes (by id, in order), their kinds (limits
+     included) and its links are what they were at the last solve, with its throttle reasons;
+     the others are solved. `solve` is `solve_keeping` with an empty `KeptSections`. Warnings,
+     storage, coupons, belts and totals are worked out afresh each time, so a section that
+     moves in the list keeps the right number in its warnings. Sections not seen in a solve are
+     dropped. `Document` keeps one and clears it on `rebind`, the one way the catalog changes.
+     Tests: in `aic-core`, a kept section's solution equals a full solve's in every map, to the
+     bit, after a limit change, a node added and a node removed; in `aic-editor`, a data switch
+     (the smelter made twice as fast by an overlay) solves the section again. Every golden test
+     keeps its numbers.
+   - **Fix what the profile shows** was not done: our own code is under a tenth of the 200-node
+     solve, and the cheapest share between the passes, reusing pass 1's model in pass 2, is
+     bounded by the 0.4 ms pass 2's model takes to build (under 2%). Checked in passing: pass 1
+     leaves 198–200 of the chain's 200 fan groups uneven, so pass 2 cannot be skipped there.
+   - **A smaller model** was not built. It merges ports that have one link at both ends; every
+     port of the chain has two, so it changes nothing there, and pass 2, the cost, only exists
+     for fan groups, which such ports are never part of. It would shrink pass 1 and the throttle
+     LPs of real chains. Not measured, since no `perf_app` graph is such a chain.
+   - **Measured** 2026-11-22, Windows PC, background apps open, headless, 3 runs each alternating
+     with step 1's build (live values; the solve is a median):
+     - 100% zoom: frame 7.6–7.8 ms → 4.3–4.4 ms mean, solve 3.8 → 0.71 ms (one of 92 sections
+       solved, the rest kept). Idle and pan unchanged (2.7–2.9 ms).
+     - Whole graph at 25%: frame 15.0–15.4 ms → 11.6–12.1 ms, solve 3.8 → 0.72 ms.
+     - The 200-node chain: solve 26.5–26.8 ms → 26.1–27.2 ms, the same.
+   - **Left to the user:** the 200-node section stays at about 26 ms, over the 8 ms budget, and
+     what is left is microlp's second pass. What would bring it down is outside this step's
+     bounds: solving on another thread (an ADR; the web build has none), another LP solver for
+     the desktop (a native dependency), or an even split that costs less to compute (solver
+     semantics, ADR 0004).
+3. **A card's display data, built once per change.** `DocView` already lays a level out once
+   per document generation (its `Card`s and `Wire`s). Each card also gets, at that time and
+   after each solve: its title and facility name, its warnings, the number it is about, and for
+   each pin its picture, its rate as text, its colours, whether it is throttled. Each wire gets
+   its label's text. The canvas then draws from those fields and looks nothing up by ID while it
+   draws: no `String` cloned for a key, no rate formatted, no warning list read through, per
+   frame. Strings still come from Fluent (ground rule 7) and numbers from the `Solution` (ground
+   rule 1); this only moves when they are read.
+   - `Canvas::node_rects` and `Canvas::pins` become `Vec`s in the cards' order if the profile
+     of step 1 shows their hashing.
+   - **Done when:** a whole-graph idle frame makes under half the allocations of step 1's
+     measure, and the canvas snapshots are unchanged.
+   - **Done, allocations missed** (2026-11-22). As built: `Document::generation` counts edits,
+     not solves, so the document gained `Document::solves`. The canvas keeps a `Faces` in the
+     `DocView` beside its cards and wires: each card's kind line, title, region badges' recipe,
+     warnings, facility name, storage balance, body (picture, number, round-up busyness, coupons,
+     pass-through, node count, the limit as its field shows it) and each pin's rate and throttle
+     mark; each wire's link labels. It is dropped when the document's generation, its solve
+     count or the round-up view changes, and when the view lays its level out again. Each face
+     is worked out the first time its card is drawn after that, so a card out of view costs
+     nothing: working out all 201 after each solve made 100% live values 0.5 ms slower, the
+     first try. Hover hints are still built under the pointer only, and the selection is still
+     read as the card draws. `LimitField` takes the limit as text and copies it only when it
+     differs; the facility picture asks the icon cache, not the catalog, which built a key each
+     frame. `Canvas::node_rects` and `pins` stay `HashMap`s: no CPU profile was taken (step 1).
+   - Tests: a new one (`a_cards_text_follows_each_solve_the_round_up_setting_and_the_pointer`)
+     checks a card's count after two solves, with round-up on and off again, and that a port's
+     hint appears under the pointer; it passed before the change and after. Every snapshot is
+     unchanged, compared exactly.
+   - **Measured** 2026-11-22, Windows PC, background apps open but quieter than for steps 1 and
+     2, headless, 3 runs each alternating with step 2's build:
+     - Whole graph at 25%: idle 9.20–9.63 → 8.54–8.64 ms, pan 8.12–8.84 → 7.55–7.60 ms, live
+       values 10.44–10.80 → 10.60–10.81 ms (the same).
+     - 100%: idle 2.54–3.13 → 2.49–2.63 ms, pan 2.60–2.77 → 2.53–2.57 ms, live values the same
+       (3.65–3.73 ms).
+     - Allocations (dhat), UI build: whole-graph idle 27.1k → 24.7k, plus 5.9k tessellating
+       either way, so 33.0k → 30.6k; live values at 25% 77.9k → 33.2k and at 100% 57.5k → 11.6k,
+       with step 2.
+     - **Missed:** under half of step 1's 33.0k would be 16.5k. What is left is egui's own work
+       per text and widget: copying each card's text to its layer (7.9k), tessellating (5.9k),
+       the limit fields' `TextEdit`s (2.0k), child `Ui`s and labels in `card_content` (2.8k),
+       `aic-node-graph`'s node and socket layout (about 4k), item pictures' meshes (1.4k). Only
+       fewer texts and widgets on a card cut those, which is step 4.
+4. **A cheaper card zoomed out.** Below the zoom where a card's small text is under about 5
+   pixels high, the card draws its header tint, its pins' pictures and its number, and leaves
+   out the texts nobody can read and the limit field. It keeps its size, its pins and every
+   mouse habit: drag, select, link, menus. The inspector still edits its limit.
+   - New snapshots, one each side of the zoom where it changes. A test that finds a card by
+     its text zooms in first.
+   - **Done when:** the whole graph on screen, idle and panning, is under 8 ms headless on the
+     Windows PC (9.5 ms in the table above).
+   - **Done** (2026-11-22). As built: `canvas::PLAIN_BELOW` is 45%. The small text is 12 points
+     at 100%, so 5.4 points high at 45% and 4.8 at 40%, the next 5% step down: below 45% it is
+     under 5 pixels on a screen of one pixel per point. (On a screen of two pixels per point it
+     is still 9.6 pixels at 40%; the threshold is in points, as the zoom is.) Below it, a card is
+     laid out exactly as before and only part of it is drawn: its header is laid out in an
+     invisible `Ui` (egui drops the shapes and disables the widgets), the pins' rates are not
+     painted, and the body draws its picture and its number and then turns invisible for the
+     busyness, coupons, limit field, pass-through and node count. So a card keeps its size and
+     its pins' places to the pixel, and its menu, selection, drag and links are the card's own,
+     as before. The card being typed in is drawn whole at any zoom. Left out with the texts:
+     the region warning sign and the region badges (in the header), and a storage's balance.
+     Link labels go with them (2026-11-23, at the user's word; the plan named only the card):
+     below the threshold only the selected link's label is drawn, since it is what shows the
+     selection. A label is what a click selects a link by, so a link is selected at 45% or
+     above; a right click on the wire still removes it at any zoom.
+   - It is still laid out in full: the gain is in drawing (egui's copy of each text to its layer
+     and the tessellation), not in building the UI. Laying out a plain card from its last full
+     size would save more and was not tried; a card first seen zoomed out has no last size.
+   - Tests: the card keeps its size and its output pin's place, in graph space, from 45% to 40%
+     (to under a point); below the threshold a click selects, a pin dragged to a pin links, a
+     drag moves the card and its menu removes it; the card being typed in keeps its field from
+     100% down to 40%; the inspector sets a plain card's limit; a link's label is painted at 45%,
+     not at 40%, and at 40% again once the link is selected. No other test needed to zoom in:
+     none finds a card by its text below 45%.
+   - Snapshots: new `zoomed_out_full` (45%) and `zoomed_out_plain` (40%), the plate chain on
+     each side of the threshold. `logistics_and_throttle`, fitted at 40%, changed: its cards
+     lost their texts and kept their places, and both pictures at 40% lost their link labels.
+     Every other picture is unchanged.
+   - **Measured** 2026-11-22, Windows PC, background apps open, headless, 3 runs each
+     alternating with step 3's build. Whole graph at 25%: idle 8.84–8.96 → 7.20–7.22 ms (p95
+     8.3–8.5 ms), pan 7.77–7.78 → 6.51–6.60 ms, live values 10.88–10.92 → 9.31–9.46 ms. At
+     100% nothing changed (idle 2.6 ms, live values 3.8 ms). Allocations of a whole-graph idle
+     frame (dhat): 24.7k + 5.9k → 17.5k + 3.7k; copying text to layers 7.9k → 1.8k (the link
+     labels and the numbers), tessellating 5.9k → 3.7k.
+   - **Measured** without the link labels, 2026-11-23, the same way (medians, 3 runs each
+     alternating with the build that drew them; 109 links). Whole graph at 25%: idle 6.97–7.04
+     → 6.71–6.91 ms, pan 6.29–6.33 → 6.10–6.14 ms, live values 8.93–9.13 → 8.61–8.67 ms;
+     tessellation 1.57–1.59 → 1.48–1.49 ms. Allocations not counted again.
+5. **A test that counts.** dhat-rs's heap usage testing, behind the feature of step 1: one test
+   draws a fixed graph for a frame and fails when the frame allocates more than it does at the
+   end of step 4, so the count doesn't creep back up. It runs with
+   `cargo test -p aic-app --features <the feature>`, not in the workspace's plain test run,
+   since it swaps the allocator.
+   - **Done** (2026-11-23). As built: `crates/aic-app/tests/allocations.rs`, compiled only with
+     `dhat-heap` (`cargo test -p aic-app --features dhat-heap --test allocations`; the whole
+     `-p aic-app` run with the feature works too). It builds the app headless on the test
+     fixture with a plate chain (a source, a smelter, a constructor and a sink, three links),
+     zooms to 100%, draws 30 frames to let the solve, the fit and egui's caches settle, then
+     counts one idle frame, UI and tessellation, with dhat's testing profiler. Ceiling: 1113
+     allocations, the count in three runs out of three, in the test profile; a release build
+     counts differently. The failure message gives the new count, to lower the ceiling when a
+     change lowers it. egui wants a frame's texture changes handled even headless, so the test
+     clears them.
 6. **The packaging profile** (M7 item 3): `lto = "fat"` and `codegen-units = 1` for
    `scripts/package-*`, and try `panic = "abort"` with them. Check first that nothing relies on
    unwinding (a `catch_unwind`, a test harness), and that a panic still leaves a message the
    player can report. Not named `dist`. Last, when the rest is done.
+   - **Done** (2026-11-23), `panic = "abort"` kept. As built: `[profile.packaged]` in the
+     workspace's `Cargo.toml` (`package` is a name Cargo keeps for itself), inheriting `release`
+     with `lto = "fat"`, `codegen-units = 1` and `panic = "abort"`. `scripts/package-windows.ps1`
+     and `scripts/package-macos.sh` build with `--profile packaged` and take the binary from
+     `target/[<target>/]packaged/`. The Mac script is changed the same way and **not run**: no Mac
+     here. The Windows script was not run either: its build is a second fat-LTO build of about 6
+     minutes, and only its profile flag and the folder it copies from changed.
+   - Unwinding: nothing in the code calls `catch_unwind`, sets a panic hook or spawns a thread;
+     the tests and kittest use the test profile, never this one. The panic message: a scratch
+     program built both ways printed the same message (`thread 'main' panicked at …`) before it
+     ended; only the exit code differs. So a panic leaves what it left before: a message on
+     stderr. The packaged Windows build has no console, so a player sees neither, as before.
+     A message the player can see and report (a panic hook writing a file or showing a box) is
+     not there with either setting; that would be new work, not part of this step.
+   - **Measured** 2026-11-23, Windows PC, background apps open, `perf_app` built once with the
+     profile (5 min 43 s; 18.0 MB against 23.8 MB for `release`), headless, 3 runs each
+     alternating with the `release` build of the same code:
+     - Whole graph at 25%: idle 7.18–7.40 → 6.03–6.25 ms, pan 6.36–6.44 → 5.40–5.44 ms, live
+       values 9.20–9.24 → 7.81–7.98 ms.
+     - 100%: idle 2.57–2.63 → 2.21–2.25 ms, pan 2.57–2.58 → 2.23–2.44 ms, live values
+       3.76–3.84 → 3.26–3.32 ms.
+     - About 14–17% less a frame, more than M7's 7–10% for fat LTO alone; `panic = "abort"` was
+       not measured apart from it.
 
-Looked at and left out: `-C target-cpu=native` (the build must run on players' older CPUs);
-profile-guided optimization (much setup for a build nobody downloads yet); `parking_lot` and a
-single lock for `aic-node-graph`'s memory (its locking measured under 0.1 ms for 300 nodes in the
-M11 spike); `SmallVec`, inlining attributes, bounds checks and type sizes (no profile points
-there; revisit if step 1 does).
+Looked at and left out:
+- **Integer interned IDs** (the first plan's step 2). They touch four crates and the save
+  format's edges to stop the frame cloning and hashing ID strings; step 3 stops the frame
+  reading IDs at all, in one file.
+- **`FxHashMap` with a clippy rule** (M7 item 2). Hashing was 3% before step 3 takes most
+  lookups out of the frame. Back in only if a profile after step 3 still shows it.
+- **`slotmap::SecondaryMap` for the `Solution`'s maps.** Indexing in place of hashing, but after
+  step 3 they are read once per solve, not per frame.
+- **A card's picture kept between frames** (its shapes or mesh, redrawn only when it changes).
+  The largest possible gain for the whole-graph view and the most to get wrong (hover, focus,
+  tooltips, AccessKit). Its own milestone if step 4 is not enough.
+- **Item icons in one texture.** The whole-graph frame is about 1,700 draw primitives, one
+  texture switch per icon, and a window costs 2 to 3 ms over headless there. Measure windowed
+  after step 4, which changes the count.
+- `-C target-cpu=native` (the build must run on players' older CPUs); profile-guided
+  optimization (much setup for a build nobody downloads yet); `parking_lot` and a single lock
+  for `aic-node-graph`'s memory (its locking measured under 0.1 ms for 300 nodes in the M11
+  spike); `SmallVec`, inlining attributes, bounds checks and type sizes (no profile points
+  there; revisit if step 1 does).
 
 ---
 

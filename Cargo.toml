@@ -26,3 +26,14 @@ aic-node-graph = { path = "crates/aic-node-graph" }
 [profile.profiling]
 inherits = "release"
 debug = "line-tables-only"
+
+# The builds players download (scripts/package-*): the program optimized as one unit, about 6
+# minutes a build on the Windows PC, so kept out of `release`. A panic aborts at once: nothing in
+# the app catches one, and the message is printed the same way first. Not named `dist`: that is
+# target/dist/, where the packaging scripts write; `package` is a name Cargo keeps for itself
+# (docs/PLAN.md, M7 and M12).
+[profile.packaged]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
