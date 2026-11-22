@@ -3,8 +3,9 @@ use std::ops;
 
 /// A simple bezier-curve Edge widget.
 ///
-/// Handles interaction (selection, deselection, deletion) and painting the
-/// bezier curve.
+/// Paints the curve and reports the pointer's interaction with it through
+/// its [`EdgeResponse`], such as a click. It keeps no state of its own:
+/// whether it is selected is the caller's, given with [`Edge::selected`].
 ///
 /// By default, the stroke for each state is adopted from the egui visuals:
 ///
@@ -22,21 +23,22 @@ pub struct Edge<'a> {
     stroke: Option<egui::Stroke>,
     hovered_stroke: Option<egui::Stroke>,
     selected_stroke: Option<egui::Stroke>,
-    selected: &'a mut bool,
+    selected: bool,
 }
 
 /// A response returned from the [`Edge`] widget.
 ///
 /// Similar to [`egui::Response`], however as there's no clear rectangular space
-/// allocated to the edge, we use a more minimal custom response.
+/// allocated to the edge, we use a more minimal custom response. It derefs to
+/// the response of a small area that follows the pointer along the edge, so
+/// [`egui::Response::clicked`] and friends tell a click on the edge.
 pub struct EdgeResponse {
     response: egui::Response,
-    changed: bool,
-    deleted: bool,
     /// The path of the edge, or `None` if either socket does not exist.
     path: Option<bezier::Path>,
     /// The pointer position, from which to find the closest point on the path.
     pointer: egui::Pos2,
+    /// The distance between the points of the flattened path, in graph units.
     distance_per_point: f32,
 }
 
@@ -51,10 +53,9 @@ pub struct EdgePaintCtx<'a> {
     /// The path flattened at the edge's distance-per-point, ready for
     /// [`egui::Shape::line`].
     pub points: &'a [egui::Pos2],
-    /// Whether the edge is currently selected.
+    /// Whether the edge is selected, as given to [`Edge::selected`].
     pub selected: bool,
-    /// Whether the edge is hover-highlighted, including the highlight shown
-    /// while a pending selection rectangle covers the edge.
+    /// Whether the edge is hover-highlighted.
     pub hovered: bool,
     /// The stroke default painting would use for the current state, with the
     /// per-edge stroke overrides applied and falling back to the egui visuals.
@@ -93,10 +94,13 @@ pub type InputIx = SocketIx;
 pub type OutputIx = SocketIx;
 
 impl<'a> Edge<'a> {
+    /// The default distance between the points an edge is cut into, in
+    /// screen pixels.
     pub const DEFAULT_DISTANCE_PER_POINT: f32 = 5.0;
 
-    /// An edge from node `a`'s output socket to node `b`'s input socket.
-    pub fn new(a: (NodeId, OutputIx), b: (NodeId, InputIx), selected: &'a mut bool) -> Self {
+    /// An edge from node `a`'s output socket to node `b`'s input socket, not
+    /// selected.
+    pub fn new(a: (NodeId, OutputIx), b: (NodeId, InputIx)) -> Self {
         Self {
             edge: (a, b),
             waypoints: &[],
@@ -105,21 +109,27 @@ impl<'a> Edge<'a> {
             stroke: None,
             hovered_stroke: None,
             selected_stroke: None,
-            selected,
+            selected: false,
         }
+    }
+
+    /// Whether the edge is selected, which paints it with the selected
+    /// stroke. The edge does not change it: a click on the edge is reported
+    /// through its response, for the caller to select it.
+    ///
+    /// Default: `false`.
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
     }
 
     /// Thread the edge's curve through the given intermediate waypoints,
     /// ordered from the output socket toward the input socket.
     ///
-    /// Use this with the corridor routes produced by the automatic layout
-    /// (`EdgeRoutes`, from `layout_routed`) to keep long edges from passing
-    /// over unrelated nodes. Waypoints share the node layout's coordinate
-    /// space.
-    ///
-    /// Routes are only meaningful while node positions match the layout that
-    /// produced them - when nodes are arranged freely instead, omit the
-    /// waypoints so edges fall back to direct curves.
+    /// Waypoints share the node layout's coordinate space. Routes are only
+    /// meaningful while node positions match the layout they were made for -
+    /// when nodes are arranged freely instead, omit the waypoints so edges
+    /// fall back to direct curves.
     ///
     /// Default: none (a single curve directly between the sockets).
     pub fn waypoints(mut self, waypoints: &'a [egui::Pos2]) -> Self {
@@ -127,14 +137,15 @@ impl<'a> Edge<'a> {
         self
     }
 
-    /// The distance-per-point used to render the bezier curve path.
+    /// The distance between the points the edge's path is cut into to paint
+    /// it, in screen pixels, whatever the zoom.
     ///
-    /// This path is also used to check for selection interaction.
+    /// The same points are used to find the edge under the pointer.
     ///
     /// The smaller the distance, the higher-quality rendering and interactions
     /// will be, at the cost of performance.
     ///
-    /// Default: `Self::DEFAULT_DISTANCE_PER_POINT`
+    /// Default: [`Self::DEFAULT_DISTANCE_PER_POINT`].
     pub fn distance_per_point(mut self, dist: f32) -> Self {
         self.distance_per_point = dist;
         self
@@ -184,7 +195,7 @@ impl<'a> Edge<'a> {
     /// As [`Edge::show`], but painting the edge via `paint` instead of the
     /// default solid line.
     ///
-    /// Interaction (hover, selection, deletion) is identical to [`Edge::show`].
+    /// Interaction (hover, clicks) is identical to [`Edge::show`].
     /// The `paint` closure receives the resolved paint inputs - see
     /// [`EdgePaintCtx`]. It is not called when either socket position is
     /// unavailable, in which case there is nothing to paint. It is also not
@@ -205,6 +216,8 @@ impl<'a> Edge<'a> {
             selected_stroke,
             selected,
         } = self;
+        // The distance is given in screen pixels; the path is in graph units.
+        let distance_per_point = distance_per_point / ectx.scale;
 
         // Get the mouse position for computing the closest point on the edge.
         let ui_response = ui.response();
@@ -221,8 +234,6 @@ impl<'a> Edge<'a> {
             let response = ui.interact(egui::Rect::NOTHING, edge_id, egui::Sense::click());
             return EdgeResponse {
                 response,
-                changed: false,
-                deleted: false,
                 path: None,
                 pointer: mouse_pos,
                 distance_per_point,
@@ -259,55 +270,14 @@ impl<'a> Edge<'a> {
         });
         let response = ui.interact(interact_rect, edge_id, egui::Sense::click());
 
-        // Determine if edge interactions should be processed.
-        // Disable when drawing a new edge or when close to a socket.
-        let edge_in_progress = ectx.edge_in_progress;
-        let can_interact = !edge_in_progress && ectx.closest_socket.is_none();
-        let clicked = can_interact && response.clicked();
-
-        // Check if the edge intersects the selection rectangle.
-        let under_selection_rect = ectx
-            .selection_rect
-            .map(|rect| path.intersects_rect(distance_per_point, rect))
-            .unwrap_or(false);
-
-        // Handle selection state changes.
-        let old_selected = *selected;
-        if *selected {
-            // Deselect if: edge drawing started, ctrl+click, or click elsewhere without ctrl.
-            if edge_in_progress
-                || (clicked && ui.input(|i| i.modifiers.ctrl))
-                || ui.input(|i| i.pointer.primary_pressed() && !i.modifiers.ctrl)
-            {
-                *selected = false;
-            }
-        } else if clicked
-            || (under_selection_rect
-                && ui.input(|i| i.modifiers.shift && i.pointer.primary_released()))
-        {
-            *selected = true;
-        }
-
-        // Check if the edge was deleted (skip when immutable).
-        let mut deleted = false;
-        // FIXME: We may only want to do this if `ui.id()` has focus
-        // (Memory::has_focus) or similar, but we still need to setup proper
-        // focus-requesting and consider how to handle nodes too.
-        if !ectx.immutable && *selected && !ui.ctx().egui_wants_keyboard_input() {
-            let del_keys = [egui::Key::Delete, egui::Key::Backspace];
-            if ui.input(|i| del_keys.iter().any(|&k| i.key_pressed(k))) {
-                deleted = true;
-            }
-        }
-
-        // Determine hover styling (additional conditions beyond response.hovered()).
-        let show_hover = can_interact
+        // Show no hover while drawing a new edge or when close to a socket.
+        let can_interact = !ectx.edge_in_progress && ectx.closest_socket.is_none();
+        let hovered = can_interact
             && response.hovered()
             && ui.input(|i| !i.pointer.primary_down() || i.pointer.could_any_button_be_click());
 
         // Paint the edge if it is within the visible area.
-        let hovered = show_hover || (under_selection_rect && ui.input(|i| i.modifiers.shift));
-        let stroke = if *selected {
+        let stroke = if selected {
             selected_stroke.unwrap_or(ui.style().visuals.selection.stroke)
         } else if hovered {
             hovered_stroke.unwrap_or(ui.style().visuals.widgets.hovered.fg_stroke)
@@ -318,19 +288,15 @@ impl<'a> Edge<'a> {
             let cx = EdgePaintCtx {
                 path: &path,
                 points: &pts,
-                selected: *selected,
+                selected,
                 hovered,
                 stroke,
             };
             paint(ui, cx);
         }
 
-        // Construct and return the response.
-        let changed = old_selected != *selected;
         EdgeResponse {
             response,
-            changed,
-            deleted,
             path: Some(path),
             pointer: mouse_pos,
             distance_per_point,
@@ -414,16 +380,6 @@ impl EdgeShape {
 }
 
 impl EdgeResponse {
-    /// Whether or not the edge selected state changed.
-    pub fn changed(&self) -> bool {
-        self.changed
-    }
-
-    /// The edge was selected while `Delete` or `Backspace` were pressed.
-    pub fn deleted(&self) -> bool {
-        self.deleted
-    }
-
     /// The position on the edge closest to the pointer.
     ///
     /// This is found on each call. It is `Pos2::ZERO` if either socket of the
@@ -482,7 +438,6 @@ mod tests {
             scene_rect,
             layout: [(A, egui::pos2(100.0, 100.0)), (B, egui::pos2(400.0, 100.0))].into(),
         };
-        let mut selected = false;
         let mut out = None;
         for _ in 0..3 {
             let input = egui::RawInput {
@@ -502,7 +457,7 @@ mod tests {
                         let mut painted = false;
                         // Points 1 apart, so the closest point is within 1 of the
                         // true one whatever the edge's shape.
-                        let edge = Edge::new((A, 0), (B, 0), &mut selected).distance_per_point(1.0);
+                        let edge = Edge::new((A, 0), (B, 0)).distance_per_point(1.0);
                         let response = edge.show_with(ectx, ui, |_, _| painted = true);
                         out = Some(Pass {
                             painted,
@@ -570,6 +525,79 @@ mod tests {
             "{:?}",
             p.closest_point
         );
+    }
+
+    /// The number of points the edge from `A` to `B` is cut into, and its
+    /// length on screen, with `B` placed so that the edge is `screen_length`
+    /// screen pixels long at `zoom`.
+    fn points_at_zoom(zoom: f32, screen_length: f32) -> (usize, f32) {
+        let ctx = egui::Context::default();
+        let scene_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN.size() / zoom);
+        let mut view = View {
+            scene_rect,
+            layout: [(A, egui::pos2(10.0, 10.0)), (B, egui::pos2(2000.0, 10.0))].into(),
+        };
+        let mut out = None;
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(SCREEN),
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| {
+                let graph = Graph::new("graph").snap(None);
+                graph.show(&mut view, ui, |ui, show| {
+                    show.nodes(ui, |nctx, ui| {
+                        for (id, inputs, outputs) in [(A, 0, 1), (B, 1, 0)] {
+                            let node = Node::from_id(id).inputs(inputs).outputs(outputs);
+                            let node = node.animation_time(0.0);
+                            node.show(nctx, ui, |c| c.framed(|ui, _| ui.label("x")));
+                        }
+                    })
+                    .edges(ui, |ectx, ui| {
+                        let mut points = 0;
+                        let mut length = 0.0;
+                        Edge::new((A, 0), (B, 0)).show_with(ectx, ui, |_, cx| {
+                            points = cx.points.len();
+                            let pairs = cx.points.windows(2);
+                            length = pairs.map(|w| w[0].distance(w[1])).sum::<f32>() * zoom;
+                        });
+                        // Place `B` for the next pass, level with `A`'s output.
+                        let (a_out, _) = ectx.output(ui, A, 0).expect("A has an output");
+                        let (b_in, _) = ectx.input(ui, B, 0).expect("B has an input");
+                        let b = view_b(b_in, a_out, screen_length / zoom);
+                        out = Some((points, length, b));
+                    });
+                });
+            })
+            .textures_delta
+            .clear();
+            let (_, _, b) = out.expect("the edges ran");
+            *view.layout.get_mut(&B).expect("B is laid out") += b;
+        }
+        let (points, length, _) = out.expect("the edges ran");
+        (points, length)
+    }
+
+    /// How far to move `B` so that its input is `length` right of `a_out`, level with it.
+    fn view_b(b_in: egui::Pos2, a_out: egui::Pos2, length: f32) -> egui::Vec2 {
+        a_out + egui::vec2(length, 0.0) - b_in
+    }
+
+    /// An edge is cut into a point every few screen pixels, whatever the zoom.
+    #[test]
+    fn edge_points_follow_the_screen_length() {
+        let (near, near_len) = points_at_zoom(1.0, 400.0);
+        let (far, far_len) = points_at_zoom(0.25, 400.0);
+        assert!((near_len - 400.0).abs() < 1.0, "{near_len}");
+        assert!((far_len - 400.0).abs() < 1.0, "{far_len}");
+        // About one point every `DEFAULT_DISTANCE_PER_POINT` screen pixels.
+        let expected = 400.0 / Edge::DEFAULT_DISTANCE_PER_POINT;
+        for n in [near, far] {
+            assert!(
+                (n as f32 - expected).abs() <= 2.0,
+                "{near} and {far} points"
+            );
+        }
     }
 
     /// An output socket at `from` facing down and an input socket at `to`

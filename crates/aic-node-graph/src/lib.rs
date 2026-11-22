@@ -1,6 +1,6 @@
-//! A node graph widget for egui: nodes, the sockets on them and the edges between them, in an
-//! egui `Scene` that pans and zooms. A copy of egui_graph 0.19.1, changed here as the AIC
-//! Modeler's canvas needs; `SOURCE.md` lists the changes.
+//! A node graph widget for egui: nodes, the sockets on them and the edges between them, in a
+//! scene whose view the caller sets (see [`Graph`] for the mouse). A copy of egui_graph 0.19.1,
+//! changed here as the AIC Modeler's canvas needs; `SOURCE.md` lists the changes.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::Hash;
@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 pub use node::{FramedResponse, NodeCtx, NodeId, NodeInteraction};
 pub use socket::layout::{grid::SocketGrid, SocketLayout};
-pub use socket::{socket_padding, SocketKind, SocketResponses};
+pub use socket::{socket_padding, SocketHighlight, SocketKind, SocketResponses};
 
 pub mod bezier;
 pub mod edge;
@@ -16,7 +16,41 @@ pub mod node;
 pub mod paint;
 pub mod socket;
 
+#[cfg(test)]
+mod interaction_tests;
+
 /// The main interface for the `Graph` widget.
+///
+/// The graph keeps no graph of its own: each frame, the caller shows its nodes
+/// with [`Show::nodes`] and its edges with [`Show::edges`]. The mouse works as
+/// follows:
+///
+/// - A primary drag on the background pans the view, as does a middle drag.
+/// - A primary press on a node's frame drags the node; on a selected node, it
+///   drags the whole selection. A primary press on a socket's handle (see
+///   [`SocketLayout::input_handle`]), or on the background just outside the
+///   frame on a socket without one, starts an edge.
+/// - A click on a node, a press and release without a drag, makes it the only
+///   selected node; Shift+click adds it to the selection or takes it out. A
+///   click on the background clears the selection, unless Shift or Cmd/Ctrl
+///   is held.
+/// - A secondary drag on the background, or a primary drag there with Shift
+///   held, draws a selection box. On release, the nodes it touches become the
+///   selection; with Shift held at release they are added to it, with
+///   Cmd/Ctrl they are taken out.
+/// - A secondary click on the background is reported in
+///   [`GraphResponse::background_secondary_click`].
+///
+/// A drag is a press that the pointer takes further than egui's
+/// `max_click_dist` from where it was pressed; anything less is a click. A
+/// node drag moves the node from the first movement, though.
+///
+/// The view, [`View::scene_rect`], is the caller's: the graph does not pan or
+/// zoom on the mouse wheel, a trackpad or a pinch, and leaves those events to
+/// the caller. The selection is the caller's too: pass it in with
+/// [`Graph::selected_nodes`] and take changes from
+/// [`GraphResponse::selection_changed`]. The graph does not delete nodes or
+/// edges on any key.
 pub struct Graph {
     background: bool,
     dot_grid: bool,
@@ -183,7 +217,9 @@ pub struct GraphTempMemory {
     /// The closest socket that the pointer can press or connect to.
     ///
     /// Over a node frame, this is `Some` only while an edge is in progress, as
-    /// a press there drags the node. Always `None` when the graph is immutable.
+    /// a press there drags the node or, on a handle, starts an edge itself. A
+    /// socket with a handle is found only through its handle, as the end of an
+    /// edge of the other kind. Always `None` when the graph is immutable.
     closest_socket: Option<socket::Socket>,
     /// Whether the pointer was over any node frame during the previous frame.
     ///
@@ -207,37 +243,81 @@ struct Selection {
     nodes: HashSet<NodeId>,
     /// Whether the selection was modified this frame.
     changed: bool,
+    /// The nodes selected or deselected this frame.
+    changed_nodes: HashSet<NodeId>,
 }
 
-/// State related to the last press of the primary pointer button over the graph.
+impl Selection {
+    /// Forget the changes of the last frame.
+    fn begin_pass(&mut self) {
+        self.changed = false;
+        self.changed_nodes.clear();
+    }
+
+    /// Make `nodes` the selection, noting which nodes changed.
+    fn replace(&mut self, nodes: HashSet<NodeId>) {
+        let changed = self.nodes.symmetric_difference(&nodes);
+        self.changed_nodes.extend(changed);
+        self.changed |= self.nodes != nodes;
+        self.nodes = nodes;
+    }
+
+    /// Add `id` to the selection, or take it out if it is in it.
+    fn toggle(&mut self, id: NodeId) {
+        if !self.nodes.remove(&id) {
+            self.nodes.insert(id);
+        }
+        self.changed_nodes.insert(id);
+        self.changed = true;
+    }
+
+    /// Whether a drag of `pressed` moves the whole selection: the node was
+    /// selected when pressed, and still is.
+    fn moves_group(&self, pressed: &PressedNode) -> bool {
+        pressed.moves_selection && self.nodes.contains(&pressed.id)
+    }
+
+    /// Whether a drag of `pressed` moves node `id`.
+    fn moves(&self, pressed: &PressedNode, id: &NodeId) -> bool {
+        match self.moves_group(pressed) {
+            true => self.nodes.contains(id),
+            false => pressed.id == *id,
+        }
+    }
+}
+
+/// State related to the last press of a pointer button over the graph.
 #[derive(Clone, Debug)]
 struct Pressed {
-    /// Whether or not the pointer is currently over one of the selected nodes.
-    ///
-    /// This is used to assist with determining whether or not nodes should deselect. E.g. if
-    /// multiple nodes are selected and a non-selected node is pressed, then we should deselect the
-    /// originally selected nodes. However, if a selected node is pressed, then the selection
-    /// should stay the same and a drag will begin.
-    over_selection_at_origin: bool,
+    /// The button pressed. The press lasts until it is released.
+    button: egui::PointerButton,
     /// The origin of the pointer over the graph at the begining of the press.
     origin_pos: egui::Pos2,
     /// The current position over the graph.
     current_pos: egui::Pos2,
+    /// The origin of the pointer at the beginning of the press, in screen space.
+    origin_screen: egui::Pos2,
+    /// Whether the pointer has gone further from its origin than a click
+    /// allows (see [`click_distance`]). A press released before then is a
+    /// click.
+    dragged: bool,
     /// The action performed by this press.
     action: PressAction,
 }
 
 #[derive(Clone, Debug)]
 enum PressAction {
-    /// A node was pressed and a drag is taking place.
-    DragNodes {
-        /// The node that was pressed to initiate the drag.
-        ///
-        /// We don't know exactly which until the node itself emits the pressed event, so this
-        /// remains `None` until we know.
-        node: Option<PressedNode>,
+    /// A node's frame was pressed with the primary button: a drag moves it,
+    /// a release without a drag is a click on it.
+    DragNodes(PressedNode),
+    /// The background was pressed with the primary button: a drag pans the
+    /// view, a release without a drag is a click on the background.
+    Pan {
+        /// The screen position of the pointer when the view last panned.
+        last: egui::Pos2,
     },
-    /// The graph was pressed and we are performing a selection.
+    /// The background was pressed with the secondary button, or with the
+    /// primary button and Shift: a drag draws a selection box.
     Select,
     /// A node's socket was pressed in order to start creating a connection.
     Socket(socket::Socket),
@@ -249,6 +329,9 @@ struct PressedNode {
     id: NodeId,
     /// The position of the node over the graph at the origin of the press.
     position_at_origin: egui::Pos2,
+    /// Whether the node was selected when pressed, so that a drag moves the
+    /// whole selection. Otherwise, a drag moves the node alone.
+    moves_selection: bool,
 }
 
 /// Configuration for the graph.
@@ -272,8 +355,6 @@ pub struct Show<'a> {
     graph_rect: egui::Rect,
     /// If a selection is being performed with the pointer, this is the covered area.
     selection_rect: Option<egui::Rect>,
-    /// Whether or not the primary mouse button was just released to perform the selection.
-    select: bool,
     /// The closest socket that the pointer can press or connect to.
     closest_socket: Option<socket::Socket>,
     /// Whether or not the primary mouse button was just released to end edge creation.
@@ -297,6 +378,9 @@ pub struct NodeSockets {
     flow: egui::Direction,
     inputs: BTreeMap<usize, egui::Pos2>,
     outputs: BTreeMap<usize, egui::Pos2>,
+    /// The handles of the sockets that have one, in graph space.
+    input_handles: BTreeMap<usize, egui::Rect>,
+    output_handles: BTreeMap<usize, egui::Rect>,
 }
 
 /// A context to assist with the instantiation of node widgets.
@@ -304,7 +388,6 @@ pub struct NodesCtx<'a> {
     pub graph_id: egui::Id,
     graph_rect: egui::Rect,
     selection_rect: Option<egui::Rect>,
-    select: bool,
     socket_press_released: Option<socket::Socket>,
     visited: &'a mut HashSet<NodeId>,
     layout: &'a mut Layout,
@@ -320,8 +403,10 @@ pub struct NodesCtx<'a> {
 pub struct EdgesCtx {
     graph_id: egui::Id,
     graph_rect: egui::Rect,
-    selection_rect: Option<egui::Rect>,
     closest_socket: Option<socket::Socket>,
+    /// The scene's scale, in screen pixels per graph unit. Found once for all
+    /// edges of the frame.
+    scale: f32,
     /// Whether an edge is in progress. Found once for all edges of the frame.
     edge_in_progress: bool,
     /// The graph's temporary memory. Fetched once for all edges of the frame.
@@ -335,11 +420,10 @@ pub struct EdgesCtx {
 struct GraphInteraction {
     pressed: Option<Pressed>,
     socket_press_released: Option<socket::Socket>,
-    select: bool,
     selection_rect: Option<egui::Rect>,
     drag_nodes_delta: egui::Vec2,
-    /// The pressed node of a node drag that ended this update.
-    drag_released: Option<PressedNode>,
+    /// The press that ended this update, as it was at its end.
+    ended: Option<Pressed>,
 }
 
 /// The response returned by [`Graph::show`].
@@ -350,14 +434,24 @@ pub struct GraphResponse<R> {
     pub response: egui::Response,
     /// The set of selected nodes, present only when the selection changed this frame.
     pub selection_changed: Option<HashSet<NodeId>>,
-    /// Whether a drag of the selected nodes ended this frame with the nodes in
-    /// a new position.
+    /// Whether a node drag ended this frame with the nodes in a new position:
+    /// the selection, if the node pressed was selected, else that node alone.
     ///
     /// This is `true` only on the frame the drag ends. A press and release in
     /// place, or a drag back to the start, leaves it `false`. Use it to tell a
     /// move by the user from layout changes the graph makes itself, such as
     /// snapping or placing a node that has no position.
     pub nodes_moved: bool,
+    /// The graph-space position of a secondary click on the background this
+    /// frame, such as to open a menu there.
+    ///
+    /// A click is a press and release of the secondary button that the
+    /// pointer never takes further than egui's `max_click_dist` (6 screen
+    /// pixels by default) from where it was pressed; a longer drag draws a
+    /// selection box instead and reports nothing here. How long the button
+    /// is held does not matter. A secondary click on a node is not reported:
+    /// it is the node response's.
+    pub background_secondary_click: Option<egui::Pos2>,
 }
 
 impl Graph {
@@ -459,7 +553,9 @@ impl Graph {
 
     /// Set the allowed zoom range.
     ///
-    /// A zoom < 1.0 zooms out, while a zoom > 1.0 zooms in.
+    /// A zoom < 1.0 zooms out, while a zoom > 1.0 zooms in. The graph does not
+    /// zoom by itself; a [`View::scene_rect`] whose scale lies outside this
+    /// range is shown at the nearest end of it.
     ///
     /// Default: [Graph::DEFAULT_ZOOM_RANGE].
     pub fn zoom_range(mut self, zoom_range: impl Into<egui::Rangef>) -> Self {
@@ -495,7 +591,8 @@ impl Graph {
     /// graph area, or `None` to disable it.
     ///
     /// This lets a node drag, an edge in progress or a rectangle selection
-    /// reach parts of the graph outside the view. In an
+    /// reach parts of the graph outside the view. A drag that pans the view
+    /// by itself does not. In an
     /// [`immutable`](Self::immutable) graph, only a rectangle selection pans
     /// the view. The view pans only once a press becomes a drag, so a click
     /// near the edge does not move it. Has no effect while
@@ -510,7 +607,9 @@ impl Graph {
     /// Set the selected nodes for this frame.
     ///
     /// This overwrites the current selection in the graph's temporary memory
-    /// at the start of the next `show` call.
+    /// at the start of the `show` call, and does not count as a change in
+    /// [`GraphResponse::selection_changed`]. Clicks, Shift+clicks and boxes
+    /// then change the selection given, and a node drag moves it.
     pub fn selected_nodes(mut self, nodes: HashSet<NodeId>) -> Self {
         self.selected_nodes = Some(nodes);
         self
@@ -519,8 +618,8 @@ impl Graph {
     /// Set immutable (view-only) mode.
     ///
     /// When `true`, prevents structural changes while preserving navigation
-    /// and selection. Node dragging, edge creation/deletion, node deletion,
-    /// and node content widgets are all disabled.
+    /// and selection. Node dragging, edge creation and node content widgets
+    /// are all disabled; a press on a socket's handle is a press on the node.
     ///
     /// Default: `false`.
     pub fn immutable(mut self, immutable: bool) -> Self {
@@ -627,8 +726,9 @@ impl Graph {
 
     /// Begin showing the Graph.
     ///
-    /// Returns a [`GraphResponse`] containing the user's return value,
-    /// the scene [`egui::Response`], and the current set of selected nodes.
+    /// Returns a [`GraphResponse`] containing the user's return value, the
+    /// scene [`egui::Response`], the selection if it changed, and what else
+    /// the pointer did this frame. See [`Graph`] for the mouse.
     pub fn show<R>(
         mut self,
         view: &mut View,
@@ -644,11 +744,12 @@ impl Graph {
         } = *view;
 
         // Preserve the zoom level across viewport resizes (see
-        // `ResizeBehavior::MaintainZoom`). egui's `Scene` treats `scene_rect`
-        // as the visible region and refits it into the available size every
+        // `ResizeBehavior::MaintainZoom`). The scene treats `scene_rect` as
+        // the visible region and refits it into the available size every
         // frame, so without this a resize changes the apparent zoom. We rescale
         // `scene_rect` so the next fit reproduces the previous scale.
         let viewport_size = graph_rect.size();
+        let click_dist = click_distance(ui.ctx());
         {
             let gmem_arc = memory(ui, self.id);
             let mut gmem = gmem_arc.lock().expect("failed to lock graph temp memory");
@@ -662,6 +763,17 @@ impl Graph {
             }
             // Record unconditionally so toggling `center_view`/behaviour works.
             gmem.last_viewport_size = Some(viewport_size);
+
+            // Pan the view by the pointer's movement while a primary drag that
+            // began on the background holds it. As this happens before the
+            // scene shows, the content of this frame sees the new view.
+            if let Some(pressed) = gmem.pressed.as_mut() {
+                let delta = drag_pan_delta(ui, pressed, click_dist);
+                if delta != egui::Vec2::ZERO {
+                    *scene_rect =
+                        pan_scene_rect(*scene_rect, viewport_size, self.zoom_range, -delta);
+                }
+            }
 
             // Pan the view while a drag holds the pointer near the edge of the
             // graph area. As this happens before the scene shows, the
@@ -680,24 +792,19 @@ impl Graph {
             }
         }
 
-        // Create the Scene.
-        let mut scene = egui::containers::Scene::new()
-            .zoom_range(self.zoom_range)
-            .drag_pan_buttons(egui::containers::DragPanButtons::MIDDLE);
-        if let Some(max_inner_size) = self.max_inner_size {
-            scene = scene.max_inner_size(max_inner_size);
-        }
-
         // Track the bounding area of all widgets in the scene.
         let mut bounding_rect = None;
 
+        let scene = Scene {
+            zoom_range: self.zoom_range,
+            max_inner_size: self.max_inner_size,
+        };
         let scene_response = scene.show(ui, scene_rect, |ui| {
             // Draw the selection rectangle if there is one.
             let mut selection_rect = None;
-            let mut select = false;
             let mut closest_socket = None;
             let mut socket_press_released = None;
-            let mut drag_released = None;
+            let mut ended = None;
             // Alignment guide lines collected during a drag, as (is_x_axis, line).
             let mut guide_lines: Vec<(bool, AlignLine)> = Vec::new();
 
@@ -714,8 +821,8 @@ impl Graph {
                 gmem.selection.nodes = nodes;
             }
 
-            // Reset the selection dirty flag for this frame.
-            gmem.selection.changed = false;
+            // Reset the selection's changes for this frame.
+            gmem.selection.begin_pass();
 
             // Take the previous frame's "pointer over a node frame" flag (it is
             // re-accumulated from each node's `contains_pointer()` as the nodes
@@ -731,6 +838,7 @@ impl Graph {
             // We should change this to get the pointer only if it is hovered or
             // interacting with the scene or any of its child nodes somehow.
             let pointer = ui.input(|i| i.pointer.clone());
+            let modifiers = ui.input(|i| i.modifiers);
             if let Some(ptr_global) = pointer.interact_pos().or(pointer.hover_pos()) {
                 let ptr_graph = ui
                     .ctx()
@@ -739,35 +847,43 @@ impl Graph {
                     .mul_pos(ptr_global);
 
                 // Only detect a socket that the pointer can press or connect to.
-                // Over the scene background, a press near a socket starts an
-                // edge. Over a node frame, a press drags the node, so a socket
-                // there is only detectable as the end of an edge in progress.
-                // Use the raw graph-space pointer, as the scene's `hover_pos()`
-                // is `None` over a node frame. An immutable graph detects no
-                // sockets, so its presses map to `Select`.
-                let edge_in_progress = matches!(
-                    gmem.pressed.as_ref().map(|p| &p.action),
-                    Some(PressAction::Socket(_))
-                );
-                let ptr_over_sockets = ptr_on_graph || (edge_in_progress && ptr_over_node_prev);
+                // Over the scene background, a press near a socket without a
+                // handle starts an edge. Over a node frame, a press drags the
+                // node or, on a handle, starts an edge from its socket (see
+                // `Node::show`), so a socket there is only detectable as the end
+                // of an edge in progress. Use the raw graph-space pointer, as
+                // the scene's `hover_pos()` is `None` over a node frame. An
+                // immutable graph detects no sockets, so its presses never
+                // start edges.
+                let edge_start = match gmem.pressed.as_ref().map(|p| &p.action) {
+                    Some(PressAction::Socket(socket)) => Some(*socket),
+                    _ => None,
+                };
+                let ptr_over_sockets = ptr_on_graph || (edge_start.is_some() && ptr_over_node_prev);
                 closest_socket = if !self.immutable && ptr_over_sockets {
-                    find_closest_socket(ptr_graph, layout, &gmem, ui)
+                    find_closest_socket(ptr_graph, layout, &gmem, ui, edge_start)
                         .map(|(socket, _dist_sqrd)| socket)
                 } else {
                     None
                 };
 
                 // Check for graph interactions.
+                let ptr = PointerAt {
+                    graph: ptr_graph,
+                    screen: ptr_global,
+                };
                 let interaction = graph_interaction(
                     layout,
                     &pointer,
                     closest_socket,
                     ptr_on_graph,
-                    ptr_graph,
+                    ptr,
+                    click_dist,
+                    modifiers.shift,
                     gmem.pressed.as_ref(),
                 );
 
-                // Move all selected nodes by a single delta (skip when
+                // Move the dragged nodes by a single delta (skip when
                 // immutable), keeping the group rigid (preserving its relative
                 // layout) by translating every node by the same offset rather
                 // than snapping each independently. Per axis, snap-align wins if
@@ -776,119 +892,115 @@ impl Graph {
                 // The per-node snap below skips the dragged nodes for the same
                 // (rigidity) reason.
                 if !self.immutable && interaction.drag_nodes_delta != egui::Vec2::ZERO {
-                    if let Some(pressed) = gmem.pressed.as_ref() {
-                        if let PressAction::DragNodes {
-                            node: Some(pressed_node),
-                        } = &pressed.action
+                    if let Some(PressAction::DragNodes(pressed_node)) =
+                        gmem.pressed.as_ref().map(|p| &p.action)
+                    {
+                        let raw = interaction.drag_nodes_delta;
+                        let is_moving = |id: &NodeId| gmem.selection.moves(pressed_node, id);
+                        let mut moving: Vec<NodeId> = match gmem.selection.moves_group(pressed_node)
                         {
-                            let raw = interaction.drag_nodes_delta;
+                            true => gmem.selection.nodes.iter().copied().collect(),
+                            false => vec![pressed_node.id],
+                        };
+                        moving.sort();
 
-                            // The alignment threshold is configured in screen
-                            // pixels; convert it to graph units via the live
-                            // zoom so the snap zone stays a constant on-screen
-                            // size. Guard a missing/degenerate transform.
-                            let scale = ui
-                                .ctx()
-                                .layer_transform_to_global(ui.layer_id())
-                                .map(|t| t.scaling)
-                                .filter(|s| s.is_finite() && *s > 0.0)
-                                .unwrap_or(1.0);
-                            let modifiers = ui.input(|i| i.modifiers);
-                            let align_on =
-                                self.align && !modifiers.contains(self.align_disable_modifier);
-                            let threshold_px = self
-                                .align_threshold
-                                .filter(|t| t.is_finite() && *t > 0.0)
-                                .unwrap_or_else(|| ui.style().interaction.interact_radius);
-                            let threshold = threshold_px / scale;
+                        // The alignment threshold is configured in screen
+                        // pixels; convert it to graph units via the live
+                        // zoom so the snap zone stays a constant on-screen
+                        // size. Guard a missing/degenerate transform.
+                        let scale = ui
+                            .ctx()
+                            .layer_transform_to_global(ui.layer_id())
+                            .map(|t| t.scaling)
+                            .filter(|s| s.is_finite() && *s > 0.0)
+                            .unwrap_or(1.0);
+                        let align_on =
+                            self.align && !modifiers.contains(self.align_disable_modifier);
+                        let threshold_px = self
+                            .align_threshold
+                            .filter(|t| t.is_finite() && *t > 0.0)
+                            .unwrap_or_else(|| ui.style().interaction.interact_radius);
+                        let threshold = threshold_px / scale;
 
-                            // Per-axis alignment of the dragged group's bounding
-                            // box to the surrounding (non-selected) nodes.
-                            let (line_x, line_y) = if align_on {
-                                let selected_rects: Vec<egui::Rect> = gmem
-                                    .selection
-                                    .nodes
-                                    .iter()
-                                    .filter_map(|id| {
-                                        let pos = *layout.get(id)?;
-                                        let size = *gmem.node_sizes.get(id)?;
-                                        Some(egui::Rect::from_min_size(pos, size))
-                                    })
-                                    .collect();
-                                // Sort references by id for deterministic
-                                // tie-breaks (HashMap order is unstable).
-                                let mut refs: Vec<(NodeId, egui::Rect)> = layout
-                                    .iter()
-                                    .filter(|(id, _)| !gmem.selection.nodes.contains(id))
-                                    .filter_map(|(id, &pos)| {
-                                        let size = *gmem.node_sizes.get(id)?;
-                                        Some((*id, egui::Rect::from_min_size(pos, size)))
-                                    })
-                                    .collect();
-                                refs.sort_by_key(|(id, _)| *id);
-                                let reference_rects: Vec<egui::Rect> =
-                                    refs.iter().map(|(_, r)| *r).collect();
-                                let (rect_x, rect_y) = align_adjust(
-                                    self.align_targets,
-                                    &selected_rects,
-                                    &reference_rects,
-                                    raw,
-                                    threshold,
-                                );
-                                let (socket_x, socket_y) = match self.align_targets.sockets {
-                                    true => {
-                                        let sockets =
-                                            |id: &NodeId| align_sockets(&gmem, layout, id);
-                                        let mut selected_ids: Vec<NodeId> =
-                                            gmem.selection.nodes.iter().copied().collect();
-                                        selected_ids.sort();
-                                        let selected: Vec<AlignSockets> =
-                                            selected_ids.iter().filter_map(sockets).collect();
-                                        let references: Vec<AlignSockets> =
-                                            refs.iter().filter_map(|(id, _)| sockets(id)).collect();
-                                        socket_align_adjust(&selected, &references, raw, threshold)
-                                    }
-                                    false => (None, None),
-                                };
-                                (nearer(socket_x, rect_x), nearer(socket_y, rect_y))
-                            } else {
-                                (None, None)
-                            };
-
-                            // Combine per axis: alignment, else snap fallback of
-                            // the anchor's target (equivalent to the previous
-                            // `snap_pos(..) - current` math, applied per axis).
-                            let anchor = layout.get(&pressed_node.id).copied();
-                            let snap = self.snap;
-                            let snap_step = self.snap_step;
-                            let axis =
-                                |line: Option<AlignLine>, raw_a: f32, anchor_a: Option<f32>| {
-                                    match line {
-                                        Some(l) => raw_a + l.adjust,
-                                        None => match (snap, anchor_a) {
-                                            (Some(snap), Some(c)) => {
-                                                snap_f32(snap, snap_step, c + raw_a) - c
-                                            }
-                                            _ => raw_a,
-                                        },
-                                    }
-                                };
-                            let delta = egui::vec2(
-                                axis(line_x, raw.x, anchor.map(|p| p.x)),
-                                axis(line_y, raw.y, anchor.map(|p| p.y)),
+                        // Per-axis alignment of the dragged group's bounding
+                        // box to the surrounding (not dragged) nodes.
+                        let (line_x, line_y) = if align_on {
+                            let selected_rects: Vec<egui::Rect> = moving
+                                .iter()
+                                .filter_map(|id| {
+                                    let pos = *layout.get(id)?;
+                                    let size = *gmem.node_sizes.get(id)?;
+                                    Some(egui::Rect::from_min_size(pos, size))
+                                })
+                                .collect();
+                            // Sort references by id for deterministic
+                            // tie-breaks (HashMap order is unstable).
+                            let mut refs: Vec<(NodeId, egui::Rect)> = layout
+                                .iter()
+                                .filter(|(id, _)| !is_moving(id))
+                                .filter_map(|(id, &pos)| {
+                                    let size = *gmem.node_sizes.get(id)?;
+                                    Some((*id, egui::Rect::from_min_size(pos, size)))
+                                })
+                                .collect();
+                            refs.sort_by_key(|(id, _)| *id);
+                            let reference_rects: Vec<egui::Rect> =
+                                refs.iter().map(|(_, r)| *r).collect();
+                            let (rect_x, rect_y) = align_adjust(
+                                self.align_targets,
+                                &selected_rects,
+                                &reference_rects,
+                                raw,
+                                threshold,
                             );
-
-                            // Record the aligning edges so a subtle guide can be
-                            // drawn along them once the nodes are laid out.
-                            if self.align_guides {
-                                guide_lines.extend(line_x.map(|l| (true, l)));
-                                guide_lines.extend(line_y.map(|l| (false, l)));
-                            }
-
-                            for &n_id in &gmem.selection.nodes {
-                                if let Some(pos) = layout.get_mut(&n_id) {
-                                    *pos += delta;
+                            let (socket_x, socket_y) = match self.align_targets.sockets {
+                                true => {
+                                    let sockets = |id: &NodeId| align_sockets(&gmem, layout, id);
+                                    let selected: Vec<AlignSockets> =
+                                        moving.iter().filter_map(sockets).collect();
+                                    let references: Vec<AlignSockets> =
+                                        refs.iter().filter_map(|(id, _)| sockets(id)).collect();
+                                    socket_align_adjust(&selected, &references, raw, threshold)
                                 }
+                                false => (None, None),
+                            };
+                            (nearer(socket_x, rect_x), nearer(socket_y, rect_y))
+                        } else {
+                            (None, None)
+                        };
+
+                        // Combine per axis: alignment, else snap fallback of
+                        // the anchor's target (equivalent to the previous
+                        // `snap_pos(..) - current` math, applied per axis).
+                        let anchor = layout.get(&pressed_node.id).copied();
+                        let snap = self.snap;
+                        let snap_step = self.snap_step;
+                        let axis =
+                            |line: Option<AlignLine>, raw_a: f32, anchor_a: Option<f32>| match line
+                            {
+                                Some(l) => raw_a + l.adjust,
+                                None => match (snap, anchor_a) {
+                                    (Some(snap), Some(c)) => {
+                                        snap_f32(snap, snap_step, c + raw_a) - c
+                                    }
+                                    _ => raw_a,
+                                },
+                            };
+                        let delta = egui::vec2(
+                            axis(line_x, raw.x, anchor.map(|p| p.x)),
+                            axis(line_y, raw.y, anchor.map(|p| p.y)),
+                        );
+
+                        // Record the aligning edges so a subtle guide can be
+                        // drawn along them once the nodes are laid out.
+                        if self.align_guides {
+                            guide_lines.extend(line_x.map(|l| (true, l)));
+                            guide_lines.extend(line_y.map(|l| (false, l)));
+                        }
+
+                        for n_id in &moving {
+                            if let Some(pos) = layout.get_mut(n_id) {
+                                *pos += delta;
                             }
                         }
                     }
@@ -897,9 +1009,8 @@ impl Graph {
                 gmem.pressed = interaction.pressed;
                 gmem.closest_socket = closest_socket;
                 selection_rect = interaction.selection_rect;
-                select = interaction.select;
                 socket_press_released = interaction.socket_press_released;
-                drag_released = interaction.drag_released;
+                ended = interaction.ended;
             }
 
             // Snap node positions to whole graph-space units. Runs every frame
@@ -908,26 +1019,34 @@ impl Graph {
             // deserialized positions alike before the nodes render.
             //
             // Nodes in an active drag are skipped: they're translated rigidly
-            // above (anchored on the pressed node) to preserve the selection's
+            // above (anchored on the pressed node) to preserve the group's
             // relative layout, so snapping them per-node here would distort it.
             if let Some(snap) = self.snap {
-                let dragging = matches!(
-                    gmem.pressed.as_ref().map(|p| &p.action),
-                    Some(PressAction::DragNodes { .. })
-                );
+                let dragged = match gmem.pressed.as_ref().map(|p| &p.action) {
+                    Some(PressAction::DragNodes(node)) => Some(node),
+                    _ => None,
+                };
                 for (id, pos) in layout.iter_mut() {
-                    if dragging && gmem.selection.nodes.contains(id) {
+                    if dragged.is_some_and(|node| gmem.selection.moves(node, id)) {
                         continue;
                     }
                     *pos = snap_pos(snap, self.snap_step, *pos);
                 }
             }
 
-            // The whole selection moves with the pressed node, so the pressed
+            // The whole group moves with the pressed node, so the pressed
             // node alone tells whether the drag moved the nodes. Compare after
             // snapping, so a drag back to the start counts as no move.
-            let nodes_moved = drag_released
-                .is_some_and(|n: PressedNode| layout.get(&n.id) != Some(&n.position_at_origin));
+            let nodes_moved = match ended.as_ref().map(|p: &Pressed| &p.action) {
+                Some(PressAction::DragNodes(n)) => layout.get(&n.id) != Some(&n.position_at_origin),
+                _ => false,
+            };
+
+            // A press that ended this frame changes the selection, or is a
+            // secondary click on the background.
+            let background_secondary_click = ended
+                .as_ref()
+                .and_then(|ended| end_press(ended, layout, &mut gmem, modifiers, nodes_moved));
 
             // Paint the background rect.
             let visible_rect = ui.clip_rect();
@@ -956,7 +1075,6 @@ impl Graph {
                 graph_id: self.id,
                 graph_rect,
                 selection_rect,
-                select,
                 closest_socket,
                 socket_press_released,
                 visited: &mut visited,
@@ -983,7 +1101,12 @@ impl Graph {
                 None
             };
 
-            (output, selection_changed, nodes_moved)
+            (
+                output,
+                selection_changed,
+                nodes_moved,
+                background_secondary_click,
+            )
         });
 
         if self.center_view {
@@ -992,12 +1115,14 @@ impl Graph {
             }
         }
 
-        let (inner, selection_changed, nodes_moved) = scene_response.inner;
+        let (inner, selection_changed, nodes_moved, background_secondary_click) =
+            scene_response.inner;
         GraphResponse {
             inner,
             response: scene_response.response,
             selection_changed,
             nodes_moved,
+            background_secondary_click,
         }
     }
 }
@@ -1011,6 +1136,14 @@ impl AutoPan {
 }
 
 impl GraphTempMemory {
+    /// Whether node `id` moves with a node drag in progress.
+    pub(crate) fn is_dragged(&self, id: NodeId) -> bool {
+        match self.pressed.as_ref().map(|p| &p.action) {
+            Some(PressAction::DragNodes(node)) => self.selection.moves(node, &id),
+            _ => false,
+        }
+    }
+
     /// Get the recorded sizes of all nodes.
     pub fn node_sizes(&self) -> &NodeSizes {
         &self.node_sizes
@@ -1027,11 +1160,47 @@ impl GraphTempMemory {
 }
 
 impl NodeSockets {
-    /// Move all sockets by `delta`.
+    /// Move all sockets and their handles by `delta`.
     fn translate(&mut self, delta: egui::Vec2) {
         for pos in self.inputs.values_mut().chain(self.outputs.values_mut()) {
             *pos += delta;
         }
+        let handles = self.input_handles.values_mut();
+        for rect in handles.chain(self.output_handles.values_mut()) {
+            *rect = rect.translate(delta);
+        }
+    }
+
+    /// The handle of the input at the given index, in graph space, or `None`
+    /// if it has none (see [`SocketLayout::input_handle`]).
+    pub fn input_handle(&self, ix: usize) -> Option<egui::Rect> {
+        self.input_handles.get(&ix).copied()
+    }
+
+    /// The handle of the output at the given index, in graph space, or `None`
+    /// if it has none (see [`SocketLayout::output_handle`]).
+    pub fn output_handle(&self, ix: usize) -> Option<egui::Rect> {
+        self.output_handles.get(&ix).copied()
+    }
+
+    /// Whether the given socket has a handle.
+    fn has_handle(&self, kind: socket::SocketKind, ix: usize) -> bool {
+        match kind {
+            socket::SocketKind::Input => self.input_handles.contains_key(&ix),
+            socket::SocketKind::Output => self.output_handles.contains_key(&ix),
+        }
+    }
+
+    /// The socket whose handle contains `pos`, if any.
+    fn handle_at(&self, pos: egui::Pos2) -> Option<(socket::SocketKind, usize)> {
+        let inputs = self.input_handles.iter();
+        let inputs = inputs.map(|(&ix, r)| (socket::SocketKind::Input, ix, r));
+        let outputs = self.output_handles.iter();
+        let outputs = outputs.map(|(&ix, r)| (socket::SocketKind::Output, ix, r));
+        inputs
+            .chain(outputs)
+            .find(|(_, _, r)| r.contains(pos))
+            .map(|(kind, ix, _)| (kind, ix))
     }
 
     /// The screen position and normal of the input at the given index.
@@ -1095,7 +1264,6 @@ impl<'a> Show<'a> {
                 graph_id,
                 graph_rect,
                 selection_rect,
-                select,
                 socket_press_released,
                 ref mut visited,
                 ref mut layout,
@@ -1108,7 +1276,6 @@ impl<'a> Show<'a> {
                 graph_id,
                 graph_rect,
                 selection_rect,
-                select,
                 socket_press_released,
                 visited,
                 layout,
@@ -1131,7 +1298,6 @@ impl<'a> Show<'a> {
             let Self {
                 graph_rect,
                 graph_id,
-                selection_rect,
                 closest_socket,
                 immutable,
                 ..
@@ -1144,8 +1310,8 @@ impl<'a> Show<'a> {
             let mut ctx = EdgesCtx {
                 graph_id,
                 graph_rect,
-                selection_rect,
                 closest_socket,
+                scale: scene_scaling(ui),
                 edge_in_progress,
                 memory,
                 immutable,
@@ -1172,9 +1338,7 @@ fn prune_unused_nodes(graph_id: egui::Id, visited: &HashSet<NodeId>, ui: &mut eg
     }
     if let Some(pressed) = gmem.pressed.as_ref() {
         match pressed.action {
-            PressAction::DragNodes {
-                node: Some(PressedNode { id: n, .. }),
-            }
+            PressAction::DragNodes(PressedNode { id: n, .. })
             | PressAction::Socket(socket::Socket { node: n, .. })
                 if !visited.contains(&n) =>
             {
@@ -1254,13 +1418,15 @@ pub struct EdgeInProgress {
     pub start: socket::PositionedSocket,
     /// The end position of the edge in progress.
     ///
-    /// If there is no socket within the interaction radius, this will be the pointer position.
-    /// Otherwise, this will be the position of the closest socket who's `SocketKind` is opposite
-    /// to `start.kind`.
+    /// The position of the socket the edge would end on if released now (see
+    /// `end_socket`), else the pointer position.
     pub end_pos: egui::Pos2,
-    /// The closest socket who's `SocketKind` is opposite to `start.kind`.
+    /// The kind and normal of the socket the edge would end on if released
+    /// now: one whose `SocketKind` is opposite to `start.kind`, whose handle is
+    /// under the pointer or, for a socket without a handle, within the
+    /// interaction radius of it.
     ///
-    /// This is `None` in the case that there are no sockets within the interaction radius.
+    /// This is `None` when there is no such socket.
     pub end_socket: Option<(socket::SocketKind, egui::Vec2)>,
 }
 
@@ -1291,8 +1457,12 @@ impl EdgeInProgress {
     /// in-progress edge can match styled edges.
     ///
     /// When `stroke` is `None`, `ui.visuals().widgets.active.fg_stroke` is used.
+    ///
+    /// The edge is cut into a point every
+    /// [`Edge::DEFAULT_DISTANCE_PER_POINT`](edge::Edge::DEFAULT_DISTANCE_PER_POINT)
+    /// screen pixels, as other edges are by default.
     pub fn show_styled(&self, ui: &egui::Ui, stroke: Option<egui::Stroke>, shape: edge::EdgeShape) {
-        let dist_per_pt = crate::edge::Edge::DEFAULT_DISTANCE_PER_POINT;
+        let dist_per_pt = crate::edge::Edge::DEFAULT_DISTANCE_PER_POINT / scene_scaling(ui);
         let pts = self.path(shape).flatten(dist_per_pt).collect();
         let stroke = stroke.unwrap_or(ui.visuals().widgets.active.fg_stroke);
         ui.painter().add(egui::Shape::line(pts, stroke));
@@ -1350,18 +1520,27 @@ fn edge_in_progress(gmem: &GraphTempMemory) -> Option<EdgeInProgress> {
     })
 }
 
-/// Find the socket that is closest to the given point.
+/// Find the socket that the pointer at the given point can press or end an
+/// edge on.
 ///
-/// Returns the socket alongside the squared distance from the socket.
+/// While an edge from `edge_start` is in progress, a handle of the opposite
+/// kind on another node that contains the point wins. Otherwise, it is the
+/// closest socket without a handle within reach, as a socket with a handle is
+/// pressed and ended on only through its handle.
+///
+/// Returns the socket alongside the squared distance from the socket (zero for
+/// a handle).
 fn find_closest_socket(
     pos_graph: egui::Pos2,
     layout: &Layout,
     gmem: &GraphTempMemory,
     ui: &egui::Ui,
+    edge_start: Option<socket::Socket>,
 ) -> Option<(socket::Socket, f32)> {
     // TODO: if we wanted to be super efficient, we could maintain a quadtree of
     // nodes and sockets...
     let mut closest_socket = None;
+    let mut handle = None;
     let socket_radius = ui
         .spacing()
         .interact_size
@@ -1385,8 +1564,23 @@ fn find_closest_socket(
             Some(sockets) => sockets,
         };
 
+        // Check the handles, for the end of an edge in progress.
+        if let Some(start) = edge_start.filter(|s| s.node != n_id && handle.is_none()) {
+            handle = sockets
+                .handle_at(pos_graph)
+                .filter(|&(kind, _)| kind != start.kind)
+                .map(|(kind, index)| socket::Socket {
+                    node: n_id,
+                    kind,
+                    index,
+                });
+        }
+
         // Check inputs.
         for (ix, p, _) in sockets.inputs() {
+            if sockets.has_handle(socket::SocketKind::Input, ix) {
+                continue;
+            }
             let dist_sq = pos_graph.distance_sq(p);
             if dist_sq < socket_radius_sq {
                 let socket = socket::Socket {
@@ -1404,6 +1598,9 @@ fn find_closest_socket(
 
         // Check outputs.
         for (ix, p, _) in sockets.outputs() {
+            if sockets.has_handle(socket::SocketKind::Output, ix) {
+                continue;
+            }
             let dist_sq = pos_graph.distance_sq(p);
             if dist_sq < socket_radius_sq {
                 let socket = socket::Socket {
@@ -1420,96 +1617,296 @@ fn find_closest_socket(
         }
     }
 
-    closest_socket
+    handle.map(|socket| (socket, 0.0)).or(closest_socket)
+}
+
+/// Where the pointer is, in graph space and in screen space.
+#[derive(Clone, Copy, Debug)]
+struct PointerAt {
+    graph: egui::Pos2,
+    screen: egui::Pos2,
+}
+
+/// How far, in screen pixels, the pointer may move from where a button was
+/// pressed for its release to still be a click: egui's `max_click_dist`.
+fn click_distance(ctx: &egui::Context) -> f32 {
+    ctx.options(|o| o.input_options.max_click_dist)
 }
 
 /// Interpret some basic interactions from the state of the graph and recent input.
+///
+/// A press on the background starts here; a press on a node's frame starts in
+/// [`Node::show`](node::Node::show). Both end here, when their button is
+/// released.
+#[allow(clippy::too_many_arguments)]
 fn graph_interaction(
     layout: &Layout,
     pointer: &egui::PointerState,
     closest_socket: Option<socket::Socket>,
     ptr_on_graph: bool,
-    ptr_graph: egui::Pos2,
+    ptr: PointerAt,
+    click_dist: f32,
+    shift: bool,
     pressed: Option<&Pressed>,
 ) -> GraphInteraction {
-    let mut select = false;
     let mut socket_press_released = None;
     let mut drag_nodes_delta = egui::Vec2::ZERO;
     let mut selection_rect = None;
-    let mut drag_released = None;
+    let mut ended = None;
 
     // Check for selecting/dragging.
     let pressed: Option<Pressed> = if let Some(pressed) = pressed {
+        let mut pressed = pressed.clone();
+        pressed.current_pos = ptr.graph;
+        pressed.dragged |= ptr.screen.distance(pressed.origin_screen) > click_dist;
         match pressed.action {
-            PressAction::DragNodes {
-                node: Some(ref node),
-            } => {
+            PressAction::DragNodes(ref node) => {
                 // Determine the drag delta.
-                let delta = ptr_graph - pressed.origin_pos;
+                let delta = ptr.graph - pressed.origin_pos;
                 let target = node.position_at_origin + delta;
                 if let Some(current) = layout.get(&node.id) {
                     drag_nodes_delta = target - *current;
                 }
             }
-            PressAction::Select => {
-                let min = pressed.origin_pos;
-                let max = ptr_graph;
-                selection_rect = Some(egui::Rect::from_two_pos(min, max));
+            // A box shows once the press is a drag, not for a click.
+            PressAction::Select if pressed.dragged => {
+                selection_rect = Some(egui::Rect::from_two_pos(pressed.origin_pos, ptr.graph));
             }
             _ => (),
         }
 
         // The press action has ended.
-        if pointer.primary_released() {
-            match pressed.action {
-                PressAction::Select => select = true,
-                PressAction::Socket(socket) => socket_press_released = Some(socket),
-                PressAction::DragNodes { ref node } => drag_released = node.clone(),
-            }
-            None
+        if pointer.button_down(pressed.button) {
+            Some(pressed)
         } else {
-            Some(Pressed {
-                current_pos: ptr_graph,
-                ..pressed.clone()
-            })
-        }
-    // Check for the beginning of a socket press or rectangular selection.
-    } else if ptr_on_graph
-        && pointer.button_down(egui::PointerButton::Primary)
-        && pointer.button_pressed(egui::PointerButton::Primary)
-    {
-        // Choose which press action based on whether or not a socket was pressed.
-        let action = match closest_socket {
-            Some(socket) => PressAction::Socket(socket),
-            None => {
-                let min = ptr_graph;
-                let max = ptr_graph;
-                selection_rect = Some(egui::Rect::from_two_pos(min, max));
-                PressAction::Select
+            if let PressAction::Socket(socket) = pressed.action {
+                socket_press_released = Some(socket);
             }
-        };
+            ended = Some(pressed);
+            None
+        }
+    // Check for the beginning of a press on the background.
+    } else if ptr_on_graph {
+        let buttons = [egui::PointerButton::Primary, egui::PointerButton::Secondary];
+        let button = buttons
+            .into_iter()
+            .find(|&b| pointer.button_down(b) && pointer.button_pressed(b));
+        button.map(|button| {
+            // Choose which press action based on the button, whether or not a
+            // socket was pressed, and Shift.
+            let action = match (button, closest_socket) {
+                (egui::PointerButton::Primary, Some(socket)) => PressAction::Socket(socket),
+                (egui::PointerButton::Primary, None) if !shift => {
+                    PressAction::Pan { last: ptr.screen }
+                }
+                _ => PressAction::Select,
+            };
+            Pressed {
+                button,
+                origin_pos: ptr.graph,
+                current_pos: ptr.graph,
+                origin_screen: ptr.screen,
+                dragged: false,
+                action,
+            }
+        })
 
-        let pressed = Pressed {
-            over_selection_at_origin: false,
-            origin_pos: ptr_graph,
-            current_pos: ptr_graph,
-            action,
-        };
-        Some(pressed)
-
-    // Otherwise, pass through existing state.
+    // Otherwise, there is no press.
     } else {
-        pressed.cloned()
+        None
     };
 
     GraphInteraction {
         pressed,
         socket_press_released,
-        select,
         selection_rect,
         drag_nodes_delta,
-        drag_released,
+        ended,
     }
+}
+
+/// Apply the end of a press to the selection, and return the graph-space
+/// position of a secondary click on the background.
+///
+/// `modifiers` are those held at the release; `nodes_moved` is whether a node
+/// drag moved the nodes.
+fn end_press(
+    ended: &Pressed,
+    layout: &Layout,
+    gmem: &mut GraphTempMemory,
+    modifiers: egui::Modifiers,
+    nodes_moved: bool,
+) -> Option<egui::Pos2> {
+    let selection = &mut gmem.selection;
+    match ended.action {
+        // A click on the background clears the selection.
+        PressAction::Pan { .. } => {
+            if !ended.dragged && !modifiers.shift && !modifiers.command {
+                selection.replace(HashSet::new());
+            }
+            None
+        }
+        // A box: Cmd/Ctrl takes what it touches out, Shift adds it, and
+        // otherwise it is the new selection.
+        PressAction::Select if ended.dragged => {
+            let area = egui::Rect::from_two_pos(ended.origin_pos, ended.current_pos);
+            let touched = layout.iter().filter_map(|(id, &pos)| {
+                let size = *gmem.node_sizes.get(id)?;
+                egui::Rect::from_min_size(pos, size)
+                    .intersects(area)
+                    .then_some(*id)
+            });
+            let nodes = if modifiers.command {
+                let touched: HashSet<NodeId> = touched.collect();
+                selection.nodes.difference(&touched).copied().collect()
+            } else if modifiers.shift {
+                selection.nodes.iter().copied().chain(touched).collect()
+            } else {
+                touched.collect()
+            };
+            selection.replace(nodes);
+            None
+        }
+        PressAction::Select => {
+            (ended.button == egui::PointerButton::Secondary).then_some(ended.current_pos)
+        }
+        // A click on a node selects it alone; with Shift, it toggles it.
+        PressAction::DragNodes(ref node) => {
+            if !ended.dragged && !nodes_moved {
+                match modifiers.shift {
+                    true => selection.toggle(node.id),
+                    false => selection.replace([node.id].into()),
+                }
+            }
+            None
+        }
+        PressAction::Socket(_) => None,
+    }
+}
+
+/// The screen-pixel movement by which a primary drag on the background pans
+/// the view this frame, once the press has become a drag.
+fn drag_pan_delta(ui: &egui::Ui, pressed: &mut Pressed, click_dist: f32) -> egui::Vec2 {
+    let PressAction::Pan { ref mut last } = pressed.action else {
+        return egui::Vec2::ZERO;
+    };
+    let Some(ptr) = ui.input(|i| i.pointer.interact_pos()) else {
+        return egui::Vec2::ZERO;
+    };
+    pressed.dragged |= ptr.distance(pressed.origin_screen) > click_dist;
+    if !pressed.dragged {
+        return egui::Vec2::ZERO;
+    }
+    let delta = ptr - *last;
+    *last = ptr;
+    delta
+}
+
+/// The scale of the scene that `ui` is in, in screen pixels per graph unit,
+/// or `1.0` without a valid transform.
+fn scene_scaling(ui: &egui::Ui) -> f32 {
+    ui.ctx()
+        .layer_transform_to_global(ui.layer_id())
+        .map(|t| t.scaling)
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(1.0)
+}
+
+/// The area of the graph's content, as egui's [`Scene`](egui::containers::Scene)
+/// but without its pan and zoom: it shows `scene_rect` fitted into the space
+/// available, pans on a middle drag, and leaves the mouse wheel, trackpad
+/// scrolls and pinches to the caller.
+struct Scene {
+    zoom_range: egui::Rangef,
+    max_inner_size: Option<egui::Vec2>,
+}
+
+impl Scene {
+    /// Show `add_contents` in a layer above `parent_ui`'s, transformed so that
+    /// `scene_rect` fills the space available.
+    ///
+    /// `scene_rect` changes only on a middle drag, or when it is invalid, in
+    /// which case it is reset to fit the contents.
+    fn show<R>(
+        &self,
+        parent_ui: &mut egui::Ui,
+        scene_rect: &mut egui::Rect,
+        add_contents: impl FnOnce(&mut egui::Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        use egui::emath::GuiRounding as _;
+        let (outer_rect, _outer_response) = parent_ui
+            .allocate_exact_size(parent_ui.available_size_before_wrap(), egui::Sense::hover());
+
+        // Create a new egui paint layer, directly above the main layer of the ui.
+        let scene_layer_id = egui::LayerId::new(
+            parent_ui.layer_id().order,
+            parent_ui.id().with("scene_area"),
+        );
+        parent_ui
+            .ctx()
+            .set_sublayer(parent_ui.layer_id(), scene_layer_id);
+
+        let max_inner_size = self.max_inner_size.unwrap_or(egui::Vec2::splat(1000.0));
+        let mut local_ui = parent_ui.new_child(
+            egui::UiBuilder::new()
+                .layer_id(scene_layer_id)
+                .max_rect(egui::Rect::from_min_size(egui::Pos2::ZERO, max_inner_size))
+                .sense(egui::Sense::click_and_drag()),
+        );
+        let response = local_ui.response();
+
+        if response.dragged_by(egui::PointerButton::Middle) {
+            let delta = parent_ui.input(|i| i.pointer.delta());
+            let size = outer_rect.size();
+            *scene_rect = pan_scene_rect(*scene_rect, size, self.zoom_range, -delta);
+        }
+
+        let to_global = fit_to_rect_in_scene(outer_rect, *scene_rect, self.zoom_range);
+        let scene_rect_was_good =
+            to_global.is_valid() && scene_rect.is_finite() && scene_rect.size() != egui::Vec2::ZERO;
+
+        // Set a correct global clip rect, and have egui apply the transform.
+        local_ui.set_clip_rect(to_global.inverse() * outer_rect);
+        local_ui
+            .ctx()
+            .set_transform_layer(scene_layer_id, to_global);
+
+        let inner = add_contents(&mut local_ui);
+        let inner_rect = local_ui.min_rect();
+
+        // Cover the whole visible area, so that the background senses presses
+        // anywhere on it. egui's `Scene` sets the area exactly, with a method
+        // egui keeps private; growing it to include the area does the same
+        // for hit-testing, which is clipped to the visible area.
+        local_ui.expand_to_include_rect((to_global.inverse() * outer_rect).round_ui());
+
+        if !scene_rect_was_good {
+            // Reset a transformation that went bad (or started bad), to fit
+            // the contents.
+            let to_global = fit_to_rect_in_scene(outer_rect, inner_rect, self.zoom_range);
+            *scene_rect = to_global.inverse() * outer_rect;
+        }
+
+        egui::InnerResponse { inner, response }
+    }
+}
+
+/// The transformation from `rect_in_scene` to global coordinates that fits it
+/// into `rect_in_global`, centred, at a scale clamped to `zoom_range`, as
+/// egui's `Scene` makes it.
+fn fit_to_rect_in_scene(
+    rect_in_global: egui::Rect,
+    rect_in_scene: egui::Rect,
+    zoom_range: egui::Rangef,
+) -> egui::emath::TSTransform {
+    use egui::emath::TSTransform;
+    // The smaller of the two scales fits the whole rectangle on the screen.
+    let scale = (rect_in_global.size() / rect_in_scene.size()).min_elem();
+    let scale = zoom_range.clamp(scale);
+    let center_in_global = rect_in_global.center().to_vec2();
+    let center_scene = rect_in_scene.center().to_vec2();
+    TSTransform::from_translation(center_in_global - scale * center_scene)
+        * TSTransform::from_scaling(scale)
 }
 
 // Paint a subtle dot grid to check camera movement.
@@ -1573,9 +1970,7 @@ fn paint_selection_area(sel_rect: egui::Rect, graph_id: egui::Id, ui: &egui::Ui)
     let ctx = ui.ctx();
     ctx.set_sublayer(parent, layer);
     ctx.move_to_top(layer);
-    if let Some(transform) = ctx.layer_transform_to_global(parent) {
-        ctx.set_transform_layer(layer, transform);
-    }
+    ctx.set_transform_layer(layer, node::parent_transform(ctx, parent));
     let color = ui.visuals().weak_text_color();
     let fill = color.linear_multiply(0.125);
     let width = 1.0;
@@ -1685,8 +2080,8 @@ fn pan_scene_rect(
 
 /// The auto-pan velocity for the current input, in screen pixels per second.
 ///
-/// This is zero unless the primary button holds a drag whose press `action`
-/// pans the view. `viewport` is the graph area in the coordinates of `ui`.
+/// This is zero unless a button holds a drag whose press `action` pans the
+/// view. `viewport` is the graph area in the coordinates of `ui`.
 fn drag_pan_velocity(
     ui: &egui::Ui,
     auto_pan: AutoPan,
@@ -1701,7 +2096,7 @@ fn drag_pan_velocity(
     // on a node near the edge does not move the view.
     let ptr_global = ui.input(|i| {
         let pointer = &i.pointer;
-        let dragging = pointer.primary_down() && pointer.is_decidedly_dragging();
+        let dragging = pointer.any_down() && pointer.is_decidedly_dragging();
         pointer.interact_pos().filter(|_| dragging)
     });
     let Some(ptr_global) = ptr_global else {
@@ -1718,11 +2113,12 @@ fn drag_pan_velocity(
 /// the graph area.
 ///
 /// An immutable graph has no node drags or edges, so only a rectangle
-/// selection pans it.
+/// selection pans it. A drag that pans the view by itself does not.
 fn drag_pans(action: &PressAction, immutable: bool) -> bool {
     match action {
         PressAction::Select => true,
-        PressAction::DragNodes { .. } | PressAction::Socket(_) => !immutable,
+        PressAction::Pan { .. } => false,
+        PressAction::DragNodes(_) | PressAction::Socket(_) => !immutable,
     }
 }
 
@@ -2631,9 +3027,10 @@ mod tests {
             };
             pass(vec![egui::Event::PointerMoved(START)]);
             pass(vec![]);
+            // A secondary drag draws the selection area.
             pass(vec![egui::Event::PointerButton {
                 pos: START,
-                button: egui::PointerButton::Primary,
+                button: egui::PointerButton::Secondary,
                 pressed: true,
                 modifiers: egui::Modifiers::NONE,
             }]);
@@ -2671,7 +3068,8 @@ mod tests {
         use crate::node::{Node, NodeId};
         use crate::socket::{Socket, SocketKind};
         use crate::{
-            auto_pan_velocity, drag_pans, pan_scene_rect, AutoPan, Graph, PressAction, View,
+            auto_pan_velocity, drag_pans, pan_scene_rect, AutoPan, Graph, PressAction, PressedNode,
+            View,
         };
         use egui::{pos2, vec2, Pos2, Rangef, Rect, Vec2};
 
@@ -2838,6 +3236,7 @@ mod tests {
             assert_eq!(pan_scene_rect(scene, size, unbounded, nan), scene);
         }
 
+        /// A drag that pans the view by itself never auto-pans.
         #[test]
         fn immutable_graph_pans_only_for_selection() {
             let socket = Socket {
@@ -2845,14 +3244,21 @@ mod tests {
                 kind: SocketKind::Output,
                 index: 0,
             };
-            let drag = PressAction::DragNodes { node: None };
+            let drag = PressAction::DragNodes(PressedNode {
+                id: A,
+                position_at_origin: Pos2::ZERO,
+                moves_selection: false,
+            });
             let edge = PressAction::Socket(socket);
+            let pan = PressAction::Pan { last: Pos2::ZERO };
             assert!(drag_pans(&PressAction::Select, false));
             assert!(drag_pans(&drag, false));
             assert!(drag_pans(&edge, false));
+            assert!(!drag_pans(&pan, false));
             assert!(drag_pans(&PressAction::Select, true));
             assert!(!drag_pans(&drag, true));
             assert!(!drag_pans(&edge, true));
+            assert!(!drag_pans(&pan, true));
         }
 
         /// A node dragged to the right edge pans the view right, and the node

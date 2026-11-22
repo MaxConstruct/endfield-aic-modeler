@@ -14,3 +14,7 @@ name = "aic_node_graph"
 [dependencies]
 egui = { version = "0.36", default-features = false }
 siphasher = { version = "1.0", default-features = false }
+
+[dev-dependencies]
+# The tests lay out text, which needs fonts. Upstream got them through its eframe dev-dependency.
+egui = { version = "0.36", default-features = false, features = ["default_fonts"] }

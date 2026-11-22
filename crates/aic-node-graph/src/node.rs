@@ -1,4 +1,4 @@
-use crate::socket::{SocketKind, SocketResponses};
+use crate::socket::{SocketHighlight, SocketKind, SocketResponses};
 use crate::NodesCtx;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
@@ -23,8 +23,10 @@ pub struct NodeInteraction {
 
 /// The default node widget.
 ///
-/// A `Node` is a thin wrapper around a `Window` and allows for instantiating arbitrary widgets
-/// internally.
+/// A `Node` is a framed area of the graph in which arbitrary widgets show. A
+/// primary press on its frame drags it (with the rest of the selection, if it
+/// is selected) and a click selects it, as [`Graph`](crate::Graph) describes;
+/// a primary press on one of its sockets' handles starts an edge instead.
 pub struct Node {
     id: NodeId,
     inputs: usize,
@@ -33,6 +35,7 @@ pub struct Node {
     flow: egui::Direction,
     socket_radius: f32,
     socket_color: Option<egui::Color32>,
+    paint_sockets: bool,
     max_width: Option<f32>,
     animation_time: f32,
     content_enabled: bool,
@@ -52,7 +55,6 @@ pub struct NodeResponse<T> {
     sockets: SocketResponses,
     selection_changed: bool,
     selected: bool,
-    removed: bool,
     /// Some event occurred related to the creation of an edge.
     edge_event: Option<EdgeEvent>,
 }
@@ -67,6 +69,9 @@ pub struct FramedResponse<T> {
 }
 
 /// The outcome of the content closure of a node in [`Node::show_impl`].
+// It lives only on the stack within `show_impl`, once per node per frame; boxing the larger
+// variant would allocate for every node in view instead.
+#[allow(clippy::large_enum_variant)]
 enum Content<R> {
     /// The content ran.
     Shown(FramedResponse<R>),
@@ -85,13 +90,15 @@ pub struct StaticNodeResponse<T> {
 /// Events related to the creation of an edge to or from a node.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EdgeEvent {
-    /// Occurs if a socket was just pressed to start creating an edge.
+    /// Occurs if a socket of this node, or its handle, was just pressed to
+    /// start creating an edge.
     Started { kind: SocketKind, index: usize },
-    /// Occurs when the primary mouse button was released creating an edge ending at the specified
-    /// socket.
+    /// Occurs on the node where an edge in progress ends: the primary mouse
+    /// button was released over the handle of the specified socket, of the
+    /// kind opposite to the edge's start, or near it if it has no handle.
     Ended { kind: SocketKind, index: usize },
     /// If there was an edge in progress starting from this node, this indicates that it was
-    /// cancelled.
+    /// cancelled: released anywhere it could not end.
     Cancelled,
 }
 
@@ -110,6 +117,7 @@ pub struct NodeCtx<'a> {
     flow: egui::Direction,
     inputs: usize,
     outputs: usize,
+    highlight: SocketHighlight,
 }
 
 impl Node {
@@ -131,6 +139,7 @@ impl Node {
             collapsed: false,
             flow: egui::Direction::LeftToRight,
             socket_radius: 3.0,
+            paint_sockets: true,
             animation_time: 0.1,
             content_enabled: true,
         }
@@ -192,6 +201,19 @@ impl Node {
         self
     }
 
+    /// Whether to paint each socket as a half-disc on the frame's edge, with a
+    /// larger faded one behind it while highlighted.
+    ///
+    /// Turn it off for a node whose content draws its sockets itself, such as
+    /// on their handles, using [`NodeCtx::highlighted_sockets`]. The sockets
+    /// still work and still have their responses.
+    ///
+    /// Default: `true`.
+    pub fn paint_sockets(mut self, paint: bool) -> Self {
+        self.paint_sockets = paint;
+        self
+    }
+
     /// The time taken (seconds) for the node to interpolate toward a new location.
     ///
     /// Default: `0.1`.
@@ -240,10 +262,10 @@ impl Node {
     /// The node is out of view when its frame, at its size from the last
     /// frame, lies outside the visible area of the graph, with a margin for
     /// the frame shadow and the socket highlights. Then the node keeps its
-    /// last size and socket positions, so that edges, selection and the
-    /// automatic layout still use them. Selection, removal and edge events
-    /// occur as for a node in view. The response holds `None` in place of
-    /// the output of `content`, and has no socket responses.
+    /// last size, socket positions and socket handles, which move with it, so
+    /// that edges, selection and dragging still use them. Selection and edge
+    /// events occur as for a node in view. The response holds `None` in place
+    /// of the output of `content`, and has no socket responses.
     ///
     /// Use this in a large graph, where most nodes are out of view. Use
     /// [`Node::show`] for content that must run every frame, such as a widget
@@ -296,6 +318,7 @@ impl Node {
                 flow: self.flow,
                 inputs: self.inputs,
                 outputs: self.outputs,
+                highlight: SocketHighlight::default(),
             };
             content(node_ctx)
         });
@@ -315,6 +338,7 @@ impl Node {
             socket_color,
             self.socket_radius,
             |_, _| false,
+            self.paint_sockets,
         );
         StaticNodeResponse { inner, sockets }
     }
@@ -397,14 +421,13 @@ impl Node {
         });
 
         // Interpolate toward the desired position over time for auto-layout.
-        // Only do so if this node is not selected with the primary mouse down.
-        let is_selected = crate::is_node_selected(ui, ctx.graph_id, self.id);
-        let is_primary_down = ui.input(|i| i.pointer.primary_down());
-        let animation_time = if is_selected && is_primary_down {
-            0.0
-        } else {
-            self.animation_time
+        // Only do so if this node is not being dragged.
+        let is_dragged = {
+            let gmem_arc = crate::memory(ui, ctx.graph_id);
+            let gmem = gmem_arc.lock().expect("failed to lock graph temp memory");
+            gmem.is_dragged(self.id)
         };
+        let animation_time = if is_dragged { 0.0 } else { self.animation_time };
         let pos_graph = {
             let idx = ctx.graph_id.with(self.id.0).with("x");
             let idy = ctx.graph_id.with(self.id.0).with("y");
@@ -425,38 +448,33 @@ impl Node {
         let max_w = self.max_width.unwrap_or(ui.spacing().text_edit_width);
         let max_size = egui::Vec2::new(max_w, ctx.graph_rect.height());
 
-        // Track changes in selection for the node response.
-        let mut selection_changed = false;
-
-        // Determine whether or not this node is within the selection rect.
-        // If `shift` is down, rectangle selection is reserved for edges.
+        // Determine whether or not this node is within the selection rect, and
+        // whether its selection changed: the graph changed it this frame, when
+        // a press ended.
         // NOTE: We use the size from last frame as we don't know the size until
         // the user's content is added... Is there a better way to handle this?
-        let (mut selected, in_selection_rect, last_size) = {
+        let (selected, selection_changed, in_selection_rect, last_size, highlight) = {
             let gmem_arc = crate::memory(ui, ctx.graph_id);
-            let mut gmem = gmem_arc.lock().expect("failed to lock graph temp memory");
+            let gmem = gmem_arc.lock().expect("failed to lock graph temp memory");
             let last_size = gmem.node_sizes.get(&self.id).copied();
             let in_selection_rect = match ctx.selection_rect {
-                Some(sel_rect) if ui.input(|i| !i.modifiers.shift) => {
+                Some(sel_rect) => {
                     let size = last_size.unwrap_or(egui::Vec2::ZERO);
                     let rect = egui::Rect::from_min_size(pos_graph, size);
                     sel_rect.intersects(rect)
                 }
                 _ => false,
             };
-
-            // Update the selection if the primary mouse button was just released.
-            if ctx.select {
-                if in_selection_rect && ui.input(|i| !i.modifiers.shift) {
-                    selection_changed |= gmem.selection.nodes.insert(self.id);
-                } else if !ui.input(|i| i.modifiers.ctrl) {
-                    selection_changed |= gmem.selection.nodes.remove(&self.id);
-                }
-            }
-
             let selected = gmem.selection.nodes.contains(&self.id);
-
-            (selected, in_selection_rect, last_size)
+            let selection_changed = gmem.selection.changed_nodes.contains(&self.id);
+            let highlight = SocketHighlight::of(&gmem, self.id);
+            (
+                selected,
+                selection_changed,
+                in_selection_rect,
+                last_size,
+                highlight,
+            )
         };
 
         // Custom framed node container that remains in the scene's layer
@@ -507,6 +525,7 @@ impl Node {
                     flow: self.flow,
                     inputs: self.inputs,
                     outputs: self.outputs,
+                    highlight,
                 };
                 Content::Shown(content(node_ctx))
             }
@@ -560,84 +579,72 @@ impl Node {
             // occludes the frame.
             gmem.ptr_over_node |= response.contains_pointer();
 
-            let ctrl_down = ui.input(|i| i.modifiers.ctrl);
-
-            // If the window is pressed, select the node.
+            // A primary press on the frame starts a press of the node: on a
+            // socket's handle, an edge from the socket; elsewhere, a drag of
+            // the node, which is a click if released without a drag. The
+            // selection changes only when the press ends (see `end_press` in
+            // `lib.rs`). `is_pointer_button_down_on` is egui's hit-test, so a
+            // window or menu above the frame takes the press instead.
             let pointer = &ui.input(|i| i.pointer.clone());
-            if response.is_pointer_button_down_on() && pointer.primary_pressed() {
-                // If ctrl is down, check for deselection.
-                let was_selected = gmem.selection.nodes.contains(&self.id);
-                if ctrl_down && was_selected {
-                    selection_changed |= gmem.selection.nodes.remove(&self.id);
-                    selected = false;
-                } else {
-                    // Clear other selections if ctrl is not pressed and this is newly pressed.
-                    if !ctrl_down && !was_selected {
-                        gmem.selection.changed |= !gmem.selection.nodes.is_empty();
-                        gmem.selection.nodes.clear();
+            let primary_pressed = pointer.primary_pressed();
+            if primary_pressed && response.is_pointer_button_down_on() && gmem.pressed.is_none() {
+                let ptr_graph = response
+                    .hover_pos()
+                    .or(response.interact_pointer_pos())
+                    .unwrap_or_default();
+                let handle = match immutable {
+                    true => None,
+                    false => gmem
+                        .sockets
+                        .get(&self.id)
+                        .and_then(|s| s.handle_at(ptr_graph)),
+                };
+                let action = match handle {
+                    Some((kind, index)) => {
+                        edge_event = Some(EdgeEvent::Started { kind, index });
+                        let node = self.id;
+                        crate::PressAction::Socket(crate::socket::Socket { node, kind, index })
                     }
-                    selection_changed |= gmem.selection.nodes.insert(self.id);
-                    selected = true;
-                    // Initialize drag - skip when immutable (still allow click-to-select above).
-                    if !immutable && gmem.pressed.is_none() {
-                        let ptr_graph = response.hover_pos().unwrap_or_default();
-                        gmem.pressed = Some(crate::Pressed {
-                            over_selection_at_origin: true,
-                            origin_pos: ptr_graph,
-                            current_pos: ptr_graph,
-                            action: crate::PressAction::DragNodes {
-                                node: Some(crate::PressedNode {
-                                    id: self.id,
-                                    position_at_origin: pos_graph,
-                                }),
-                            },
-                        });
-                    }
-                }
+                    None => crate::PressAction::DragNodes(crate::PressedNode {
+                        id: self.id,
+                        position_at_origin: pos_graph,
+                        moves_selection: selected,
+                    }),
+                };
+                gmem.pressed = Some(crate::Pressed {
+                    button: egui::PointerButton::Primary,
+                    origin_pos: ptr_graph,
+                    current_pos: ptr_graph,
+                    origin_screen: pointer.interact_pos().unwrap_or_default(),
+                    dragged: false,
+                    action,
+                });
 
-            // If the primary button was pressed, check for edge events (skip when immutable).
-            } else if !immutable
-                && !response.is_pointer_button_down_on()
-                && pointer.primary_pressed()
-            {
-                // If this node's socket was pressed, create a start event.
-                if let Some(ref pressed) = gmem.pressed {
-                    if let crate::PressAction::Socket(socket) = pressed.action {
-                        if self.id == socket.node {
-                            let kind = socket.kind;
-                            let index = socket.index;
-                            edge_event = Some(EdgeEvent::Started { kind, index });
-                        }
-                    }
-                }
-
-                // Also check for deselection.
-                if !ctrl_down
-                    && !gmem
-                        .pressed
-                        .as_ref()
-                        .map(|p| p.over_selection_at_origin)
-                        .unwrap_or(false)
-                    && !gmem.selection.nodes.contains(&self.id)
+            // A press on the background near this node's socket starts an edge
+            // from it (see `graph_interaction`).
+            } else if primary_pressed {
+                if let Some(crate::PressAction::Socket(socket)) =
+                    gmem.pressed.as_ref().map(|p| &p.action)
                 {
-                    selection_changed |= gmem.selection.nodes.remove(&self.id);
-                    selected = false;
-                }
-
-            // Check for edge creation / cancellation events (skip when immutable).
-            } else if !immutable {
-                if let Some(r) = ctx.socket_press_released {
-                    if let Some(c) = gmem.closest_socket {
-                        if r.kind == c.kind && self.id == r.node {
-                            edge_event = Some(EdgeEvent::Cancelled);
-                        } else if self.id == c.node && ui.input(|i| i.pointer.primary_released()) {
-                            let kind = c.kind;
-                            let index = c.index;
-                            edge_event = Some(EdgeEvent::Ended { kind, index });
-                        }
-                    } else if edge_event.is_none() && self.id == r.node {
-                        edge_event = Some(EdgeEvent::Cancelled);
+                    if self.id == socket.node {
+                        let kind = socket.kind;
+                        let index = socket.index;
+                        edge_event = Some(EdgeEvent::Started { kind, index });
                     }
+                }
+            }
+
+            // An edge in progress ends on the socket of the opposite kind
+            // under the pointer, else its start cancels it.
+            if let Some(start) = ctx.socket_press_released {
+                let end = gmem.closest_socket.filter(|c| c.kind != start.kind);
+                match end {
+                    Some(end) if end.node == self.id => {
+                        let (kind, index) = (end.kind, end.index);
+                        edge_event = Some(EdgeEvent::Ended { kind, index });
+                    }
+                    None if start.node == self.id => edge_event = Some(EdgeEvent::Cancelled),
+                    _ => (),
                 }
             }
         }
@@ -655,36 +662,13 @@ impl Node {
                     &node_sockets,
                     socket_color,
                     self.socket_radius,
+                    self.paint_sockets,
                 )
             }
             None => SocketResponses::default(),
         };
 
-        // If the delete or backspace key was pressed and the node is selected, remove it.
-        // Skip when immutable.
-        let removed = if !immutable
-            && selected
-            && !ui.ctx().egui_wants_keyboard_input()
-            && ui.input(|i| i.key_pressed(egui::Key::Delete) | i.key_pressed(egui::Key::Backspace))
-        {
-            // Remove ourselves from the selection.
-            let gmem_arc = crate::memory(ui, ctx.graph_id);
-            let mut gmem = gmem_arc.lock().expect("failed to lock graph temp memory");
-            selection_changed |= gmem.selection.nodes.remove(&self.id);
-            selected = false;
-            true
-        } else {
-            false
-        };
-
-        // Propagate this node's selection change to the graph-level dirty flag.
-        if selection_changed {
-            let gmem_arc = crate::memory(ui, ctx.graph_id);
-            let mut gmem = gmem_arc.lock().expect("failed to lock graph temp memory");
-            gmem.selection.changed = true;
-        }
-
-        if selection_changed || removed || edge_event.is_some() {
+        if selection_changed || edge_event.is_some() {
             response.mark_changed();
         }
 
@@ -693,7 +677,6 @@ impl Node {
             sockets: socket_responses,
             selection_changed,
             selected,
-            removed,
             edge_event,
         }
     }
@@ -748,13 +731,6 @@ impl<R> NodeResponse<R> {
         self.selected
     }
 
-    /// Whether or not the node was removed from the graph.
-    ///
-    /// This occurs if the `Delete` key is pressed while the node is selected.
-    pub fn removed(&self) -> bool {
-        self.removed
-    }
-
     /// A reference to the inner value returned by the node's content.
     pub fn inner(&self) -> &R {
         &self.response.inner
@@ -798,6 +774,16 @@ impl<'a> NodeCtx<'a> {
     /// The current interaction state of the node.
     pub fn interaction(&self) -> NodeInteraction {
         self.interaction
+    }
+
+    /// The sockets of this node highlighted this frame: the one an edge in
+    /// progress started from, and the one it would end on if released now.
+    ///
+    /// Read it before [`NodeCtx::framed`], which consumes the context, to
+    /// draw the highlight on the sockets' handles. Nothing is highlighted in
+    /// [`Node::show_static`].
+    pub fn highlighted_sockets(&self) -> SocketHighlight {
+        self.highlight
     }
 
     /// The current egui style.
@@ -903,15 +889,26 @@ fn sublayers(ui: &egui::Ui, egui_id: egui::Id, in_view: bool) -> (egui::LayerId,
     let parent = ui.layer_id();
     let socket_layer = egui::LayerId::new(parent.order, egui_id.with("sockets"));
     let frame_layer = egui::LayerId::new(parent.order, egui_id);
+    let transform = parent_transform(ui.ctx(), parent);
     for layer in [socket_layer, frame_layer] {
         if in_view {
             ui.ctx().set_sublayer(parent, layer);
         }
-        if let Some(transform) = ui.ctx().layer_transform_to_global(parent) {
-            ui.ctx().set_transform_layer(layer, transform);
-        }
+        ui.ctx().set_transform_layer(layer, transform);
     }
     (socket_layer, frame_layer)
+}
+
+/// The transform of layer `parent`, for its sublayers to follow.
+///
+/// egui stores no transform for a layer at the identity, so this is the
+/// identity when there is none. A sublayer given it then drops a transform it
+/// kept from before, such as from when the view was zoomed.
+pub(crate) fn parent_transform(
+    ctx: &egui::Context,
+    parent: egui::LayerId,
+) -> egui::emath::TSTransform {
+    ctx.layer_transform_to_global(parent).unwrap_or_default()
 }
 
 /// How far out of the visible area of a graph a node still counts as in
@@ -1114,7 +1111,9 @@ mod tests {
             a_out: Option<(egui::Pos2, egui::Vec2)>,
             /// Whether `A` has a response for its output.
             a_out_response: bool,
-            a_removed: bool,
+            /// Whether `A` is selected, and whether its selection changed.
+            a_selected: bool,
+            a_selection_changed: bool,
             /// The id of the content ui of `B`, which shows after `A`.
             b_content_id: egui::Id,
         }
@@ -1171,12 +1170,15 @@ mod tests {
                                 a_ran = true;
                                 c.framed(|ui, _| ui.label("a"))
                             };
-                            let (a_rect, a_out_response, a_removed) = if cull {
+                            let (a_rect, a_out_response, a_selected, a_selection_changed) = if cull
+                            {
                                 let r = a.show_or_cull(nctx, ui, content);
-                                (r.rect, r.sockets().output(0).is_some(), r.removed())
+                                let out = r.sockets().output(0).is_some();
+                                (r.rect, out, r.selected(), r.selection().is_some())
                             } else {
                                 let r = a.show(nctx, ui, content);
-                                (r.rect, r.sockets().output(0).is_some(), r.removed())
+                                let out = r.sockets().output(0).is_some();
+                                (r.rect, out, r.selected(), r.selection().is_some())
                             };
                             let mut b_content_id = None;
                             Node::from_id(B)
@@ -1187,7 +1189,8 @@ mod tests {
                                 a_rect,
                                 a_out: None,
                                 a_out_response,
-                                a_removed,
+                                a_selected,
+                                a_selection_changed,
                                 b_content_id: b_content_id.expect("B ran"),
                             });
                         })
@@ -1242,9 +1245,10 @@ mod tests {
             assert_eq!(p.a_out, Some((pos + delta, normal)));
         }
 
-        /// Out of view, a selected `A` is still removed on delete.
+        /// Out of view, a selected `A` stays selected, and Delete leaves it
+        /// so: the graph removes nothing, in view or out of it.
         #[test]
-        fn out_of_view_node_is_removed() {
+        fn out_of_view_node_keeps_its_selection() {
             let (mut g, _) = test_graph(true);
             g.view.scene_rect = panned();
             g.selected = [A].into();
@@ -1258,7 +1262,8 @@ mod tests {
             };
             let p = pass(&mut g, vec![delete]);
             assert!(!p.a_ran);
-            assert!(p.a_removed);
+            assert!(p.a_selected);
+            assert!(!p.a_selection_changed);
         }
 
         /// Culling `A` does not change the egui ids of the nodes after it.

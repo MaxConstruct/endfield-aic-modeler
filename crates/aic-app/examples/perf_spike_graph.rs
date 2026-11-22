@@ -14,10 +14,15 @@
 //!   view. Without it, nodes show with `Node::show`.
 //! - `SPIKE_NO_LABELS=1`: no link labels.
 //! - `SPIKE_NO_LINKS=1`: no links at all.
-//! - `SPIKE_EDGE_DPP=5`: flatten edges every 5 screen pixels. By default aic-node-graph flattens them
-//!   every 5 graph units at any zoom (`Edge::DEFAULT_DISTANCE_PER_POINT`).
+//! - `SPIKE_EDGE_DPP=2.5`: flatten edges every 2.5 screen pixels instead of aic-node-graph's
+//!   default of 5 (`Edge::DEFAULT_DISTANCE_PER_POINT`, in screen pixels at any zoom).
 //! - `SPIKE_HEADLESS=1`: open no window; build and tessellate the UI for the same phases and print
 //!   the CPU time per frame.
+//!
+//! Each port has a handle, as the app's port icon will be, and the scripted new wire starts with a
+//! press on the handle of an output. The handle is a strip of the frame beside the port's rate
+//! label, not the label, as a label takes presses for text selection; it adds nothing to the card's
+//! layout or painting.
 
 // Links `aic_app`, whose global allocator (mimalloc) the app runs on.
 use aic_app as _;
@@ -102,9 +107,11 @@ struct Spike {
     results: Vec<PhaseResult>,
     adapter: String,
     wire_drag: Option<WireDrag>,
-    /// The screen position and normal of the scripted wire's output, from the last frame.
-    wire_pin: Option<(Pos2, egui::Vec2)>,
-    /// `SPIKE_EDGE_DPP`: the distance between the points of a flattened edge, in screen pixels.
+    /// The screen position of the centre of the handle of the scripted wire's output, from the
+    /// last frame.
+    wire_pin: Option<Pos2>,
+    /// `SPIKE_EDGE_DPP`: the distance between the points of a flattened edge, in screen pixels,
+    /// if not aic-node-graph's default.
     edge_screen_distance: Option<f32>,
     cull: bool,
     headless: bool,
@@ -119,6 +126,25 @@ fn graph_id() -> Id {
 
 fn rate_label(ui: &mut Ui, rate: f64) {
     ui.label(format!("{rate:.2} /min"));
+}
+
+/// The width of a port's handle: a strip of the frame's margin (6) beside the rate label.
+const HANDLE_WIDTH: f32 = 6.0;
+
+/// The handle of an input whose row is `row`: the strip left of it.
+fn input_handle(row: Rect) -> Rect {
+    Rect::from_min_max(
+        Pos2::new(row.left() - HANDLE_WIDTH, row.top()),
+        row.left_bottom(),
+    )
+}
+
+/// The handle of an output whose row is `row`: the strip right of it.
+fn output_handle(row: Rect) -> Rect {
+    Rect::from_min_max(
+        row.right_top(),
+        Pos2::new(row.right() + HANDLE_WIDTH, row.bottom()),
+    )
 }
 
 /// The transform egui-snarl starts from: the nodes' positions, with a margin of 100, fit in the
@@ -264,7 +290,8 @@ impl Spike {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             for (k, &rate) in rates[..INPUTS].iter().enumerate() {
-                                sockets.row(ui, Some(k), None, |ui| rate_label(ui, rate));
+                                let row = sockets.row(ui, Some(k), None, |ui| rate_label(ui, rate));
+                                sockets.input_handle(k, input_handle(row.response.rect));
                             }
                         });
                         ui.vertical(|ui| {
@@ -277,7 +304,8 @@ impl Spike {
                         });
                         ui.vertical(|ui| {
                             for (k, &rate) in rates[INPUTS..].iter().enumerate() {
-                                sockets.row(ui, None, Some(k), |ui| rate_label(ui, rate));
+                                let row = sockets.row(ui, None, Some(k), |ui| rate_label(ui, rate));
+                                sockets.output_handle(k, output_handle(row.response.rect));
                             }
                         });
                     });
@@ -293,16 +321,15 @@ impl Spike {
     }
 
     fn show_edges(&mut self, ectx: &mut aic_node_graph::EdgesCtx, ui: &mut Ui) {
-        // egui_graph flattens edges at a fixed distance in graph space; SPIKE_EDGE_DPP sets it in
-        // screen pixels instead.
-        let scaling = self.to_global.map_or(1.0, |t| t.scaling);
+        // In screen pixels, at any zoom.
         let distance = self
             .edge_screen_distance
-            .map_or(Edge::DEFAULT_DISTANCE_PER_POINT, |px| px / scaling);
-        for link in &mut self.links {
+            .unwrap_or(Edge::DEFAULT_DISTANCE_PER_POINT);
+        for link in &self.links {
             let a = (NodeId::from_u64(link.from as u64), link.output);
             let b = (NodeId::from_u64(link.to as u64), link.input);
-            Edge::new(a, b, &mut link.selected)
+            Edge::new(a, b)
+                .selected(link.selected)
                 .distance_per_point(distance)
                 .show(ectx, ui);
         }
@@ -346,11 +373,12 @@ impl Spike {
         }
     }
 
-    /// The scripted wire's output, in graph space, from the graph's memory.
-    fn wire_pin_graph(&self, ctx: &egui::Context) -> Option<(Pos2, egui::Vec2)> {
+    /// The centre of the handle of the scripted wire's output, in graph space, from the graph's
+    /// memory.
+    fn wire_pin_graph(&self, ctx: &egui::Context) -> Option<Pos2> {
         let node = NodeId::from_u64((COLUMNS * 3 + 5) as u64);
         aic_node_graph::with_graph_memory(ctx, graph_id(), |gmem| {
-            gmem.node_sockets().get(&node)?.output(0)
+            Some(gmem.node_sockets().get(&node)?.output_handle(0)?.center())
         })
     }
 
@@ -407,12 +435,11 @@ impl eframe::App for Spike {
         if self.frame_in_phase < WARMUP {
             return;
         }
-        // Hover just off the frame on an output socket (a press on the frame drags the node), press
-        // there on the next frame, then move the pointer around while the new wire follows it.
-        let Some((center, normal)) = self.wire_pin else {
+        // Hover the handle of an output, press there on the next frame, then move the pointer
+        // around while the new wire follows it.
+        let Some(start) = self.wire_pin else {
             return;
         };
-        let start = center + normal * 2.0;
         let t = (self.frame_in_phase - WARMUP) as f32;
         match self.wire_drag {
             None => {
@@ -512,7 +539,7 @@ impl eframe::App for Spike {
             });
         self.wire_pin = self
             .wire_pin_graph(ui.ctx())
-            .and_then(|(pos, normal)| self.to_global.map(|to_global| (to_global * pos, normal)));
+            .and_then(|pos| self.to_global.map(|to_global| to_global * pos));
         if self.start_transform.is_none() && self.frame_in_phase > 5 {
             // SPIKE_SCALE=1.0 starts zoomed in, with only part of the graph on screen.
             let scale = std::env::var("SPIKE_SCALE")

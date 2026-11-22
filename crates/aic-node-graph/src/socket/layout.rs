@@ -9,10 +9,16 @@ use std::collections::BTreeMap;
 /// Users can ignore it for automatic spacing, or switch to explicit positioning
 /// via [`SocketLayout::input`], [`SocketLayout::output`], [`SocketLayout::row`],
 /// or [`SocketLayout::col`].
+///
+/// A socket can also be given a handle, a rect inside the node's content (see
+/// [`SocketLayout::input_handle`]), from which edges are started and on which
+/// they end. The socket itself, where edges attach, stays on the frame's edge.
 pub struct SocketLayout {
     flow: egui::Direction,
     inputs: SocketPositions,
     outputs: SocketPositions,
+    input_handles: BTreeMap<usize, egui::Rect>,
+    output_handles: BTreeMap<usize, egui::Rect>,
 }
 
 enum SocketPositions {
@@ -29,7 +35,31 @@ impl SocketLayout {
             flow,
             inputs: SocketPositions::EvenlySpaced(inputs),
             outputs: SocketPositions::EvenlySpaced(outputs),
+            input_handles: BTreeMap::new(),
+            output_handles: BTreeMap::new(),
         }
+    }
+
+    /// Make `rect`, in the content's coordinates, the handle of input `ix`.
+    ///
+    /// A primary press on the handle starts an edge from the input, rather
+    /// than dragging the node; while an edge from an output is in progress,
+    /// the pointer over the handle makes the input its end, and a release
+    /// there ends it. A socket with a handle is pressed only through it, not
+    /// from the background just outside the frame. The handle does not move
+    /// the socket: place it with [`SocketLayout::input`] or
+    /// [`SocketLayout::row`], for instance with the same rect.
+    ///
+    /// A widget drawn on the handle should sense clicks only: one that senses
+    /// drags takes the press from the node. A handle for a socket the node
+    /// does not have is ignored.
+    pub fn input_handle(&mut self, ix: usize, rect: egui::Rect) {
+        self.input_handles.insert(ix, rect);
+    }
+
+    /// Make `rect` the handle of output `ix`. See [`SocketLayout::input_handle`].
+    pub fn output_handle(&mut self, ix: usize, rect: egui::Rect) {
+        self.output_handles.insert(ix, rect);
     }
 
     /// Set an input socket's explicit cross-axis position.
@@ -111,10 +141,16 @@ impl SocketLayout {
     ) -> NodeSockets {
         let inputs = resolve_positions(&self.inputs, flow, rect, socket_padding, true);
         let outputs = resolve_positions(&self.outputs, flow, rect, socket_padding, false);
+        let mut input_handles = self.input_handles;
+        input_handles.retain(|ix, _| inputs.contains_key(ix));
+        let mut output_handles = self.output_handles;
+        output_handles.retain(|ix, _| outputs.contains_key(ix));
         NodeSockets {
             flow,
             inputs,
             outputs,
+            input_handles,
+            output_handles,
         }
     }
 }

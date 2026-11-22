@@ -29,6 +29,44 @@ pub struct PositionedSocket {
     pub normal: egui::Vec2,
 }
 
+/// The sockets of a node to show as highlighted this frame, as given to its
+/// content by [`NodeCtx::highlighted_sockets`](crate::NodeCtx::highlighted_sockets),
+/// such as to draw them on the sockets' handles. Each is a kind and an index.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct SocketHighlight {
+    /// The socket of this node from which the edge in progress started, the
+    /// one pressed.
+    pub start: Option<(SocketKind, usize)>,
+    /// The socket of this node on which the edge in progress would end if
+    /// released now.
+    pub end: Option<(SocketKind, usize)>,
+}
+
+impl SocketHighlight {
+    /// Whether the given socket is highlighted, as the start or the end.
+    pub fn contains(&self, kind: SocketKind, index: usize) -> bool {
+        self.start == Some((kind, index)) || self.end == Some((kind, index))
+    }
+
+    /// The highlighted sockets of `node` in the graph's memory.
+    pub(crate) fn of(gmem: &crate::GraphTempMemory, node: NodeId) -> Self {
+        let start = match gmem.pressed.as_ref().map(|p| &p.action) {
+            Some(crate::PressAction::Socket(socket)) => Some(*socket),
+            _ => None,
+        };
+        let end = match (start, gmem.closest_socket) {
+            (Some(start), Some(c)) if c.node == node && c.kind != start.kind => {
+                Some((c.kind, c.index))
+            }
+            _ => None,
+        };
+        Self {
+            start: start.filter(|s| s.node == node).map(|s| (s.kind, s.index)),
+            end,
+        }
+    }
+}
+
 /// Collected [`egui::Response`]s for all sockets on a node.
 ///
 /// Each socket is allocated as an interactive widget (with [`egui::Sense::hover`]),
@@ -128,7 +166,8 @@ fn paint_semicircle(
 /// (using `Shape::convex_polygon`), and calls `ui.interact()` to produce per-socket responses.
 ///
 /// By rendering semicircles that only extend outward from the frame border, sockets avoid
-/// visual overlap with node frames regardless of sublayer ordering.
+/// visual overlap with node frames regardless of sublayer ordering. With `discs` false, no
+/// semicircle is painted, but the responses are still made.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn show(
     ui: &egui::Ui,
@@ -139,6 +178,7 @@ pub(crate) fn show(
     node_sockets: &crate::NodeSockets,
     socket_color: egui::Color32,
     socket_radius: f32,
+    discs: bool,
 ) -> SocketResponses {
     // Phase A: Extract highlight state, then drop the lock.
     let (pressed_socket, closest_socket) = {
@@ -178,6 +218,7 @@ pub(crate) fn show(
         socket_color,
         socket_radius,
         paint_highlight,
+        discs,
     )
 }
 
@@ -190,7 +231,9 @@ pub(crate) fn show(
 ///
 /// `highlight` names the sockets that get the larger, faded semicircle
 /// behind them, such as a pressed socket or the closest one to the pointer
-/// while an edge is in progress. This is the graph-free half of [`show`].
+/// while an edge is in progress. This is the graph-free half of [`show`]. With
+/// `discs` false, nothing is painted.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn paint(
     ui: &egui::Ui,
     egui_id: egui::Id,
@@ -199,6 +242,7 @@ pub(crate) fn paint(
     socket_color: egui::Color32,
     socket_radius: f32,
     highlight: impl Fn(SocketKind, usize) -> bool,
+    discs: bool,
 ) -> SocketResponses {
     let hl_size = highlight_radius(socket_radius);
     let interact_diameter = ui
@@ -209,11 +253,13 @@ pub(crate) fn paint(
     let painter = ui.painter().clone().with_layer_id(socket_layer);
 
     let socket = |kind, ix, pos, normal| {
-        if highlight(kind, ix) {
+        if discs && highlight(kind, ix) {
             let color = socket_color.linear_multiply(0.25);
             paint_semicircle(&painter, pos, hl_size, normal, color);
         }
-        paint_semicircle(&painter, pos, socket_radius, normal, socket_color);
+        if discs {
+            paint_semicircle(&painter, pos, socket_radius, normal, socket_color);
+        }
         let id = match kind {
             SocketKind::Input => egui_id.with("in"),
             SocketKind::Output => egui_id.with("out"),
