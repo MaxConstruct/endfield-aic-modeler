@@ -4,10 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AIC Modeler</title>
-    <!-- The app, built for wasm32 by Trunk. -->
-    <link data-trunk rel="rust" data-bin="aic-app" data-wasm-opt="0" />
-    <!-- The game data, which the app fetches from data/ next to this page. -->
-    <link data-trunk rel="copy-dir" href="../../data" />
+    <!-- The app, built for wasm32 by Trunk. Trunk.toml's pattern_script starts it, with the
+         .wasm this page fetches (PLAN.md, M13 step 4). -->
+    <link data-trunk rel="rust" data-bin="aic-app" data-wasm-opt="2" />
+    <!-- No favicon: say so, so the browser doesn't ask for one. -->
+    <link rel="icon" href="data:,">
     <style>
         html, body {
             margin: 0;
@@ -22,9 +23,149 @@
             width: 100%;
             height: 100%;
         }
+        /* The loading page: a percentage and a bar under it, and no words, since the words are
+           in the .wasm with Fluent (ADR 0012). Colours are the app's: theme::color::TEXT_MUTED,
+           CONTROL, ACCENT and NEGATIVE. */
+        #loading {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: #111214;
+            color: #a0a3ab;
+            font: 500 15px/1 system-ui, sans-serif;
+            font-variant-numeric: tabular-nums;
+        }
+        #loading-bar {
+            width: 240px;
+            height: 4px;
+            border-radius: 2px;
+            background: #26282d;
+            overflow: hidden;
+        }
+        #loading-fill {
+            width: 0;
+            height: 100%;
+            background: #6e9bff;
+        }
+        #loading.failed #loading-fill {
+            background: #ef6461;
+        }
     </style>
 </head>
 <body>
     <canvas id="aic-modeler"></canvas>
+    <!-- scripts/web-assets.sh writes the files in: the .wasm's name and size, and each icon
+         sheet's. -->
+    <div id="loading" data-wasm="" data-sheets="">
+        <div id="loading-text">0%</div>
+        <div id="loading-bar"><div id="loading-fill"></div></div>
+    </div>
+    <script>
+        // One count from 0 to 100% over every byte the editor needs: the .wasm and the icon
+        // sheets, all fetched from here at once. It stops at 99% until the app has decoded the
+        // sheets and drawn the editor, which then takes this page away. A file that fails shows
+        // its name and HTTP status (PLAN.md, M13 step 4).
+        (() => {
+            const page = document.getElementById("loading");
+            const text = document.getElementById("loading-text");
+            const fill = document.getElementById("loading-fill");
+            const file = (entry) => {
+                const [name, size] = entry.split(":");
+                return { name, size: Number(size), bytes: 0 };
+            };
+            const wasm = file(page.dataset.wasm);
+            const sheets = page.dataset.sheets.split(" ").filter(Boolean).map(file);
+            const files = [wasm, ...sheets];
+            const total = files.reduce((sum, f) => sum + f.size, 0);
+            let shown = 0;
+            let failed = false;
+            // Each percentage shown and when, for measuring a load.
+            const steps = [];
+
+            const show = () => {
+                if (failed || total === 0) return;
+                const done = files.reduce((sum, f) => sum + Math.min(f.bytes, f.size), 0);
+                const percent = Math.min(99, Math.floor((done / total) * 100));
+                if (percent > shown) {
+                    shown = percent;
+                    steps.push([Math.round(performance.now()), percent]);
+                    text.textContent = percent + "%";
+                    fill.style.width = percent + "%";
+                }
+            };
+
+            const fail = (name, status) => {
+                if (failed) return;
+                failed = true;
+                page.classList.add("failed");
+                text.textContent = status ? name + " " + status : name;
+            };
+
+            // A file that failed where no response says why (an import, a compile): ask the
+            // server for its status.
+            const failAsking = async (name) => {
+                const status = await fetch(name, { method: "HEAD", cache: "no-store" })
+                    .then((response) => response.status, () => 0);
+                fail(name, status);
+            };
+
+            // A response whose body counts its bytes into `f` as it is read.
+            const counted = async (f) => {
+                let response;
+                try {
+                    response = await fetch(f.name);
+                } catch (error) {
+                    fail(f.name);
+                    throw error;
+                }
+                if (!response.ok) {
+                    fail(f.name, response.status);
+                    throw new Error(f.name + " " + response.status);
+                }
+                // Read eagerly, as Trunk's own loader does, so the download never waits on
+                // whoever reads the body.
+                const reader = response.body.getReader();
+                const body = new ReadableStream({
+                    async start(controller) {
+                        try {
+                            for (;;) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                f.bytes += value.byteLength;
+                                show();
+                                controller.enqueue(value);
+                            }
+                            controller.close();
+                        } catch (error) {
+                            fail(f.name);
+                            controller.error(error);
+                        }
+                    },
+                });
+                return new Response(body, { status: response.status, headers: response.headers });
+            };
+
+            if (!wasm.name || sheets.length === 0) {
+                // Built without scripts/web-assets.sh: the page doesn't know its files.
+                fail(location.pathname.split("/").pop() || "index.html");
+            }
+            window.aicLoading = {
+                // The .wasm as a response, for wasm-bindgen to compile as it arrives.
+                wasm: counted(wasm),
+                // The app awaits these before it starts (src/web.rs).
+                sheets: Promise.all(
+                    sheets.map((f) => counted(f).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b))),
+                ),
+                failed: failAsking,
+                steps,
+            };
+            window.aicLoading.wasm.catch(() => {});
+            window.aicLoading.sheets.catch(() => {});
+        })();
+    </script>
 </body>
 </html>

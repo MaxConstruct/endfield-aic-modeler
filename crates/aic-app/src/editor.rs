@@ -57,8 +57,6 @@ pub struct Editor {
     pub(crate) save_as_prompt: Option<String>,
     /// The file the player is picking in the browser, once read.
     pub(crate) upload: Option<std::sync::mpsc::Receiver<Upload>>,
-    /// Decoded icons belong to the old data after a switch.
-    pub(crate) icons_stale: bool,
     /// The shortcut last pressed, and when by egui's clock (`InputState::time`): its toolbar
     /// button lights up for a moment.
     pub(crate) flash: Option<(Command, f64)>,
@@ -88,7 +86,6 @@ impl Editor {
             downloads: Vec::new(),
             save_as_prompt: None,
             upload: None,
-            icons_stale: false,
             export_to: None,
             flash: None,
             show_performance: true,
@@ -131,12 +128,12 @@ impl Editor {
     }
 
     /// Loads another data version or language from the data folder. The open graph stays; its
-    /// recipe nodes are matched against the new data by ID. A failure keeps the current data.
+    /// recipe nodes are matched against the new data by ID. A failure keeps the current data. The
+    /// icons stay: they are the program's, the same for every version (ADR 0012).
     pub fn switch_data(&mut self, choice: DataChoice) {
         if self.session.switch_data(choice) {
             self.view
                 .rebuild(self.session.document(), self.session.catalog());
-            self.icons_stale = true;
         }
     }
 
@@ -281,9 +278,6 @@ impl Editor {
         }
         self.handle_close_request(ui.ctx());
         self.poll_upload(ui.ctx());
-        if std::mem::take(&mut self.icons_stale) {
-            crate::widgets::forget_icons(ui.ctx());
-        }
         egui::Panel::top("top-bar").show(ui, |ui| self.top_bar(ui, strings));
         egui::Panel::bottom("status-bar").show(ui, |ui| self.status_bar(ui, strings));
         let mut show_browser = self.show_browser;

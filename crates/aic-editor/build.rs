@@ -1,9 +1,7 @@
-//! Builds the game data into the program: every file of every version folder under the repository's
-//! `data/` goes into `$OUT_DIR/embedded_data.rs` as a table of `include_bytes!`, which
-//! `src/embedded.rs` hands to `aic_data::Bundle`. A missing `data/` gives an empty table.
-//!
-//! The web build fetches the same files from its own site instead, so for `wasm32` the table holds
-//! only their paths (`src/web.rs`).
+//! Builds the game data and the names into the program, on the desktop and the web alike
+//! (ADR 0012): every `<version>.json` and `<version>_overlay.json` in the repository's `data/`,
+//! and every names table in `i18n/names/<lang>.json`, go into `$OUT_DIR/embedded.rs` as tables of
+//! `include_bytes!`, which `src/embedded.rs` reads. A missing folder gives an empty table.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -17,70 +15,48 @@ fn main() {
         .nth(2)
         .expect("aic-editor sits two folders below the repository root")
         .join("data");
-    println!("cargo:rerun-if-changed={}", data.display());
+    let names = manifest.join("i18n").join("names");
 
+    let mut table = String::new();
+    write_table(&mut table, "DATA", &json_files(&data), |name| name);
+    write_table(&mut table, "NAMES", &json_files(&names), |name| {
+        name.strip_suffix(".json").unwrap_or(name)
+    });
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("set by cargo"));
+    fs::write(out.join("embedded.rs"), table).expect("OUT_DIR is writable");
+}
+
+/// The `.json` files directly in `dir` (not in its subfolders), by name, sorted. Cargo is told to
+/// run this again when the folder or any of them changes.
+fn json_files(dir: &Path) -> Vec<(String, PathBuf)> {
+    // Cargo watches a directory's own entries, not what is in its files.
+    println!("cargo:rerun-if-changed={}", dir.display());
     let mut files = Vec::new();
-    if let Ok(entries) = fs::read_dir(&data) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            // Only version folders; `data/README.md` is for people.
-            if path.is_dir() {
-                collect(&data, &path, &mut files);
-            }
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if path.is_file() && name.ends_with(".json") {
+            println!("cargo:rerun-if-changed={}", path.display());
+            files.push((name.to_owned(), path.clone()));
         }
     }
     files.sort();
+    files
+}
 
-    let web = env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|arch| arch == "wasm32");
-    let mut table = if web {
-        String::from("pub static FILES: &[&str] = &[\n")
-    } else {
-        String::from("pub static FILES: &[(&str, &[u8])] = &[\n")
-    };
-    for (key, path) in &files {
-        if web {
-            writeln!(table, "    {key:?},")
-        } else {
-            writeln!(
-                table,
-                "    ({key:?}, include_bytes!({:?})),",
-                path.display().to_string()
-            )
-        }
+/// `pub static <name>: &[(&str, &[u8])]`, keyed by `key(file name)`.
+fn write_table(table: &mut String, name: &str, files: &[(String, PathBuf)], key: fn(&str) -> &str) {
+    writeln!(table, "pub static {name}: &[(&str, &[u8])] = &[").expect("writing to a String");
+    for (file, path) in files {
+        writeln!(
+            table,
+            "    ({:?}, include_bytes!({:?})),",
+            key(file),
+            path.display().to_string()
+        )
         .expect("writing to a String");
     }
     table.push_str("];\n");
-    let out = PathBuf::from(env::var_os("OUT_DIR").expect("set by cargo"));
-    fs::write(out.join("embedded_data.rs"), table).expect("OUT_DIR is writable");
-}
-
-/// Every file below `dir` but notes (`*.md`), keyed by its `/`-separated path under `root`.
-fn collect(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) {
-    // Cargo watches a directory's own entries, not its subfolders' files.
-    println!("cargo:rerun-if-changed={}", dir.display());
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect(root, &path, files);
-            continue;
-        }
-        if path.extension().is_some_and(|ext| ext == "md") {
-            continue;
-        }
-        let Ok(relative) = path.strip_prefix(root) else {
-            continue;
-        };
-        let parts: Option<Vec<&str>> = relative
-            .components()
-            .map(|c| c.as_os_str().to_str())
-            .collect();
-        let Some(parts) = parts else {
-            continue;
-        };
-        println!("cargo:rerun-if-changed={}", path.display());
-        files.push((parts.join("/"), path.clone()));
-    }
 }

@@ -180,11 +180,8 @@ pub fn recipe_node(catalog: &Catalog, recipe: RecipeId) -> Option<NodeKind> {
 mod tests {
     use super::*;
 
-    const DATA: &[u8] = include_bytes!("../fixtures/satisfactory/vtest/data.json");
-    const EN: &[u8] = include_bytes!("../fixtures/satisfactory/vtest/i18n/en.json");
-
     fn catalog() -> Catalog {
-        Catalog::from_bytes(DATA, EN, None).expect("fixture loads")
+        crate::testing::fixture_catalog()
     }
 
     fn ids(recipes: Vec<&Recipe>) -> Vec<&str> {

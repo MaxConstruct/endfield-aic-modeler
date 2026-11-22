@@ -6,8 +6,6 @@ use std::path::PathBuf;
 
 use aic_app::App;
 #[cfg(not(target_arch = "wasm32"))]
-use aic_app::WINDOW_SIZE;
-#[cfg(not(target_arch = "wasm32"))]
 use aic_app::data::DataFolder;
 use aic_app::i18n::Strings;
 
@@ -19,12 +17,7 @@ fn main() -> eframe::Result {
     let strings = Strings::english();
     let title = strings.get("app-title");
     let folder = DataFolder::find(data_flag().as_deref()).map_err(|error| error.to_string());
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size(WINDOW_SIZE),
-        ..Default::default()
-    };
+    let options = aic_app::native_options(&title);
     // eframe keeps the window hidden until its first frame, but on Windows restoring a maximized
     // window shows it blank for a moment while it's built; cloak it until then.
     #[cfg(windows)]
@@ -36,6 +29,7 @@ fn main() -> eframe::Result {
             #[cfg(windows)]
             startup_cloak::reveal();
             aic_app::theme::install(&cc.egui_ctx);
+            aic_app::icons::install(&cc.egui_ctx);
             Ok(Box::new(App::from_folder(strings, folder, cc.storage)))
         }),
     )
@@ -47,6 +41,11 @@ fn main() {
     use eframe::wasm_bindgen::JsCast as _;
 
     wasm_bindgen_futures::spawn_local(async {
+        // The page fetches the icon sheets while the .wasm loads; a sheet that doesn't come is
+        // shown on the page, by name and status.
+        let Ok(sheets) = aic_app::web::icon_sheets().await else {
+            return;
+        };
         let canvas = eframe::web_sys::window()
             .and_then(|window| window.document())
             .and_then(|document| document.get_element_by_id(CANVAS_ID))
@@ -60,9 +59,18 @@ fn main() {
             .start(
                 canvas,
                 eframe::WebOptions::default(),
-                Box::new(|cc| {
+                Box::new(move |cc| {
                     aic_app::theme::install(&cc.egui_ctx);
-                    Ok(Box::new(App::loading(Strings::english(), &cc.egui_ctx)))
+                    aic_app::icons::install_sheets(&cc.egui_ctx, sheets.iter().map(Vec::as_slice))?;
+                    // The data and the names are built into the .wasm (ADR 0012).
+                    let folder = aic_app::data::DataFolder::built_in().ok_or_else(|| {
+                        aic_data::LoadError::NoDataDir { tried: Vec::new() }.to_string()
+                    });
+                    Ok(Box::new(App::from_folder(
+                        Strings::english(),
+                        folder,
+                        cc.storage,
+                    )))
                 }),
             )
             .await;

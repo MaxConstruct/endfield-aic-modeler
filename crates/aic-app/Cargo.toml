@@ -34,7 +34,6 @@ web-sys = { version = "0.3", features = [
     "Element",
     "HtmlAnchorElement",
     "HtmlCanvasElement",
-    "Response",
     "Url",
     "Window",
 ] }
@@ -59,6 +58,12 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+# build.rs packs the icons some data version uses into one sheet (PLAN.md, M13): aic-data says
+# which IDs the data uses, image decodes the PNGs and writes the sheet.
+[build-dependencies]
+aic-data.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 aic-editor = { workspace = true, features = ["testing"] }

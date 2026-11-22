@@ -1725,8 +1725,7 @@ impl Cards<'_> {
                 Member::Node(id),
             ) => {
                 if let Some((kind, image, name)) = image
-                    && let Some(shown) =
-                        widgets::image(ui, self.catalog, *kind, image, crisp(FACILITY_IMAGE))
+                    && let Some(shown) = widgets::image(ui, *kind, image, crisp(FACILITY_IMAGE))
                     && let Some(name) = name
                 {
                     shown.on_hover_text(name.as_str());

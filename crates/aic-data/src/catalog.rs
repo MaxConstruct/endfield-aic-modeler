@@ -1,6 +1,5 @@
 //! The normalized game data the rest of the app uses.
 
-use std::collections::HashMap;
 use std::fmt;
 
 use indexmap::IndexMap;
@@ -22,11 +21,6 @@ pub struct Catalog {
     pub(crate) belt_per_min: f64,
     pub(crate) pipe_per_min: f64,
     pub(crate) icons: IndexMap<String, Icon>,
-    #[serde(skip)]
-    pub(crate) icons_webp: Option<Vec<u8>>,
-    /// Image files (PNG) by kind and ID, not decoded.
-    #[serde(skip)]
-    pub(crate) images: HashMap<(ImageKind, String), Vec<u8>>,
     pub(crate) version: String,
     #[serde(skip)]
     pub(crate) warnings: Vec<LoadWarning>,
@@ -87,21 +81,16 @@ impl Catalog {
         raw
     }
 
-    /// The image file for an item, facility or built-in node kind, as stored (PNG bytes).
-    pub fn image(&self, kind: ImageKind, id: &str) -> Option<&[u8]> {
-        self.images.get(&(kind, id.to_owned())).map(Vec::as_slice)
-    }
-
-    /// Adds an image. [`crate::load`] reads them from `images/`; a platform without a file system
-    /// (the web build) adds them one by one.
-    pub fn add_image(&mut self, kind: ImageKind, id: impl Into<String>, bytes: Vec<u8>) {
-        self.images.insert((kind, id.into()), bytes);
-    }
-
     /// The image that stands for a recipe: its own icon, else its first output, else its first
     /// input, else its first facility; the first of those that has an image. The data's recipe
     /// icons are mostly generated IDs with no image, so this usually lands on the main output.
-    pub fn recipe_image(&self, id: &str) -> Option<(ImageKind, &str)> {
+    ///
+    /// The catalog holds no images: `has_image` says which the app has (ADR 0012).
+    pub fn recipe_image(
+        &self,
+        id: &str,
+        has_image: impl Fn(ImageKind, &str) -> bool,
+    ) -> Option<(ImageKind, &str)> {
         let recipe = self.recipe(id)?;
         let items = std::iter::once(recipe.icon.as_str())
             .chain(recipe.outputs.iter().map(|(item, _)| item.as_str()))
@@ -113,7 +102,7 @@ impl Catalog {
             .map(|id| (ImageKind::Facility, id.as_str()));
         items
             .chain(facility)
-            .find(|&(kind, id)| self.image(kind, id).is_some())
+            .find(|&(kind, id)| has_image(kind, id))
     }
 
     pub fn categories(&self) -> &IndexMap<CategoryId, Category> {
@@ -130,18 +119,14 @@ impl Catalog {
         self.pipe_per_min
     }
 
-    /// Where an icon sits in `icons.webp`, keyed by the `icon` of an item or recipe.
+    /// The data's entry for an icon, keyed by the `icon` of an item or recipe: its colour, and
+    /// where factoriolab's sprite sheet had it (which the app doesn't read).
     pub fn icon(&self, id: &str) -> Option<&Icon> {
         self.icons.get(id)
     }
 
-    /// Raw bytes of `icons.webp`, if the data version has one.
-    pub fn icons_webp(&self) -> Option<&[u8]> {
-        self.icons_webp.as_deref()
-    }
-
-    /// The data version: the folder name when loaded from disk, otherwise what `data.json` declares
-    /// (empty if it declares nothing).
+    /// The data version: the file name without `.json` when loaded through [`crate::load`] or a
+    /// [`crate::Bundle`], otherwise what the data declares (empty if it declares nothing).
     pub fn version(&self) -> &str {
         &self.version
     }
@@ -151,7 +136,7 @@ impl Catalog {
         &self.warnings
     }
 
-    /// The catalog in our own normalized format, as pretty-printed JSON. Icon bytes are left out.
+    /// The catalog in our own normalized format, as pretty-printed JSON.
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("a catalog has only string keys and plain values")
     }
@@ -160,7 +145,7 @@ impl Catalog {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Item {
     pub id: ItemId,
-    /// Display name in the loaded language, falling back to the Chinese name, then the ID.
+    /// Display name in the names table's language, falling back to the Chinese name, then the ID.
     pub name: String,
     pub name_zh: String,
     pub category: CategoryId,
@@ -225,21 +210,22 @@ impl Recipe {
     }
 }
 
-/// Which folder of a data version's `images/` an image comes from.
+/// What an image is of, and so which folder of the app's icons holds it
+/// (`crates/aic-app/assets/icons/`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ImageKind {
-    /// `images/items/<item id>.png`
+    /// `items/<item id>.png`
     Item,
-    /// `images/facilities/<facility id>.png`
+    /// `facilities/<facility id>.png`
     Facility,
-    /// `images/nodes/<name>.png`, for node kinds that aren't in the data, such as `source` and `sink`.
+    /// `nodes/<name>.png`, for node kinds that aren't in the data, such as `source` and `sink`.
     Node,
 }
 
 impl ImageKind {
     pub const ALL: [Self; 3] = [Self::Item, Self::Facility, Self::Node];
 
-    /// The folder under `images/`.
+    /// The folder that holds images of this kind.
     pub fn folder(self) -> &'static str {
         match self {
             Self::Item => "items",
@@ -268,7 +254,7 @@ pub struct Icon {
     pub color: Option<String>,
 }
 
-/// A pixel rectangle in `icons.webp`.
+/// A pixel rectangle in factoriolab's `icons.webp`, which the app doesn't read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct IconRect {
     pub x: u32,
@@ -289,20 +275,19 @@ pub enum NameKind {
 /// A problem found while loading that doesn't stop the catalog from being used.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadWarning {
-    /// The language file has no name for this ID. The Chinese name, or the ID, is shown instead.
+    /// The names table has no name for this ID. The Chinese name, or the ID, is shown instead.
     MissingName { kind: NameKind, id: String },
-    /// The folder name and `data.json → version` disagree. The folder name wins.
-    VersionMismatch { folder: String, declared: String },
+    /// The version's file name and the `version` it declares disagree. The file name wins.
+    VersionMismatch { name: String, declared: String },
 }
 
 impl fmt::Display for LoadWarning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MissingName { kind, id } => write!(f, "no name for {kind:?} `{id}`"),
-            Self::VersionMismatch { folder, declared } => write!(
-                f,
-                "folder `{folder}` holds data.json declaring version `{declared}`"
-            ),
+            Self::VersionMismatch { name, declared } => {
+                write!(f, "`{name}.json` declares version `{declared}`")
+            }
         }
     }
 }

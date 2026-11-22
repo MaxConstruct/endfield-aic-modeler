@@ -1,10 +1,13 @@
 //! Load errors name the file and the JSON path that failed.
 
-use aic_data::{Catalog, LoadError};
+use aic_data::{Catalog, LoadError, Names};
 use serde_json::{Value, json};
 
-const DATA: &[u8] = include_bytes!("fixtures/v1.10.0/data.json");
-const EN: &[u8] = include_bytes!("fixtures/v1.10.0/i18n/en.json");
+const DATA: &[u8] = include_bytes!("fixtures/data/v1.10.0.json");
+const EN: Names = Names {
+    file: "names/en.json",
+    json: include_bytes!("fixtures/names/en.json"),
+};
 
 /// The fixture's `data.json`, changed by `edit`.
 fn data_with(edit: impl FnOnce(&mut Value)) -> Vec<u8> {
@@ -14,7 +17,7 @@ fn data_with(edit: impl FnOnce(&mut Value)) -> Vec<u8> {
 }
 
 fn error_for(data: &[u8]) -> LoadError {
-    Catalog::from_bytes(data, EN, None).expect_err("should not load")
+    Catalog::from_bytes(data, EN).expect_err("should not load")
 }
 
 fn invalid_path(error: &LoadError) -> &str {
@@ -50,11 +53,15 @@ fn malformed_json_is_an_error() {
 
 #[test]
 fn bad_language_file_names_that_file() {
-    let error = Catalog::from_bytes(DATA, br#"{ "items": { "belt": 3 } }"#, None).unwrap_err();
+    let names = Names {
+        file: "names/fr.json",
+        json: br#"{ "items": { "belt": 3 } }"#,
+    };
+    let error = Catalog::from_bytes(DATA, names).unwrap_err();
     let LoadError::Json { file, path, .. } = &error else {
         panic!("expected a Json error, got {error:?}");
     };
-    assert_eq!(file.to_str(), Some("i18n.json"));
+    assert_eq!(file.to_str(), Some("names/fr.json"));
     assert_eq!(path, "items.belt");
 }
 

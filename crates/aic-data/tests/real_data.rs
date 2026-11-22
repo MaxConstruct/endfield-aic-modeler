@@ -1,15 +1,20 @@
-//! Checks against the real `data/v1.5.3/` in the repository. Ignored by default so the other tests
-//! don't depend on game data; run with `cargo test -p aic-data -- --ignored`.
+//! Checks against the real `data/v1.5.3.json` in the repository, with the app's English names
+//! (`crates/aic-editor/i18n/names/en.json`). Ignored by default so the other tests don't depend on
+//! game data; run with `cargo test -p aic-data -- --ignored`.
 
 use std::path::Path;
 
-use aic_data::{ItemId, load};
+use aic_data::{ItemId, Names, load};
 
 #[test]
-#[ignore = "reads the real data/v1.5.3/ folder"]
+#[ignore = "reads the real data/v1.5.3.json"]
 fn real_v1_5_3_loads_and_is_consistent() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/v1.5.3");
-    let catalog = load(&dir, "en").expect("real data loads");
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/v1.5.3.json");
+    let names = Names {
+        file: "names/en.json",
+        json: include_bytes!("../../aic-editor/i18n/names/en.json"),
+    };
+    let catalog = load(&file, names).expect("real data loads");
 
     assert_eq!(catalog.version(), "v1.5.3");
     assert_eq!(catalog.items().len(), 161);
@@ -49,6 +54,6 @@ fn real_v1_5_3_loads_and_is_consistent() {
         }
     }
 
-    // en.json names every item and recipe.
+    // The English names name every item and recipe.
     assert!(catalog.warnings().is_empty(), "{:?}", catalog.warnings());
 }

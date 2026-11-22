@@ -78,10 +78,10 @@ Tech:
 2. **Internal IDs are game IDs** (`copper_nugget`, `furnance_1`, `mix_pool_1`, …), never display names.
    Display names come from the i18n table at render time.
 3. **All rates are items per minute** inside the app. Convert once, in the data layer.
-4. **Data loading goes through our own schema.** `data/<version>/data.json` uses the factoriolab
+4. **Data loading goes through our own schema.** `data/<version>.json` uses the factoriolab
    format for now, but only `aic-data/src/raw.rs` knows that. Everything else uses `Catalog`.
 5. **Data is copied in by hand, not fetched.** No submodules, no clone scripts, no third-party network
-   access at build or run time. (The future web build loads `data/` from its own site; that is not a
+   access at build or run time. (The web build's files come from its own site; that is not a
    third-party fetch.)
 6. **Use the glossary's terms in code.** `Facility`, not `Machine`. `Link`, not `Edge`. `Region`, not
    `Location`. Only `raw.rs` uses factoriolab's names (`machine`, `locations`, `producers`).
@@ -95,57 +95,59 @@ Tech:
 
 ### Data folder layout
 
+Since M13 (ADR 0012) a data version is one file, and the names and icons are the app's:
+
 ```
 data/
 ├─ README.md                  # layout, and the license disclaimer for game data
-└─ <version>/                 # e.g. v1.5.3, named after the game version
-   ├─ data.json               # required: items, facilities, recipes, icon positions, regions
-   ├─ i18n/
-   │  └─ en.json              # required: English names keyed by the same IDs
-   ├─ images/                 # optional: PNG icons named by our IDs (M5)
-   │  ├─ items/<item id>.png
-   │  ├─ facilities/<facility id>.png
-   │  └─ nodes/source.png, sink.png   # built-in node kinds (the depot unloader and loader)
-   ├─ icons.webp              # optional, unused: factoriolab's sprite sheet
-   ├─ overlay.json            # optional (M7): our own patches on top of data.json
-   └─ SOURCE.md               # optional: where it came from, commit/date, any hand edits
+├─ <version>.json             # e.g. v1.5.3.json: items, facilities, recipes, icon colours, regions
+└─ <version>_overlay.json     # optional (M7): our own patches on top of <version>.json
+crates/aic-editor/i18n/names/
+└─ <lang>.json                # game names keyed by game ID, one table for every version
+crates/aic-app/assets/icons/
+├─ README.md                  # where the icons came from, and their license
+├─ items/<item id>.png
+├─ facilities/<facility id>.png
+└─ nodes/source.png, sink.png # built-in node kinds (the depot unloader and loader)
 ```
 
-- The repo has the data at `data/v1.5.3/`. M0 moved it there from `src/data/1.5.3/`. Its `images/` came
-  from [jambochen/endfield-calc](https://github.com/jambochen/endfield-calc), renamed to our IDs; see
-  `data/v1.5.3/SOURCE.md`.
+- The repo has the data at `data/v1.5.3.json`. M0 moved it to `data/v1.5.3/` from `src/data/1.5.3/`,
+  and M13 to its own file. The icons came from
+  [jambochen/endfield-calc](https://github.com/jambochen/endfield-calc), renamed to our IDs; see
+  `crates/aic-app/assets/icons/README.md`.
 - Max copies these files in by hand. Initial source: `endfield-calc/factoriolab`, `src/data/aef/`
-  (`data.json`, `i18n/en.json`, `icons.webp`). In that repo, ignore `data-dsp.json`, `data-sfy.json`,
+  (`data.json`, `i18n/en.json`). In that repo, ignore `data-dsp.json`, `data-sfy.json`,
   `data-spa.json` and `defaults-spa.json`. Those are Dyson Sphere Program / Satisfactory / Factorio test
-  fixtures from upstream, not Endfield.
-- **Version selection:** on native builds, the app scans `data/` for subfolders that contain `data.json`,
-  picks the highest version by default (semver-ish parsing on the `vX.Y.Z` name, falling back to string
-  order), and lets you switch in Settings. The folder name is the version string. If it doesn't match
-  `data.json → version`, log it.
+  fixtures from upstream, not Endfield. Its `icons.webp` sprite sheet is not used.
+- **Version selection:** the app takes every `*.json` in `data/` that is not a `*_overlay.json` as a
+  version, picks the highest by default (semver-ish parsing on the `vX.Y.Z` name, falling back to
+  string order), and lets you switch in Settings. The file's name is the version string. If it doesn't
+  match the file's `version`, that is a load warning.
 - **Locating `data/` (native only):** the `--data <path>` CLI flag, then `AIC_DATA_DIR`, then `./data` next
-  to the executable, then `./data` in the working directory. Show a clear error screen if none is found.
-  Don't `include_bytes!` the data, so a new version can be dropped in without rebuilding.
-- **Parsing works from bytes.** `aic-data` parses `Catalog` from byte slices. Folder discovery is a thin
-  native-only layer on top, so the web build can fetch the same files over HTTP.
+  to the executable, then `./data` in the working directory; else the data built into the program
+  (`crates/aic-editor/build.rs`), which the web build always uses. A folder on disk brings versions
+  only: the names and icons stay the app's.
+- **Parsing works from bytes.** `aic-data` parses `Catalog` from byte slices and a names table, which
+  every load takes from the caller. Folder discovery is a thin native-only layer on top.
 - **Saved graphs record the data version they were made with.** On load, if that version isn't the
   active one, show a banner and still load by ID (see M2).
 
 ### Facts about the first data set (factoriolab `aef`, verified 2026-11-08)
 
-`data.json` keys:
+`data.json` (now `data/v1.5.3.json`) keys:
 
 | Key | Use |
 |---|---|
 | `items` / `recipes` / `locations` / `categories` | game data, below |
-| `icons[]` | `{ id, position: "-64px 0px", color }` into `icons.webp` (1024×1024, 64×64 cells) |
+| `icons[]` | `{ id, position: "-64px 0px", color }` into `icons.webp` (1024×1024, 64×64 cells); only the colour is used |
 | `version` | `{ "arknights-endfield": "v1.5.3" }` |
 
-`i18n/en.json` has keys `name`, `version`, `categories`, `items` (161), `recipes` (257) and `locations`,
-each a map from ID to English name.
+`i18n/en.json` (now `crates/aic-editor/i18n/names/en.json`) has keys `name`, `version`, `categories`,
+`items` (161), `recipes` (257) and `locations`, each a map from ID to English name.
 
 This data set is **v1.5.3**, and that repo's last commit was 2026-09-07. The game is already at v1.6, so
-expect a few missing or changed recipes. A `data/v1.6/` folder, from another source or with an overlay,
-is the fix.
+expect a few missing or changed recipes. A `data/v1.6.json`, from another source, or an overlay, is the
+fix.
 
 Shape:
 
@@ -195,14 +197,14 @@ endfield-aic-modeler/
 │  └─ ref/                    # reference screenshots used by golden tests
 ├─ data/
 │  ├─ README.md
-│  └─ v1.5.3/
+│  └─ v1.5.3.json             # a data version (ADR 0012); its names and icons are in the crates
 └─ crates/
    ├─ aic-data/               # parse + normalize -> Catalog; native discovery. deps: serde, serde_json, thiserror, indexmap
    ├─ aic-core/               # Graph model, validation, sections, solver. deps: aic-data, good_lp, serde, slotmap
-   ├─ aic-editor/             # App logic, no GUI dependency: document, session, selection, commands, files, Fluent strings, style tokens, built-in data (ADR 0010)
+   ├─ aic-editor/             # App logic, no GUI dependency: document, session, selection, commands, files, Fluent strings and the game names (i18n/), style tokens, built-in data (ADR 0010, 0012)
    ├─ aic-node-graph/         # The node canvas widget, our copy of egui_graph 0.19.1 (ADR 0011). deps: egui, siphasher
-   ├─ aic-app/                # eframe UI. deps: aic-editor, aic-node-graph, eframe, egui-scale, egui_dock, rfd
-   └─ aic-extract/            # LATER (M8): CLI that converts other sources into data/<version>/
+   ├─ aic-app/                # eframe UI and the icons (assets/icons/). deps: aic-editor, aic-node-graph, eframe, egui-scale, egui_dock, rfd
+   └─ aic-extract/            # LATER (M8): CLI that converts other sources into data/<version>.json
 ```
 
 `aic-data` should also expose a writer for its normalized format (`Catalog` → JSON). The extractor CLI
@@ -558,6 +560,7 @@ since the PNGs (from jambochen/endfield-calc) cover more of the game and are nam
 - An item with no image is drawn as a colored square with its initials (the icon `color` from
   `data.json` when there is one), so the app works without images.
 - Splitter, merger, storage and control port have no picture yet.
+- M13 moved the icons out of the data into the app (`crates/aic-app/assets/icons/`, ADR 0012).
 
 ### M6: Usability
 Done.
@@ -612,6 +615,8 @@ Done, except where noted.
   eframe storage. Switching keeps the open graph and its undo steps: recipe nodes are matched against the
   new data by ID (`Graph::rebind`), so a recipe the new data lacks shows as missing until switched back.
   A chosen version that is gone falls back to the newest, a language that is gone to English.
+- M13 made the overlay `data/<version>_overlay.json` and the languages the app's own names tables
+  (ADR 0012).
 - **Workspaces** (ADR 0007, replacing groups and their copies mode): a workspace holds nodes and other
   workspaces (`Graph::workspace_from`, `add_workspace`, `dissolve`, `Member`), shown from outside as one
   card whose pins are its ports. A double-click, Open in its menu or the inspector shows only what is in
@@ -711,11 +716,12 @@ Done, except where noted.
        the packaging scripts already write.
 
 ### M8: `aic-extract` CLI
-- `aic-extract <source-kind> <input> --out data/<version>/` writes `data.json` (factoriolab format,
-  for now) plus `i18n/*.json`, and appends to `SOURCE.md`.
+- `aic-extract <source-kind> <input> --out data/<version>.json` writes the data version (factoriolab
+  format, for now), adds the names it brings to `crates/aic-editor/i18n/names/<lang>.json`, and notes
+  its source in `data/README.md` (ADR 0012).
 - Source kinds to consider: factoriolab `aef` folder (a copy and check, useful as the reference
   implementation), warfarin.wiki facility pages (zh, already has v1.6), and endfield.wiki.gg (English).
-- `aic-extract diff data/v1.5.3 data/v1.6` lists added, removed and changed recipes.
+- `aic-extract diff data/v1.5.3.json data/v1.6.json` lists added, removed and changed recipes.
 - Validate output by loading it with `aic-data` and running the same consistency checks as the M1 tests.
 
 ### M9: Web build
@@ -727,7 +733,8 @@ Done.
 - Data comes from the same site: Trunk copies `data/` next to the page, and on `wasm32` `build.rs`
   writes the list of its files (paths only, no bytes). The app fetches them all at startup with a
   loading screen, puts them in an `aic_data::Bundle::from_owned`, and from there loads exactly as the
-  desktop app loads its built-in data, version switching included.
+  desktop app loads its built-in data, version switching included. (M13 built the data and the
+  names into the `.wasm` and took this fetch out: ADR 0012.)
 - Files live in a `FileStore` (`store.rs`): the disk on the desktop, the browser's storage on the
   web (`BrowserFiles`, kept in eframe storage, which is the browser's local storage). Drafts, the
   last document and Open Recent work the same on both. In the browser, Save As asks for a name, keeps
@@ -1241,11 +1248,432 @@ Looked at and left out:
 - **Item icons in one texture.** The whole-graph frame is about 1,700 draw primitives, one
   texture switch per icon, and a window costs 2 to 3 ms over headless there. Measure windowed
   after step 4, which changes the count.
-- `-C target-cpu=native` (the build must run on players' older CPUs); profile-guided
+- `-C target-cpu=native` (the build must run on players' older CPUs). That reason no longer
+  holds: on 2026-11-23 the user said older CPUs are not a goal, no prebuilt binaries are
+  released for now (others build from source or use the web version), and a build for the
+  user's own CPU is for the user's own use. So M13 step 6 measures it as an opt-in build,
+  never the default. Profile-guided
   optimization (much setup for a build nobody downloads yet); `parking_lot` and a single lock
   for `aic-node-graph`'s memory (its locking measured under 0.1 ms for 300 nodes in the M11
   spike); `SmallVec`, inlining attributes, bounds checks and type sizes (no profile points
   there; revisit if step 1 does).
+
+### M13: Assets and start-up
+Planned 2026-11-23 ([ADR 0012](adr/0012-names-and-icons-ship-with-the-app.md)). Two aims: the
+app starts faster, in the browser and on Windows, and a data version becomes one JSON file, with
+the names and icons moved into the app.
+
+Steps 1 to 6 are done (2026-11-23). A cold load in the browser went from 243 files and 7.6 MB
+(brotli) to 4 files and 6.4 MB, and the editor showed at 0.6–0.9 s on this PC in place of about
+1.4–3.2 s. A Windows start-up went from about 1.25 s to about 0.95 s, all of it from starting
+wgpu's DX12 backend alone. Decided by the user (2026-11-23): DX12 alone for now, with no
+fallback without `WGPU_BACKEND` (step 6), and the size profile for the web stays out (step 5,
+smaller but slower).
+
+**Measured** 2026-11-23 on the Windows PC, as things are before this milestone:
+
+| What | Number |
+|---|---|
+| Web: fetched before the editor opens | 240 requests, 4.5 MB (238 PNGs, `data.json`, `en.json`) |
+| Web: item PNGs that no item of the data uses | 89 files, 1.2 MB |
+| Web: the `.wasm`, `release`, before wasm-bindgen (wasm-opt is off in `index.html`) | 17.3 MB; 5.3 MB gzip -9; 3.9 MB brotli -9 |
+| Windows: `aic-app.exe`, `release` | 24.2 MB |
+| Windows: finding the built-in data, loading the catalog | 1.1–1.5 ms, 8.7–10.0 ms |
+| Windows: decoding an icon, on its first draw | 0.23 ms (34–36 ms for the 148 in use, 2.6 MB of PNG) |
+
+Not measured: the window and the renderer on Windows, likely most of its start-up, and anything
+in a browser (Trunk and `wasm-bindgen-cli` were not installed).
+
+Decided with the user, 2026-11-23:
+- **Nothing loads lazily.** The editor opens when the app, its fonts and every icon are loaded
+  and decoded, on the web as on the desktop. A loading page of some seconds is fine; an app that
+  fills in after it opens is not.
+- **The loading page has no words**: one percentage and one bar under it, over every byte (the
+  `.wasm`, which carries the fonts, names and data, and the icon sheet).
+- **Files:** `data/v1.5.3.json` and `data/v1.5.3_overlay.json`. The version string stays
+  `v1.5.3`, which saves and settings already hold. The term stays "overlay".
+- **Hosting:** `target/web/` is uploaded by hand to the user's own server (static files, served
+  by Dokploy), behind Cloudflare, which caches and compresses. No CI.
+- The tools may be installed with `cargo install`: Trunk, `wasm-bindgen-cli` 0.2.130, `wasm-opt`.
+
+Each step is measured on its own, as in M12, and its numbers and an "As built" note are written
+here. A step that gains nothing is dropped. Solver semantics and the golden tests are not
+touched.
+
+1. **Tools and a baseline.**
+   - Install Trunk, `wasm-bindgen-cli` 0.2.130 (the version in `Cargo.lock`) and `wasm-opt`, by
+     hand, once. The build itself still downloads nothing (M9).
+   - Windows: the time from the process's start to the end of the first frame, in parts: finding
+     and loading the data, the window and the renderer, the fonts, the first frame. Behind an
+     environment variable or in `perf_app`, not in a player's way.
+   - Web: `scripts/build-web.sh` as it is, served from a local static server: the requests, the
+     bytes, and the time until the editor can be used.
+   - **Done when:** both are in a table here, 3 runs each.
+   - **Done** (2026-11-23). Installed with `cargo install --locked`, from
+     source: Trunk 0.22.2, `wasm-bindgen-cli` 0.2.130 and `wasm-opt` 0.133.0 (binaryen version
+     133). As built: `PERF_STARTUP=1` on `perf_app` starts the app as `main.rs` does
+     (`DataFolder::find`, `App::from_folder` with eframe's storage, vsync on) and prints the
+     time from the process's creation (Windows' `GetProcessTimes`) to the start of the second
+     frame, which is when the first has been painted and presented, in parts. eframe's storage
+     is a folder of `PERF_STORAGE`'s choosing, so it is a first start with an empty graph and a
+     player's own window state and last document are never read. After the window closes it
+     times, apart, loading the catalog once more and a first pass of egui with its own fonts
+     and with the app's. The start-up cloak of `main.rs` is not in it (it is the binary's, not
+     the library's); it costs a hook and one call.
+   - **Measured** 2026-11-23 on the Windows PC, background apps open, `release` `perf_app`
+     of HEAD, 3 runs, run from a folder with no `data/` so the built-in data loads:
+
+     | Windows start-up, part | ms |
+     |---|---|
+     | Process created to `main` | 30–51 |
+     | Finding the data | 1.9–2.2 |
+     | Window and renderer (eframe, before the app's creator runs) | 1,092–1,721 |
+     | Theme and fonts set | 0.1–0.2 |
+     | Data loaded (the catalog alone: 3.3–4.1), editor opened | 12.5–12.7 |
+     | First pass begins (egui's fonts loaded) | 2.1–2.9 |
+     | First frame's UI built (148 icons decoded on first draw among it) | 60–73 |
+     | First frame painted and presented | 92–191 |
+     | **Process created to first frame shown** | **1,292–1,947** |
+
+     A first pass of egui alone takes 1.2–1.3 ms with egui's own fonts and 2.0–2.3 ms with the
+     app's four. So the window and the renderer are four fifths of a start-up, and its
+     run-to-run spread; the rest is under 300 ms.
+
+     | Web, `scripts/build-web.sh` of HEAD (`release`, wasm-opt off) | Files | Raw | brotli -q 9 |
+     |---|---|---|---|
+     | `index.html` | 1 | 1.5 KB | 0.7 KB |
+     | JS glue | 1 | 158 KB | 21.7 KB |
+     | `.wasm` (after wasm-bindgen) | 1 | 15.5 MB | 3.65 MB |
+     | `data/` files the app fetches (238 PNGs, `data.json`, `en.json`) | 240 | 4.1 MB | 3.9 MB |
+     | **A cold load, before the editor opens** | **243** | **19.8 MB** | **7.6 MB** |
+
+     The brotli column compresses each file on its own, as a server would. The PNGs do not
+     compress (3.92 MB of the 4.1 MB).
+   - **In a browser**, Chrome on the same PC (window 2560×1215 CSS px at 1.5 px per point),
+     served from `127.0.0.1` by `python -m http.server` (which sends `.wasm` as
+     `application/wasm`). Each of the 3 runs was on a new port, so a new origin: nothing cached,
+     no stored settings, an empty graph. Times are from the navigation's start, read from the
+     page's Resource Timing and Long Animation Frame entries; over loopback, so they are the
+     browser's work and no network's.
+     - Requests (the server's log): 244 or 245 GETs: the page, the JS (twice in two runs, once
+       for Trunk's `modulepreload` link), the `.wasm`, the 240 data files and a `favicon.ico`
+       that is not there (404).
+     - The `.wasm` had arrived at 317–349 ms, the last data file at 1.20–1.37 s.
+     - The editor's first frame (the last long animation frame, which builds the editor and
+       decodes the icons it shows) ended at 3.15 s, 1.40 s and 1.57 s. The first run was the
+       first page Chrome loaded after it started.
+     - "Usable" is read from long frames, not marked by the app, so it is only as close as the
+       frames are long (a frame under 50 ms is not listed).
+2. **The new layout** (ADR 0012).
+   - `data/<version>.json` is the old `data.json`, unchanged; `data/<version>_overlay.json` the
+     old `overlay.json`, same format. A version is every `*.json` in the folder that is not an
+     overlay; its name is the file's stem. `--data`, `AIC_DATA_DIR`, `data/` beside the
+     executable and in the working directory still take the built-in data's place.
+   - The names: `crates/aic-editor/i18n/names/<lang>.json`, beside the Fluent file, in the
+     factoriolab format, which only `raw.rs` reads (ground rule 4). One table for every version;
+     the languages offered are these files.
+   - The icons: `crates/aic-app/assets/icons/{items,facilities,nodes}/<id>.png`, with their
+     source and licence notes (the old `SOURCE.md` and `data/README.md`'s licence section) in a
+     README beside them. Moved with `git mv`, never fetched.
+   - `Catalog` holds no image bytes (`image`, `add_image`, `icons_webp` go). `recipe_image` is
+     told which IDs have an icon.
+   - The test fixtures (`crates/aic-data/tests/fixtures`, `crates/aic-editor/fixtures`) take
+     the same shape. `data/README.md`, sections 3 and 4 of this plan and M8's text follow.
+   - **Done when:** the desktop app and its tests run on the new layout with the snapshots
+     unchanged, and no file is left under `data/` but the JSON files and the README.
+   - **Done, one snapshot changed** (2026-11-23). As built: everything was moved with `git mv`:
+     `data/v1.5.3/data.json` to `data/v1.5.3.json`, `i18n/en.json` to
+     `crates/aic-editor/i18n/names/en.json`, `images/` to `crates/aic-app/assets/icons/`, and
+     `SOURCE.md` to that folder's `README.md`, with the licence note added. `data/` holds
+     `README.md` and `v1.5.3.json`.
+     - `aic-data`: a version is `<version>.json` minus `*_overlay.json` (`version_of`), on disk
+       (`list_versions`, `load(file, names)`) and in a `Bundle` keyed by file name. Every load
+       takes a `Names` (the names file's bytes and what errors call it), so the names are the
+       caller's; `Catalog::from_bytes(data, names)`. `Catalog` lost `image`, `add_image` and
+       `icons_webp`; `recipe_image(id, has_image)` is told which icons there are.
+       `LoadWarning::VersionMismatch` names the file. `list_languages` and `Bundle::from_owned`
+       went (nothing fetches files any more).
+     - `aic-editor`: `build.rs` builds `data/*.json` and `i18n/names/*.json` into the program on
+       both targets; its wasm list of paths went. `embedded::names(lang)` and `languages()`.
+       `DataFolder::languages()` is the program's tables, whatever the folder; `load` names any
+       version, built in or on disk, with them, falling back to English.
+     - `aic-app`: a `build.rs` builds `assets/icons/` into a sorted table (`icons::png`,
+       `icons::has`), still decoded one by one on first draw as before (step 3 replaces this).
+       The icons no longer depend on the data, so a data switch keeps the decoded ones.
+     - The web build: with the data and names built in, nothing was left to fetch, so this step
+       already took out what step 4 lists: `web.rs`'s `DataDownload`, the app's `Loading` state
+       and its strings (`data-loading`, `data-fetch-failed`), and `index.html`'s copy of
+       `data/`. Until step 4 the `.wasm` also carries the PNGs. `load-failed-hint-web` now says
+       the build has no data in it, the one way the web build can fail to load.
+     - Fixtures take the same shape: `crates/aic-data/tests/fixtures/{data,names}/` (with a
+       `v1.9.0_overlay.json` and a README that is not a version) and
+       `crates/aic-editor/fixtures/satisfactory/{data/vtest.json,names/en.json}`.
+       `testing::load(file)` loads a version with the names beside its data folder, else the
+       program's.
+   - Tests (written before the code): a version is a JSON file that is not an overlay, on disk
+     and in a bundle; the overlay beside a version is merged into it and no other; the names
+     given name the data, and a bad names table names its file; a data folder on disk takes the
+     built-in data's place and is named by the program's names; the languages are the
+     program's tables whatever the folder; the icon table is sorted and found by kind and ID.
+   - **Snapshots.** Two things changed what fixtures look like, both from the ADR:
+     - The program's icons name every data version, so the Satisfactory fixture's `iron_ore`
+       took the game's ore icon, and `aic-data`'s test versions (game IDs) took theirs, where
+       they had none before (their folders had no `images/`). `aic_app::hide_icons(ctx)` draws
+       no icons in one egui context; the snapshot tests on data that is not the game's call it,
+       so their pictures stay as they were. The tests on `data/v1.5.3.json` keep the icons.
+     - A data folder on disk no longer brings names: `aic-data`'s fixture named three recipes
+       the game's table doesn't (`tundra_coupon-copper_nugget` and two more), which now show
+       their Chinese names. `settings_data` changed for it: one row of the recipe browser, half
+       behind the settings window. Looked at; nothing else in it moved. Every other snapshot is
+       unchanged, compared exactly.
+     - The golden tests' helper (`aic-core/tests/common`) only changed its call to
+       `Catalog::from_bytes`; no test or number changed. The allocation test's ceiling is
+       unchanged (it hides the icons too, as its fixture had none).
+   - **Measured** 2026-11-23, Windows PC, background apps open, `PERF_STARTUP=1`, 3 runs each
+     alternating with step 1's build: data loaded and editor opened 9.5–9.6 → 4.1–5.2 ms (the
+     catalog alone 3.3–5.3 → 2.2–2.3 ms: it no longer copies 4.4 MB of PNG). The rest is within
+     noise (window and renderer 1,049–1,100 → 1,044–1,185 ms, first UI 52–55 → 55–57 ms).
+3. **One icon sheet.**
+   - The build packs every icon that some data version uses into one image, each in its own
+     cell with a clear gutter around it (a cell drawn smaller than it is takes a little of its
+     neighbour otherwise: M11's `golden_07`), and writes an index from kind and ID to cell.
+     No side over 2048 pixels, which is all WebGL2 promises; more icons than fit make a second
+     sheet. Icons no data version uses stay in the folder and out of the sheet.
+   - Both builds load the sheet whole before the first frame of the editor and draw every icon
+     from it: one texture in place of one per icon (M12's left-out "item icons in one texture").
+     The desktop has it built in; the web fetches it (step 4).
+   - **Done when:** every snapshot that shows an icon is looked at (they may change by a pixel's
+     blend at an icon's edge, no more), and a whole-graph frame is measured against M12's in a
+     window as well as headless.
+   - **Done** (2026-11-23). As built: `crates/aic-app/build.rs` packs the sheet, with `aic-data`
+     and `image` (PNG only) as build-dependencies. It loads every data version in `data/` (with
+     no names) to learn the IDs in use: items and recipes' icons as items, facilities as
+     facilities, and every node picture. Cells are 132 pixels: an icon at its own size (at most
+     128, none is scaled) in the top-left, with 2 clear pixels on every side. 15 columns, so
+     1,980 pixels wide, and 15 rows a sheet at most; past 225 icons a second sheet starts. The
+     148 icons in use make one sheet of 1,980 × 1,320, 2.72 MB as PNG at the encoder's best
+     compression (3.03 MB at its default). The 89 item icons and the facility icon no data uses
+     stay in the folder, out of the sheet. The script also writes the table from kind and ID to
+     sheet and rectangle, sorted for a binary search.
+     - `icons::install(ctx)` decodes the sheets and uploads one texture each; `main.rs` (desktop
+       and web), `perf_app` and the tests on the real data call it before the first frame.
+       `icons::get` hands out the texture, the rectangle as UV and the icon's size;
+       `ItemPicture`, `image`, `image_atom` draw from it. Nothing is decoded on first use any
+       more. Until step 4 the web build has the sheet inside its `.wasm` too.
+     - Without `install` there are no icons, which is how the tests on data that is not the
+       game's now leave them out; step 2's `hide_icons` went.
+     - The best compression takes about 21 s in the build script, which runs only when the
+       icons or the data change. Build scripts are never optimized, so the PNG crates are set to
+       `opt-level = 3` for `dev` and `release` in the workspace's `Cargo.toml` (about 34 s
+       without; the debug tests decode the sheet faster too).
+   - Tests: icons are found by kind and ID and kinds don't mix; the icons no data uses are left
+     out; the table is sorted; every icon has 2 clear pixels round it and no sheet is over 2,048
+     pixels; two icons of one sheet share its texture.
+   - **Snapshots.** Every one was made again from nothing, on this PC, for step 2's code (a copy
+     of HEAD with step 2's patch) and for this step's, and compared pixel by pixel. Seven changed,
+     all on the real data: `card_at_200`, `centered_bodies`, `facility_in_header`, `golden_05`,
+     `icons_picker`, `limit_in_the_middle` and `link_labels`, 24 to 769 pixels each, all inside
+     icons, each by 1 of 255 in a channel (3 in `limit_in_the_middle`): an icon drawn as a part of
+     a larger texture is sampled a hair differently. Each was looked at; no icon is cut or takes
+     its neighbour. Three more files differed from the committed ones (`outpost_order`,
+     `ratio_lock`, `workspace_card`, by 1 to 28 pixels) but just as much between the committed
+     ones and step 2's, made here: noise from where they were made, so the committed files were
+     kept.
+   - **Measured** 2026-11-23, Windows PC, background apps open, 3 runs each alternating with step
+     2's build, whole graph at 25% (frame means; p95 in brackets):
+     - Headless: idle 7.18–7.26 → 6.93–6.98 ms (p95 9.34–9.63 → 8.09–8.23), pan 6.19–6.32 →
+       6.19–6.21 ms, live values 8.90–8.94 → 8.84–8.93 ms.
+     - In a window, vsync off: idle 9.67–10.09 → 9.54–9.68 ms, pan 8.55–8.86 → 8.50–9.01 ms,
+       live values 10.19–10.39 → 10.14–10.75 ms. Within the noise.
+     - Start-up (`PERF_STARTUP=1`): the sheet is decoded and uploaded in 45–46 ms before the first
+       frame, and the first frame's UI went from 55–62 ms to 15 ms. Process to first frame shown
+       1,259–1,328 → 1,258–1,267 ms: the same. All 148 icons are decoded now where the first
+       frame decoded only those on screen.
+4. **The web's loading page.**
+   - The data and the names are built into the `.wasm` (about 185 KB), like the fonts. The
+     fetch of 240 files, `build.rs`'s list of paths for `wasm32` and the app's own loading
+     screen go.
+   - `index.html` shows a percentage and a bar from the first byte, and no words. One count
+     from 0 to 100% over the `.wasm` and the icon sheet, by bytes. The build writes each file's
+     size into the page: Cloudflare's compression hides a download's length. Decoding the sheet
+     is the last stretch; the page goes away and the editor shows at 100%, ready.
+   - Whether Trunk's loader reports the `.wasm`'s progress is to be checked once it is
+     installed. If it does not, the page fetches the `.wasm` itself and counts.
+   - A file that fails shows its name and HTTP status on the page: no sentence.
+   - **Done when:** a cold load is four requests (the page, its JS, the `.wasm`, the sheet), the
+     bar runs once without going back, and the editor never shows an icon's initials for an
+     icon that the sheet has.
+   - **Done** (2026-11-23). Step 2 had already built the data and names in and taken out the old
+     fetch, its list of paths and the app's `Loading` state. As built:
+     - **Trunk's loader does report progress**, through a `data-initializer` module's
+       `onProgress`, with the built file's size as the total. It was tried and left: the module
+       is a fifth file. The page's own loader takes its place (`pattern_script` in
+       `Trunk.toml`, with `pattern_preload` empty): the inline script at the end of
+       `index.html` starts the `.wasm` and the sheet downloading at once, counting the bytes as
+       the browser hands them over (decompressed), and the module script hands the `.wasm` to
+       wasm-bindgen as a streamed `Response`, so it still compiles while it arrives.
+     - **Sizes.** `scripts/web-assets.sh`, Trunk's `post_build` hook, writes the `.wasm`'s name
+       and size and each sheet's into the page (`data-wasm`, `data-sheets`). It finds the sheets
+       in `aic-app`'s `OUT_DIR` by running Trunk's own cargo build again, a no-op, with
+       `--message-format=json`, and copies them in as `icons-<n>-<16 hex of SHA-256>.png`. The
+       desktop has the sheets built in; for `wasm32` `build.rs` leaves them out and tells the
+       app how many there are, and `icons::install_sheets` refuses another count.
+     - **The page**: a percentage and a bar under it, no words, in the app's colours. One count
+       over every byte, which stops at 99% until the app has decoded the sheet and drawn its
+       first frame, when it removes the page (`web::remove_loading_page`, from `App::ui`). So
+       the editor appears ready, icons and all: `main.rs` awaits the sheets before it starts
+       eframe, and installs them before the app exists.
+     - **Failures** show the file's name and status, in the bar's red: a sheet or `.wasm` from
+       its response, the JS glue or a `.wasm` that doesn't compile by asking the server (a
+       `HEAD`), since an import gives no status. A page built without the hook shows its own
+       name.
+     - The hook is started as `sh -c "exec bash …"`: on Windows a plain `bash` found WSL's in
+       System32 first, which doesn't see Trunk's variables.
+     - `App::loading` and its Fluent strings went in step 2; no string was added (the page has
+       none). The app leaves a `performance.mark("aic-editor-shown")` when the page goes, and
+       the page keeps the percentages it showed (`aicLoading.steps`), for measuring.
+   - **Measured** 2026-11-23, Chrome on the Windows PC as in step 1, `scripts/build-web.sh`
+     (`release`, wasm-opt still off), 3 cold loads each on a new origin:
+     - Requests: four, by the page's Resource Timing and by Chrome's own record of the tab: the
+       page, the `.wasm`, the sheet and the JS. The server's log had the JS a second time about a
+       second later in every run, from outside the page's requests; step 1's build showed the
+       same.
+     - The bar went up in 43 to 48 steps to 99% and never back. The editor showed, with its
+       icons, at 912, 709 and 626 ms after the navigation began (step 1: about 3.15, 1.40 and
+       1.57 s, read from long frames). The `.wasm` had arrived at 367–461 ms, the sheet at
+       275–300 ms.
+     - A missing sheet showed `icons-0-ed87b342e37ebcf8.png 404`; a missing JS glue showed
+       `aic-app-26fffc1d72068114.js 404`. Both were checked on copies of the build with the file
+       taken out.
+
+     | Web, a cold load | Files | Raw | brotli -q 9 |
+     |---|---|---|---|
+     | Step 1 | 243 | 19.8 MB | 7.6 MB |
+     | Step 4: page 7.5 KB, JS 157 KB, `.wasm` 15.7 MB, sheet 2.72 MB | 4 | 18.6 MB | 6.4 MB |
+
+     The `.wasm` grew by 141 KB raw (the data and the names; 5 KB with brotli). The sheet,
+     already PNG, gains nothing from brotli.
+5. **A smaller download, and caching.**
+   - wasm-opt on, with the installed binary. A profile for the web that favours size
+     (`opt-level`, fat LTO, one codegen unit, `panic = "abort"`), kept only if a frame in the
+     browser is not slower for it: measure both.
+   - The four font files (1.7 MB, two of them tabular copies of the other two): what can go
+     without changing a glyph on screen.
+   - Every file but `index.html` has a hash of its content in its name, the icon sheet
+     included, so a new upload is never served stale from a cache.
+   - A deploy note in the header of `scripts/build-web.sh`: what to upload, that `.wasm` must
+     be served as `application/wasm`, and what to check at Cloudflare (that it caches `.wasm`,
+     which may need a cache rule, and compresses it).
+   - **Done when:** the bytes of a cold load, compressed as Cloudflare would (brotli), are
+     written here against step 1's.
+   - **Done** (2026-11-23). As built: `index.html` asks for wasm-opt `-O2` (`data-wasm-opt="2"`)
+     and `Trunk.toml` names the installed binaryen (`wasm_opt = "version_133"`), which Trunk then
+     uses; with `TRUNK_OFFLINE=true` a mismatch would fail rather than download. Trunk already
+     names the JS and the `.wasm` by a hash of their content, and step 4's hook the sheet; only
+     `index.html` keeps its name. The deploy note is in `scripts/build-web.sh`'s header.
+   - **Candidates**, each a whole site built with Trunk (`release` + wasm-opt `-O2` unless said),
+     the profile and flags set through Cargo's environment variables in a target folder of their
+     own, so nothing of a dropped one is in the repository:
+
+     | Build | `.wasm` raw | `.wasm` brotli -q 9 | Frame, mean of 600 (3 runs) |
+     |---|---|---|---|
+     | Step 4: `release`, wasm-opt off | 15.67 MB | 3.656 MB | 4.60–4.78 ms |
+     | wasm-opt `-O2` (kept) | 11.86 MB | 3.638 MB | 4.39–4.58 ms |
+     | `-Os` / `-Oz`, by hand on step 4's `.wasm` | 11.73 / 11.56 MB | 3.601 / 3.602 MB | not run |
+     | Size profile: `opt-level = "s"`, fat LTO, one codegen unit | 9.47 MB | 3.081 MB | 4.68–4.78 ms |
+     | `-C target-feature=+simd128` (wasm32 only) | 11.64 MB | 3.590 MB | 4.34–4.67 ms |
+
+     - The frame: Chrome on this PC, the four builds served from one origin so they open the same
+       graph from the browser's storage: 25 recipe cards added from the recipe browser, which lay
+       them on one spot in the middle, at 100%, with both side panels. A script wraps
+       `requestAnimationFrame` to time eframe's callback (its main-thread work: UI, tessellation
+       and WebGL calls), scrolls the canvas with Shift+wheel every frame for 720 frames (turning
+       every 60, so the view ends where it began) and keeps the last 600. Three rounds,
+       alternating the four builds. Chrome rounds `performance.now()` to 0.1 ms here. A light
+       frame, so it shows the code's speed, not a whole graph's.
+     - **wasm-opt `-O2`** is kept: 24% smaller raw, a little faster. Its brotli size barely
+       moves: most of what it takes out compressed well anyway.
+     - **The size profile** is left out: 0.56 MB less compressed, but its frames were slower than
+       `-O2`'s in every round (4.68–4.78 against 4.39–4.58 ms), and the plan keeps it only if they
+       are not. `panic = "abort"` is wasm32's default already. The user confirmed leaving it out
+       (2026-11-23); worth another look if download size comes to matter more than 3–5% of a
+       frame.
+     - **wasm SIMD** is left off: 0.05 MB less compressed, and its frames (4.34–4.67 ms) overlap
+       `-O2`'s, so it is not shown faster.
+     - **Fonts: nothing changed.** The four files are 1.66 MB raw and 712 KB with brotli one by
+       one, but inside the `.wasm` they lie next to each other, and the two tabular cuts are near
+       copies of the others: all four compress to 285 KB together against 279 KB for the two
+       originals, so the tabular cuts cost about 6 KB of a download. What a renderer never reads
+       (glyph names in `post`, 33 KB a file; `GSUB`, 24 KB, which egui does not apply) could go
+       without changing a glyph, for a few tens of KB compressed; that needs a font tool
+       (fonttools), which this session could not install, so it is not done.
+   - **Measured**, a cold load, raw and with brotli -q 9 a file:
+
+     | Web, a cold load | Files | Raw | brotli -q 9 |
+     |---|---|---|---|
+     | Step 1 | 243 | 19.8 MB | 7.60 MB |
+     | Step 5: page 7.5 KB, JS 157 KB, `.wasm` 11.86 MB, sheet 2.72 MB | 4 | 14.7 MB | 6.39 MB |
+
+     The sheet is now 43% of the compressed bytes: it is PNG, which brotli doesn't shrink (the
+     step-1 icons were PNG too). A smaller encoding of the sheet would be the next saving.
+6. **Windows, from step 1's numbers.** Candidates, each only if the baseline points at it:
+   which renderer and backend eframe starts (the lock file has both wgpu and glow), a faster
+   encoding for the built-in sheet than PNG, the size of the `.exe`. Measured with the
+   `packaged` profile as well.
+   - Added 2026-11-23 at the user's word: older CPUs are not a goal, so **a build for this
+     machine's CPU** (`-C target-cpu=native`) is a candidate too, opt-in only, never the default
+     of `cargo build --release`, never in `scripts/package-*`, never for wasm.
+   - **Done** (2026-11-23). Step 1 points at the window and the renderer: four fifths of a
+     start-up. Decoding the sheet (45–47 ms since step 3) and the time to `main` (29–31 ms) are
+     small beside it, so the sheet's encoding and the `.exe`'s size were not tried.
+   - **The backend.** eframe 0.36 starts wgpu only (glow is not built in), and egui-wgpu asks
+     for every backend: Vulkan, DX12 and GL. wgpu reads `WGPU_BACKEND`, so each was timed on one
+     binary, `PERF_STARTUP=1`, 3 alternating rounds:
+
+     | Backends | Window and renderer | Process to first frame |
+     |---|---|---|
+     | All (the default) | 1,051–1,440 ms | 1,259–1,674 ms |
+     | DX12 | 758–865 ms | 945–1,069 ms |
+     | Vulkan | 843–879 ms | 1,038–1,078 ms |
+     | DX12 and Vulkan | 928–965 ms | 1,120–1,163 ms |
+     | GL | 354–540 ms | 570–781 ms |
+
+     GL starts fastest but draws slower: in a window, whole graph at 25%, vsync off, 3 rounds,
+     idle 13.8–14.2 ms against 10.0–10.1 ms for the default and 9.8–10.0 ms for DX12 (pan and
+     live values the same way), and its first paint is slower (117–142 ms against about 100).
+     So it is out. DX12 alone draws as the default does.
+   - As built: `aic_app::native_options(title)`, which `main.rs` and `perf_app` (its start-up
+     and its windowed run) both use, sets wgpu's backends on Windows to
+     `Backends::from_env().unwrap_or(DX12)`: DX12, unless `WGPU_BACKEND` names others.
+   - **Measured** 2026-11-23, background apps open, 3 runs alternating with the build before:
+     process to first frame 1,245–1,307 → 951–1,193 ms (`release`; the window and renderer
+     1,044–1,092 → 757–953 ms). With `--profile packaged` (one binary, `WGPU_BACKEND=dx12`
+     standing in for the change): 1,231–1,519 → 946–1,084 ms. The `packaged` `.exe` is 17.8 MB
+     against 23.7 MB and reaches `main` in the same 29–31 ms.
+   - **DX12 alone for now** (the user's decision, 2026-11-23). It leaves no fallback on a PC
+     whose DX12 doesn't work (a GPU or driver without it); winit can't be started twice in one process, so the app can't retry
+     another backend after a failure. Such a player sets `WGPU_BACKEND=vulkan` (or `gl`).
+     DX12 and Vulkan together would keep a fallback but give back about 190 ms of the 300 ms
+     saved.
+   - **`-C target-cpu=native`**: `release` built with and without it, `perf_app` headless, 3
+     alternating runs (frame means):
+     - Whole graph at 25%: idle 6.88–7.10 → 6.76–7.05 ms, pan 6.12–6.23 → 6.00–6.17 ms, live
+       values 8.85–8.98 → 8.59–8.70 ms.
+     - 100%: idle 2.57–2.67 → 2.48–2.53 ms, pan 2.61–2.66 → 2.48–2.52 ms, live values
+       3.79–3.81 → 3.68–3.70 ms.
+     - The 200-node section (`PERF_GRAPH=chain PERF_NODES=200`, live values): solve 25.03–25.18
+       → 25.06–25.25 ms, the frame 33.0–33.6 → 32.9–33.2 ms: the same.
+     - So 2–5% on drawing, nothing on the solve. Kept as opt-in only:
+       `scripts/build-for-this-cpu.ps1` builds `--profile packaged` with it into
+       `target\native\`, for the user's own PC; it runs in Windows PowerShell 5.1 too (this PC
+       has no `pwsh`). `packaged` and `native` together were not timed; each was measured
+       against `release`.
+
+Looked at and left out:
+- **Pre-compressed files** (`.br`, `.gz`) in the build: Cloudflare compresses.
+- **A service worker** for offline use: its own milestone if wanted.
+- **Loading the icons after the editor opens**, or each on first use: decided against, above.
+- **Names in Fluent**: the game's names stay in the format they come in.
 
 ---
 

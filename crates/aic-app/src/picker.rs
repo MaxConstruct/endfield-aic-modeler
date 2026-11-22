@@ -129,9 +129,7 @@ impl Picker {
                         Builtin::Sink => Some(widgets::SINK_IMAGE),
                         _ => None,
                     }
-                    .and_then(|id| {
-                        widgets::image_atom(ui.ctx(), catalog, ImageKind::Node, id, BADGE)
-                    });
+                    .and_then(|id| widgets::image_atom(ui.ctx(), ImageKind::Node, id, BADGE));
                     let button = match image {
                         Some(image) => egui::Button::new((image, label)),
                         None => egui::Button::new(label),

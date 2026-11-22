@@ -160,7 +160,7 @@ fn data_choice(
             egui::ComboBox::from_id_salt("data-language")
                 .selected_text(language.as_str())
                 .show_ui(ui, |ui| {
-                    for option in folder.languages(&choice) {
+                    for option in folder.languages() {
                         if ui.selectable_label(option == language, &option).clicked() {
                             changed = Some(DataChoice {
                                 language: Some(option),

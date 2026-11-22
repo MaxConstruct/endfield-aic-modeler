@@ -55,8 +55,8 @@ impl Browser {
                 aic_editor::browser::recipes(catalog, &self.query, self.category.as_ref());
             for recipe in recipes {
                 let image = catalog
-                    .recipe_image(recipe.id.as_str())
-                    .and_then(|(kind, id)| widgets::image_atom(ui.ctx(), catalog, kind, id, ICON));
+                    .recipe_image(recipe.id.as_str(), crate::icons::has)
+                    .and_then(|(kind, id)| widgets::image_atom(ui.ctx(), kind, id, ICON));
                 // The region badges go between the icon and the name, painted once laid out.
                 let badges = widgets::RegionBadges::new(ui, catalog, recipe, 1.0);
                 let badge_id = egui::Id::new(("browser-badges", recipe.id.as_str()));

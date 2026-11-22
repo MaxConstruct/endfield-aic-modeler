@@ -1,12 +1,15 @@
-//! `Catalog::from_bytes` against the hand-written fixture in `tests/fixtures/v1.10.0/`.
+//! `Catalog::from_bytes` against the hand-written fixture `tests/fixtures/data/v1.10.0.json`.
 
-use aic_data::{Catalog, FacilityId, ImageKind, ItemId, LoadWarning, NameKind, RegionId};
+use aic_data::{Catalog, FacilityId, ImageKind, ItemId, LoadWarning, NameKind, Names, RegionId};
 
-const DATA: &[u8] = include_bytes!("fixtures/v1.10.0/data.json");
-const EN: &[u8] = include_bytes!("fixtures/v1.10.0/i18n/en.json");
+const DATA: &[u8] = include_bytes!("fixtures/data/v1.10.0.json");
+const EN: Names = Names {
+    file: "names/en.json",
+    json: include_bytes!("fixtures/names/en.json"),
+};
 
 fn fixture() -> Catalog {
-    Catalog::from_bytes(DATA, EN, None).expect("fixture loads")
+    Catalog::from_bytes(DATA, EN).expect("fixture loads")
 }
 
 fn items(pairs: &[(&str, f64)]) -> Vec<(ItemId, f64)> {
@@ -206,13 +209,6 @@ fn icon_positions_become_pixel_rects() {
     );
     assert_eq!(icon.color.as_deref(), Some("#c87533"));
     assert_eq!(catalog.icon("missing-icon").unwrap().rect.x, 0);
-    assert!(catalog.icons_webp().is_none());
-}
-
-#[test]
-fn icon_bytes_are_kept_when_given() {
-    let catalog = Catalog::from_bytes(DATA, EN, Some(b"webp bytes")).unwrap();
-    assert_eq!(catalog.icons_webp(), Some(&b"webp bytes"[..]));
 }
 
 #[test]
@@ -244,30 +240,38 @@ fn raw_resources_are_what_mining_recipes_can_extract_in_the_region() {
 
 #[test]
 fn a_recipe_shows_the_first_image_it_has_icon_then_outputs_then_inputs_then_facility() {
-    let mut catalog = fixture();
-    let icon = |catalog: &Catalog, recipe: &str| {
+    let catalog = fixture();
+    // The icons the app has, as it tells the catalog.
+    let icon = |recipe: &str, icons: &[(ImageKind, &str)]| {
         catalog
-            .recipe_image(recipe)
+            .recipe_image(recipe, |kind, id| icons.contains(&(kind, id)))
             .map(|(kind, id)| (kind, id.to_owned()))
     };
     // No images at all.
-    assert_eq!(icon(&catalog, "copper_nugget"), None);
+    assert_eq!(icon("copper_nugget", &[]), None);
     // Burning a battery has no outputs: its input stands for it, then its facility.
-    catalog.add_image(ImageKind::Facility, "power_sta_1", vec![1]);
+    let station = (ImageKind::Facility, "power_sta_1");
     assert_eq!(
-        icon(&catalog, "power_proc_battery_1"),
+        icon("power_proc_battery_1", &[station]),
         Some((ImageKind::Facility, "power_sta_1".into()))
     );
-    catalog.add_image(ImageKind::Item, "proc_battery_1", vec![1]);
+    let battery = (ImageKind::Item, "proc_battery_1");
     assert_eq!(
-        icon(&catalog, "power_proc_battery_1"),
+        icon("power_proc_battery_1", &[station, battery]),
         Some((ImageKind::Item, "proc_battery_1".into()))
     );
     // A byproduct recipe shows its first output.
-    catalog.add_image(ImageKind::Item, "liquid_sewage", vec![1]);
-    catalog.add_image(ImageKind::Item, "copper_nugget", vec![1]);
+    let outputs = [
+        (ImageKind::Item, "liquid_sewage"),
+        (ImageKind::Item, "copper_nugget"),
+    ];
     assert_eq!(
-        icon(&catalog, "copper_nugget"),
+        icon("copper_nugget", &outputs),
         Some((ImageKind::Item, "copper_nugget".into()))
+    );
+    // A facility's picture is not an item's.
+    assert_eq!(
+        icon("copper_nugget", &[(ImageKind::Facility, "copper_nugget")]),
+        None
     );
 }

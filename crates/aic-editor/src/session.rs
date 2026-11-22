@@ -1094,8 +1094,8 @@ mod tests {
     fn a_data_choice_that_does_not_load_stays_in_the_status_after_the_last_document_opens() {
         let dir = std::env::temp_dir().join(format!("aic-apply-data-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("broken")).unwrap();
-        std::fs::write(dir.join("broken/data.json"), "not json").unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("broken.json"), "not json").unwrap();
         let folder = DataFolder::at(dir.clone()).unwrap();
 
         let mut one = session();

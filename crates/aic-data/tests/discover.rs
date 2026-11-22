@@ -2,10 +2,21 @@
 
 use std::path::{Path, PathBuf};
 
-use aic_data::{DataDirSearch, ImageKind, LoadError, LoadWarning, list_versions, load};
+use aic_data::{DataDirSearch, LoadError, LoadWarning, Names, list_versions, load};
 
+/// The fixtures' data folder: `v1.10.0.json`, `v1.9.0.json` with its overlay, `broken.json` and a
+/// README.
 fn fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/data")
+}
+
+const EN: &[u8] = include_bytes!("fixtures/names/en.json");
+
+fn english() -> Names<'static> {
+    Names {
+        file: "names/en.json",
+        json: EN,
+    }
 }
 
 /// The repository root, which has a real `data/` folder.
@@ -18,13 +29,13 @@ fn nowhere() -> PathBuf {
 }
 
 #[test]
-fn lists_versions_newest_first_and_skips_other_folders() {
+fn a_version_is_a_json_file_that_is_not_an_overlay_newest_first() {
     let versions = list_versions(&fixtures()).unwrap();
     let names: Vec<_> = versions.iter().map(|v| v.name.as_str()).collect();
     // Numeric order: as strings, v1.9.0 would come first. A name that isn't a version goes last.
-    // `not-a-version/` has no data.json, so it isn't listed.
+    // `v1.9.0_overlay.json` belongs to v1.9.0, and `README.md` is not JSON.
     assert_eq!(names, ["v1.10.0", "v1.9.0", "broken"]);
-    assert_eq!(versions[0].path, fixtures().join("v1.10.0"));
+    assert_eq!(versions[0].path, fixtures().join("v1.10.0.json"));
 }
 
 #[test]
@@ -36,8 +47,8 @@ fn listing_a_missing_folder_is_an_error() {
 }
 
 #[test]
-fn load_uses_the_folder_name_as_version() {
-    let catalog = load(&fixtures().join("v1.10.0"), "en").unwrap();
+fn load_uses_the_file_name_as_version_and_the_names_it_is_given() {
+    let catalog = load(&fixtures().join("v1.10.0.json"), english()).unwrap();
     assert_eq!(catalog.version(), "v1.10.0");
     assert_eq!(catalog.item("copper_nugget").unwrap().name, "Cuprium");
     assert!(
@@ -49,82 +60,71 @@ fn load_uses_the_folder_name_as_version() {
 }
 
 #[test]
-fn missing_icons_are_not_an_error() {
-    let catalog = load(&fixtures().join("v1.10.0"), "en").unwrap();
-    assert!(catalog.icons_webp().is_none());
-}
-
-#[test]
-fn icons_are_read_when_present() {
-    let catalog = load(&fixtures().join("v1.9.0"), "en").unwrap();
-    assert!(
-        catalog
-            .icons_webp()
-            .unwrap()
-            .starts_with(b"not a real webp")
-    );
-}
-
-#[test]
-fn images_are_read_from_their_folders_by_id() {
-    let catalog = load(&fixtures().join("v1.9.0"), "en").unwrap();
-    let png = |kind, id| {
-        catalog
-            .image(kind, id)
-            .map(|bytes| bytes.starts_with(b"\x89PNG"))
+fn other_names_name_the_same_data_otherwise() {
+    let names = Names {
+        file: "names/xx.json",
+        json: br#"{ "items": { "copper_nugget": "Kupfer" } }"#,
     };
-    assert_eq!(png(ImageKind::Item, "copper_ore"), Some(true));
-    assert_eq!(png(ImageKind::Facility, "furnance_1"), Some(true));
-    assert_eq!(png(ImageKind::Node, "source"), Some(true));
-    // Kinds don't mix, and files that aren't PNG are skipped.
-    assert_eq!(png(ImageKind::Facility, "copper_ore"), None);
-    assert_eq!(png(ImageKind::Item, "README"), None);
+    let catalog = load(&fixtures().join("v1.10.0.json"), names).unwrap();
+    assert_eq!(catalog.item("copper_nugget").unwrap().name, "Kupfer");
 }
 
 #[test]
-fn missing_images_are_not_an_error() {
-    let catalog = load(&fixtures().join("v1.10.0"), "en").unwrap();
-    assert!(catalog.image(ImageKind::Item, "copper_ore").is_none());
+fn the_overlay_beside_a_version_is_merged_into_it() {
+    let catalog = load(&fixtures().join("v1.9.0.json"), english()).unwrap();
+    // `v1.9.0_overlay.json` adds Cuprium Ore, named by the names table.
+    assert_eq!(catalog.item("copper_ore").unwrap().name, "Cuprium Ore");
+    // And no other version takes it.
+    let other = load(&fixtures().join("v1.10.0.json"), english()).unwrap();
+    assert_eq!(other.items().len(), 21);
 }
 
 #[test]
 fn version_mismatch_is_a_warning() {
-    let catalog = load(&fixtures().join("v1.9.0"), "en").unwrap();
+    let catalog = load(&fixtures().join("v1.9.0.json"), english()).unwrap();
     assert_eq!(catalog.version(), "v1.9.0");
     assert!(catalog.warnings().contains(&LoadWarning::VersionMismatch {
-        folder: "v1.9.0".to_owned(),
+        name: "v1.9.0".to_owned(),
         declared: "v1.8.0".to_owned(),
     }));
 }
 
 #[test]
-fn missing_language_file_names_the_file() {
-    let error = load(&fixtures().join("v1.10.0"), "fr").unwrap_err();
-    let LoadError::Read { file, .. } = &error else {
+fn a_missing_version_file_names_the_file() {
+    let file = fixtures().join("v0.0.1.json");
+    let error = load(&file, english()).unwrap_err();
+    let LoadError::Read { file: named, .. } = &error else {
         panic!("expected a Read error, got {error:?}");
     };
-    assert_eq!(*file, fixtures().join("v1.10.0/i18n/fr.json"));
-}
-
-#[test]
-fn missing_data_json_names_the_file() {
-    let dir = fixtures().join("not-a-version");
-    let error = load(&dir, "en").unwrap_err();
-    let LoadError::Read { file, .. } = &error else {
-        panic!("expected a Read error, got {error:?}");
-    };
-    assert_eq!(*file, dir.join("data.json"));
+    assert_eq!(*named, file);
 }
 
 #[test]
 fn json_errors_name_the_real_file() {
-    let dir = fixtures().join("broken");
-    let error = load(&dir, "en").unwrap_err();
+    let file = fixtures().join("broken.json");
+    let error = load(&file, english()).unwrap_err();
+    let LoadError::Json {
+        file: named, path, ..
+    } = &error
+    else {
+        panic!("expected a Json error, got {error:?}");
+    };
+    assert_eq!(*named, file);
+    assert_eq!(path, "recipes[0].time");
+}
+
+#[test]
+fn a_bad_names_table_names_its_file() {
+    let names = Names {
+        file: "names/en.json",
+        json: br#"{ "items": { "belt": 3 } }"#,
+    };
+    let error = load(&fixtures().join("v1.10.0.json"), names).unwrap_err();
     let LoadError::Json { file, path, .. } = &error else {
         panic!("expected a Json error, got {error:?}");
     };
-    assert_eq!(*file, dir.join("data.json"));
-    assert_eq!(path, "recipes[0].time");
+    assert_eq!(file.to_str(), Some("names/en.json"));
+    assert_eq!(path, "items.belt");
 }
 
 #[test]
@@ -199,15 +199,11 @@ fn nothing_found_lists_every_place_tried() {
     assert_eq!(tried, [nowhere().join("data"), fixtures().join("data")]);
 }
 
-/// A version folder in the temp directory with the v1.10.0 fixture, plus `extra` files.
-fn temp_version(name: &str, extra: &[(&str, &str)]) -> PathBuf {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/v1.10.0");
-    let dir = std::env::temp_dir()
-        .join(format!("aic-data-{name}-{}", std::process::id()))
-        .join("v1.10.0");
-    std::fs::create_dir_all(dir.join("i18n")).unwrap();
-    std::fs::copy(fixture.join("data.json"), dir.join("data.json")).unwrap();
-    std::fs::copy(fixture.join("i18n/en.json"), dir.join("i18n/en.json")).unwrap();
+/// A data folder in the temp directory with the v1.10.0 fixture, plus `extra` files.
+fn temp_data(name: &str, extra: &[(&str, &str)]) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("aic-data-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(fixtures().join("v1.10.0.json"), dir.join("v1.10.0.json")).unwrap();
     for (file, text) in extra {
         std::fs::write(dir.join(file), text).unwrap();
     }
@@ -215,31 +211,23 @@ fn temp_version(name: &str, extra: &[(&str, &str)]) -> PathBuf {
 }
 
 #[test]
-fn load_merges_the_folders_overlay() {
-    let dir = temp_version(
+fn load_merges_the_versions_overlay_and_its_errors_name_it() {
+    let dir = temp_data(
         "overlay",
         &[(
-            "overlay.json",
+            "v1.10.0_overlay.json",
             r#"{ "recipes": { "remove": ["liquid_sewage-mix"] } }"#,
         )],
     );
-    let catalog = aic_data::load(&dir, "en").expect("loads");
+    let catalog = load(&dir.join("v1.10.0.json"), english()).expect("loads");
     assert!(catalog.recipe("liquid_sewage-mix").is_none());
 
-    std::fs::write(dir.join("overlay.json"), r#"{ "oops": 1 }"#).unwrap();
-    match aic_data::load(&dir, "en") {
-        Err(aic_data::LoadError::Json { file, .. }) => assert_eq!(file, dir.join("overlay.json")),
+    std::fs::write(dir.join("v1.10.0_overlay.json"), r#"{ "oops": 1 }"#).unwrap();
+    match load(&dir.join("v1.10.0.json"), english()) {
+        Err(LoadError::Json { file, .. }) => {
+            assert_eq!(file, dir.join("v1.10.0_overlay.json"));
+        }
         other => panic!("expected the overlay's error, got {other:?}"),
     }
-    let _ = std::fs::remove_dir_all(dir.parent().unwrap());
-}
-
-#[test]
-fn languages_are_the_names_files_present() {
-    let dir = temp_version(
-        "languages",
-        &[("i18n/fr.json", "{}"), ("i18n/notes.txt", "")],
-    );
-    assert_eq!(aic_data::list_languages(&dir).unwrap(), ["en", "fr"]);
-    let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    let _ = std::fs::remove_dir_all(dir);
 }

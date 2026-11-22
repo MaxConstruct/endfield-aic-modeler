@@ -37,3 +37,32 @@ inherits = "release"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+# The PNG crates always optimized, in build scripts too: aic-app's build script packs the icon
+# sheet at the best compression (docs/PLAN.md, M13 step 3), which takes about 34 s with them
+# unoptimized and 21 s with them optimized; debug tests decode the sheet. Build scripts are not
+# optimized in any profile otherwise, `release` included.
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+[profile.dev.package.simd-adler32]
+opt-level = 3
+[profile.release.package.png]
+opt-level = 3
+[profile.release.package.fdeflate]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+[profile.release.package.image]
+opt-level = 3
+[profile.release.package.crc32fast]
+opt-level = 3
+[profile.release.package.simd-adler32]
+opt-level = 3

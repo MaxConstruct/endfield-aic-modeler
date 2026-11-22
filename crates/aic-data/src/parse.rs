@@ -13,6 +13,7 @@ use crate::ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};
 use crate::raw::{
     RawData, RawEntry, RawI18n, RawIcon, RawItem, RawOverlay, RawOverlayList, RawRecipe, RawSpeed,
 };
+use crate::version::Names;
 
 /// Side length of one cell in `icons.webp`.
 const ICON_SIZE: u32 = 64;
@@ -30,44 +31,38 @@ type Regions = IndexMap<RegionId, Region>;
 pub(crate) struct Sources<'a> {
     pub data: &'a Path,
     pub overlay: &'a Path,
-    pub i18n: &'a Path,
+    pub names: &'a Path,
 }
 
 impl Catalog {
-    /// Parses a catalog from the contents of `data.json`, a language file (`i18n/<lang>.json`) and,
-    /// optionally, `icons.webp`. The icon bytes are kept as they are, not decoded.
+    /// Parses a catalog from the contents of a data version's file, named by `names`. Errors call
+    /// the data `data.json`.
     ///
-    /// The version is what `data.json` declares; `aic_data::load` replaces it with the folder name.
-    pub fn from_bytes(
-        data_json: &[u8],
-        i18n_json: &[u8],
-        icons_webp: Option<&[u8]>,
-    ) -> Result<Catalog, LoadError> {
-        Self::from_bytes_with_overlay(data_json, None, i18n_json, icons_webp)
+    /// The version is what the data declares; `aic_data::load` replaces it with the file's name.
+    pub fn from_bytes(data_json: &[u8], names: Names<'_>) -> Result<Catalog, LoadError> {
+        Self::from_bytes_with_overlay(data_json, None, names)
     }
 
-    /// Like [`Catalog::from_bytes`], with the contents of `overlay.json` merged on top of
-    /// `data.json` first.
+    /// Like [`Catalog::from_bytes`], with the contents of an overlay merged on top of the data
+    /// first. Errors call it `overlay.json`.
     pub fn from_bytes_with_overlay(
         data_json: &[u8],
         overlay_json: Option<&[u8]>,
-        i18n_json: &[u8],
-        icons_webp: Option<&[u8]>,
+        names: Names<'_>,
     ) -> Result<Catalog, LoadError> {
         let sources = Sources {
             data: Path::new("data.json"),
             overlay: Path::new("overlay.json"),
-            i18n: Path::new("i18n.json"),
+            names: Path::new(names.file),
         };
-        parse(data_json, overlay_json, i18n_json, icons_webp, &sources)
+        parse(data_json, overlay_json, names.json, &sources)
     }
 }
 
 pub(crate) fn parse(
     data_json: &[u8],
     overlay_json: Option<&[u8]>,
-    i18n_json: &[u8],
-    icons_webp: Option<&[u8]>,
+    names_json: &[u8],
     sources: &Sources<'_>,
 ) -> Result<Catalog, LoadError> {
     let mut raw: RawData = from_json(data_json, sources.data)?;
@@ -75,14 +70,13 @@ pub(crate) fn parse(
         let overlay: RawOverlay = from_json(overlay, sources.overlay)?;
         apply_overlay(&mut raw, overlay, sources.overlay)?;
     }
-    let i18n: RawI18n = from_json(i18n_json, sources.i18n)?;
+    let i18n: RawI18n = from_json(names_json, sources.names)?;
     let mut builder = Builder {
         file: sources.data.to_path_buf(),
         i18n,
         warnings: Vec::new(),
     };
     let mut catalog = builder.build(raw)?;
-    catalog.icons_webp = icons_webp.map(<[u8]>::to_vec);
     catalog.warnings = builder.warnings;
     Ok(catalog)
 }
@@ -180,8 +174,6 @@ impl Builder {
             belt_per_min,
             pipe_per_min,
             icons: self.icons(&raw.icons)?,
-            icons_webp: None,
-            images: Default::default(),
             version: raw.version.values().next().cloned().unwrap_or_default(),
             warnings: Vec::new(),
         })
@@ -195,7 +187,7 @@ impl Builder {
         }
     }
 
-    /// The name in the language file, else the Chinese name, else the ID. A fallback is a warning.
+    /// The name in the names table, else the Chinese name, else the ID. A fallback is a warning.
     fn name(&mut self, kind: NameKind, id: &str, zh: Option<&str>) -> String {
         let table = match kind {
             NameKind::Item => &self.i18n.items,

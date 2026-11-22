@@ -1,104 +1,55 @@
-//! What only the web build does: fetch `data/` from its own site, download files and ask the
-//! browser for a file to open.
+//! What only the web build does: take the icon sheets the page fetched, take the loading page
+//! away, download files and ask the browser for a file to open.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver};
 
-use aic_data::Bundle;
-use eframe::egui;
 use wasm_bindgen::{JsCast as _, JsValue};
-use wasm_bindgen_futures::JsFuture;
 
 use crate::files::{Download, Upload};
 
-/// Where the site serves the repository's `data/` folder, next to the page.
-const DATA_URL: &str = "data";
-
-/// The game data on its way from the site: every file `build.rs` found in `data/`, fetched at
-/// once.
-pub struct DataDownload {
-    progress: Rc<RefCell<Progress>>,
-    total: usize,
-}
-
-#[derive(Default)]
-struct Progress {
-    files: Vec<(String, Vec<u8>)>,
-    /// The first file that failed, and why.
-    failed: Option<(String, String)>,
-}
-
-/// How far a [`DataDownload`] got.
-pub enum Fetched {
-    Loading {
-        done: usize,
-        total: usize,
-    },
-    Done(Bundle),
-    /// A file, and why it didn't come.
-    Failed {
-        file: String,
-        error: String,
-    },
-}
-
-impl DataDownload {
-    pub fn start(ctx: &egui::Context) -> Self {
-        let progress = Rc::new(RefCell::new(Progress::default()));
-        for &path in aic_editor::embedded::paths() {
-            let progress = Rc::clone(&progress);
-            let ctx = ctx.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let fetched = fetch(&format!("{DATA_URL}/{path}")).await;
-                let mut progress = progress.borrow_mut();
-                match fetched {
-                    Ok(bytes) => progress.files.push((path.to_owned(), bytes)),
-                    Err(error) => {
-                        progress.failed.get_or_insert((path.to_owned(), error));
-                    }
-                }
-                ctx.request_repaint();
-            });
-        }
-        Self {
-            progress,
-            total: aic_editor::embedded::paths().len(),
-        }
-    }
-
-    /// Where the download is. Once it is `Done`, the files have moved into the bundle.
-    pub fn poll(&mut self) -> Fetched {
-        let mut progress = self.progress.borrow_mut();
-        if let Some((file, error)) = progress.failed.clone() {
-            return Fetched::Failed { file, error };
-        }
-        let done = progress.files.len();
-        if done < self.total {
-            return Fetched::Loading {
-                done,
-                total: self.total,
-            };
-        }
-        Fetched::Done(Bundle::from_owned(std::mem::take(&mut progress.files)))
-    }
-}
-
-/// Fetches `url`, relative to the page.
-async fn fetch(url: &str) -> Result<Vec<u8>, String> {
+/// The icon sheets, as the loading page in `index.html` fetched them (`window.aicLoading.sheets`,
+/// a promise of one `Uint8Array` a sheet). An error when a sheet didn't come: the page shows
+/// which.
+pub async fn icon_sheets() -> Result<Vec<Vec<u8>>, String> {
     let window = web_sys::window().ok_or("no window")?;
-    let response: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
+    let loading =
+        js_sys::Reflect::get(&window, &JsValue::from_str("aicLoading")).map_err(describe)?;
+    let promise = js_sys::Reflect::get(&loading, &JsValue::from_str("sheets"))
+        .map_err(describe)?
+        .dyn_into::<js_sys::Promise>()
+        .map_err(|_| "the page fetched no icon sheets".to_owned())?;
+    let sheets = wasm_bindgen_futures::JsFuture::from(promise)
         .await
-        .and_then(JsValue::dyn_into)
         .map_err(describe)?;
-    if !response.ok() {
-        return Err(format!("HTTP {}", response.status()));
-    }
-    let buffer = JsFuture::from(response.array_buffer().map_err(describe)?)
-        .await
-        .map_err(describe)?;
-    Ok(js_sys::Uint8Array::new(&buffer).to_vec())
+    Ok(js_sys::Array::from(&sheets)
+        .iter()
+        .map(|sheet| js_sys::Uint8Array::new(&sheet).to_vec())
+        .collect())
 }
+
+/// Takes the loading page away, once the editor has drawn its first frame, and marks the moment
+/// in the page's performance timeline (`aic-editor-shown`), for measuring a load.
+pub fn remove_loading_page() {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    if let Some(page) = window
+        .document()
+        .and_then(|document| document.get_element_by_id(LOADING_PAGE))
+    {
+        page.remove();
+    }
+    let mark = js_sys::Reflect::get(&window, &JsValue::from_str("performance")).and_then(|p| {
+        let mark = js_sys::Reflect::get(&p, &JsValue::from_str("mark"))?;
+        mark.dyn_into::<js_sys::Function>()?
+            .call1(&p, &JsValue::from_str("aic-editor-shown"))
+    });
+    // Only a measurement: a browser without it loses nothing.
+    let _ = mark;
+}
+
+/// The loading page's element in `index.html`.
+const LOADING_PAGE: &str = "loading";
 
 /// Has the browser save `file` to the player's downloads.
 pub fn download(file: &Download) -> Result<(), String> {

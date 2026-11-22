@@ -455,7 +455,11 @@ mod tests {
                   "in": { "ingot": 1, "slag": 1 }, "out": { "ore": 1 }, "producers": ["furnace"] }
             ]
         }"#;
-        Catalog::from_bytes(data.as_bytes(), b"{}", None).expect("test catalog loads")
+        let names = aic_data::Names {
+            file: "names.json",
+            json: b"{}",
+        };
+        Catalog::from_bytes(data.as_bytes(), names).expect("test catalog loads")
     }
 
     /// ore → ingot + slag.

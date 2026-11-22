@@ -71,8 +71,8 @@ sections, workspaces with explicit ports (ADR 0007). Logical flow only, never sp
 
 ## Evidence on Hand
 
-- Game data and item/facility icons in `data/v1.5.3/` (Hypergryph/Gryphline's, not under the code
-  license).
+- Game data in `data/v1.5.3.json`, game names in `crates/aic-editor/i18n/names/` and item/facility
+  icons in `crates/aic-app/assets/icons/` (Hypergryph/Gryphline's, not under the code license).
 - Current UI: `docs/ref/aic-ui-0.png`. Reference screenshots in `docs/ref/`.
 - No users other than Max, no testimonials, no metrics.
 

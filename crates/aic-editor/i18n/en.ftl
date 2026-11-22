@@ -7,9 +7,7 @@ app-title = AIC Modeler
 
 load-failed-title = Could not load game data
 load-failed-hint = Put a data folder next to the app, or start it with --data <path>.
-load-failed-hint-web = Check that the site serves its data folder, then reload the page.
-data-loading = Loading game data… { $done } of { $total } files
-data-fetch-failed = Could not fetch { $file }: { $error }
+load-failed-hint-web = This build has no game data in it. Build it again with the data folder in place.
 
 ## Window and menus
 

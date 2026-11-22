@@ -5,8 +5,46 @@ target = "index.html"
 dist = "../../target/web"
 # Relative URLs, so the build works from any folder of a site.
 public_url = "./"
+# The page's own loader in place of Trunk's, so a cold load is four files: the page, the JS glue,
+# the .wasm and the icon sheet. index.html fetches the .wasm with the sheet, counting both, and
+# this hands it to wasm-bindgen as it arrives (PLAN.md, M13 step 4). A glue or .wasm that fails is
+# named on the page.
+pattern_script = """
+<script type="module">
+const glue = "{base}{js}";
+let bindings;
+try {
+    bindings = await import(glue);
+} catch (error) {
+    window.aicLoading.failed(glue.split("/").pop());
+    throw error;
+}
+try {
+    const wasm = await bindings.default({ module_or_path: window.aicLoading.wasm });
+    window.wasmBindings = bindings;
+    dispatchEvent(new CustomEvent("TrunkApplicationStarted", { detail: { wasm } }));
+} catch (error) {
+    window.aicLoading.failed("{wasm}");
+    throw error;
+}
+</script>
+"""
+# No preload links: the page starts every download itself, and a preload fetched them twice.
+pattern_preload = ""
 
 [tools]
 # The wasm-bindgen in Cargo.lock; `cargo install --locked wasm-bindgen-cli --version 0.2.130`, so
 # Trunk uses it rather than downloading one.
 wasm_bindgen = "0.2.130"
+# The wasm-opt of `cargo install --locked wasm-opt` (binaryen 133), so Trunk uses it rather than
+# downloading its own (PLAN.md, M13 step 5).
+wasm_opt = "version_133"
+
+# Copies the icon sheets into the site under hashed names and writes the files' sizes into the
+# page for its loading bar (PLAN.md, M13 step 4). Started through `sh`: on Windows a plain `bash`
+# finds WSL's in System32 before PATH, which doesn't see Trunk's variables, while `sh` is only Git
+# Bash's, whose PATH then finds its own bash.
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", "exec bash ../../scripts/web-assets.sh"]

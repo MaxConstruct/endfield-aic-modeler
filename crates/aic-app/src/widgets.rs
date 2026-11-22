@@ -1,11 +1,11 @@
 //! Small drawing helpers shared by the canvas, the picker and the panels.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use aic_data::{Catalog, ImageKind, Recipe, RegionId};
-use eframe::egui::{self, Color32, FontId, Id, Painter, Pos2, Rect, TextureHandle, Ui, Vec2};
+use eframe::egui::{self, Color32, FontId, Id, Painter, Pos2, Rect, Ui, Vec2};
 
+use crate::icons::{self, Icon};
 use crate::settings::parse_amount;
 use aic_editor::format;
 use aic_editor::names;
@@ -60,122 +60,44 @@ impl LimitField<'_> {
     }
 }
 
-/// The image of a source node, under `images/nodes/` (the game's Depot Unloader).
+/// The image of a source node, under `assets/icons/nodes/` (the game's Depot Unloader).
 pub const SOURCE_IMAGE: &str = "source";
-/// The image of a sink node, under `images/nodes/` (the game's Depot Loader).
+/// The image of a sink node, under `assets/icons/nodes/` (the game's Depot Loader).
 pub const SINK_IMAGE: &str = "sink";
 
 /// An image as an egui widget part, for buttons that show a picture next to their text.
 pub fn image_atom(
     ctx: &egui::Context,
-    catalog: &Catalog,
     kind: ImageKind,
     id: &str,
     size: f32,
 ) -> Option<egui::Image<'static>> {
-    let texture = icon_texture(ctx, catalog, kind, id)?;
-    Some(egui::Image::new((texture.id(), texture.size_vec2())).fit_to_exact_size(Vec2::splat(size)))
+    let icon = icons::get(ctx, kind, id)?;
+    Some(
+        egui::Image::new((icon.texture, icon.size))
+            .uv(icon.uv)
+            .fit_to_exact_size(Vec2::splat(size)),
+    )
 }
 
-/// Decoded icons, kept in egui's memory so any painter can reach them. Each image is decoded the
-/// first time it is drawn; `None` remembers that it has no usable image.
-#[derive(Clone, Default)]
-struct IconCache(Arc<Mutex<Textures>>);
-
-/// By kind, then by ID, so a lookup borrows the ID instead of building a key every frame.
-type Textures = HashMap<ImageKind, HashMap<String, Option<TextureHandle>>>;
-
-/// Drops every decoded icon, after a switch to other data.
-pub fn forget_icons(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.remove::<IconCache>(Id::new("icon-cache")));
+/// Paints `icon` into `rect`, keeping its shape.
+fn paint_icon(painter: &Painter, icon: &Icon, rect: Rect) {
+    let scale = (rect.width() / icon.size.x).min(rect.height() / icon.size.y);
+    let fitted = Rect::from_center_size(rect.center(), icon.size * scale);
+    painter.image(icon.texture, fitted, icon.uv, Color32::WHITE);
 }
 
-/// The texture for an image of the data version, decoded on first use.
-pub fn icon_texture(
-    ctx: &egui::Context,
-    catalog: &Catalog,
-    kind: ImageKind,
-    id: &str,
-) -> Option<TextureHandle> {
-    let cache = ctx.data_mut(|d| {
-        d.get_temp_mut_or_default::<IconCache>(Id::new("icon-cache"))
-            .clone()
-    });
-    if let Some(found) = cache
-        .0
-        .lock()
-        .expect("icon cache lock")
-        .get(&kind)
-        .and_then(|textures| textures.get(id))
-    {
-        return found.clone();
-    }
-    let texture = catalog.image(kind, id).and_then(decode).map(|image| {
-        ctx.load_texture(
-            format!("icon/{}/{id}", kind.folder()),
-            image,
-            egui::TextureOptions::LINEAR,
-        )
-    });
-    cache
-        .0
-        .lock()
-        .expect("icon cache lock")
-        .entry(kind)
-        .or_default()
-        .insert(id.to_owned(), texture.clone());
-    texture
-}
-
-fn decode(bytes: &[u8]) -> Option<egui::ColorImage> {
-    let image = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
-        .ok()?
-        .to_rgba8();
-    let size = [image.width() as usize, image.height() as usize];
-    Some(egui::ColorImage::from_rgba_unmultiplied(
-        size,
-        image.as_raw(),
-    ))
-}
-
-/// Paints an image of the data version into `rect`, keeping its shape. Returns false, painting
-/// nothing, when there is no such image.
-pub fn paint_image(
-    painter: &Painter,
-    catalog: &Catalog,
-    kind: ImageKind,
-    id: &str,
-    rect: Rect,
-) -> bool {
-    if !rect.is_finite() {
-        return false;
-    }
-    let Some(texture) = icon_texture(painter.ctx(), catalog, kind, id) else {
-        return false;
-    };
-    let size = texture.size_vec2();
-    let scale = (rect.width() / size.x).min(rect.height() / size.y);
-    let fitted = Rect::from_center_size(rect.center(), size * scale);
-    let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-    painter.image(texture.id(), fitted, uv, Color32::WHITE);
-    true
-}
-
-/// An image laid out as a widget, or `None` when the data has no such image.
-pub fn image(
-    ui: &mut Ui,
-    catalog: &Catalog,
-    kind: ImageKind,
-    id: &str,
-    size: f32,
-) -> Option<egui::Response> {
-    // The icon cache, not the catalog: a catalog lookup builds its key every frame.
-    let _known = icon_texture(ui.ctx(), catalog, kind, id)?;
+/// An icon laid out as a widget, or `None` when the program has no such icon.
+pub fn image(ui: &mut Ui, kind: ImageKind, id: &str, size: f32) -> Option<egui::Response> {
+    let icon = icons::get(ui.ctx(), kind, id)?;
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
-    paint_image(ui.painter(), catalog, kind, id, rect).then_some(response)
+    if rect.is_finite() {
+        paint_icon(ui.painter(), &icon, rect);
+    }
+    Some(response)
 }
 
-/// An item's icon, or a colored square with its initials when the data has no image for it.
+/// An item's icon, or a colored square with its initials when the program has no icon for it.
 pub fn paint_item(painter: &Painter, catalog: &Catalog, item: &str, rect: Rect) {
     ItemPicture::of(painter.ctx(), catalog, item).paint(painter, rect);
 }
@@ -183,7 +105,7 @@ pub fn paint_item(painter: &Painter, catalog: &Catalog, item: &str, rect: Rect) 
 /// What an item looks like, ready to paint without the catalog: its icon, or a stand-in square.
 #[derive(Clone)]
 pub enum ItemPicture {
-    Icon(TextureHandle),
+    Icon(Icon),
     /// A colored square with the item's initials.
     Badge {
         fill: Color32,
@@ -193,8 +115,8 @@ pub enum ItemPicture {
 
 impl ItemPicture {
     pub fn of(ctx: &egui::Context, catalog: &Catalog, item: &str) -> Self {
-        match icon_texture(ctx, catalog, ImageKind::Item, item) {
-            Some(texture) => Self::Icon(texture),
+        match icons::get(ctx, ImageKind::Item, item) {
+            Some(icon) => Self::Icon(icon),
             None => Self::Badge {
                 fill: item_color(catalog, item),
                 initials: initials(names::item(catalog, item)),
@@ -217,13 +139,7 @@ impl ItemPicture {
             return;
         }
         match self {
-            Self::Icon(texture) => {
-                let size = texture.size_vec2();
-                let scale = (rect.width() / size.x).min(rect.height() / size.y);
-                let fitted = Rect::from_center_size(rect.center(), size * scale);
-                let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-                painter.image(texture.id(), fitted, uv, Color32::WHITE);
-            }
+            Self::Icon(icon) => paint_icon(painter, icon, rect),
             Self::Badge { fill, initials } => {
                 painter.rect_filled(rect, 3.0, *fill);
                 let text_color = if fill.intensity() > 0.55 {
@@ -421,12 +337,9 @@ mod tests {
         assert_eq!(initials("LC Valley Battery"), "LV");
     }
 
-    const DATA: &[u8] = include_bytes!("../../aic-editor/fixtures/satisfactory/vtest/data.json");
-    const EN: &[u8] = include_bytes!("../../aic-editor/fixtures/satisfactory/vtest/i18n/en.json");
-
     #[test]
     fn a_recipe_of_some_regions_names_them_and_one_of_every_region_none() {
-        let catalog = Catalog::from_bytes(DATA, EN, None).expect("fixture loads");
+        let catalog = aic_editor::testing::fixture_catalog();
         let regions = |id: &str| recipe_regions(&catalog, catalog.recipe(id).unwrap()).to_vec();
         assert_eq!(regions("iron_wire"), ["jinlong".into()]);
         assert!(regions("iron_plate").is_empty());

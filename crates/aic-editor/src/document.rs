@@ -563,10 +563,9 @@ mod tests {
         // The same data with the smelter twice as fast: the kept section no longer holds.
         let overlay = br#"{ "facility_speeds": { "smelter": 2 } }"#;
         let faster = Catalog::from_bytes_with_overlay(
-            include_bytes!("../fixtures/satisfactory/vtest/data.json"),
+            crate::testing::FIXTURE_DATA,
             Some(overlay),
-            include_bytes!("../fixtures/satisfactory/vtest/i18n/en.json"),
-            None,
+            crate::testing::FIXTURE_NAMES,
         )
         .unwrap();
         doc.rebind(&faster);

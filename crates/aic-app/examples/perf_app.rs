@@ -35,6 +35,13 @@
 //! PERF_HEADLESS=1 PERF_ZOOM=0.25 PERF_PHASE=Idle \
 //!     cargo run --release -p aic-app --features dhat-heap --example perf_app
 //! ```
+//!
+//! `PERF_STARTUP=1` times a start-up instead, the way `main.rs` starts the app: from the process's
+//! creation (Windows only) to the end of the first frame, in parts, then exits. It finds the data
+//! and opens `App::from_folder` with eframe's storage in `PERF_STORAGE` (a folder, default the
+//! temporary folder), so a player's own window state and last document are never read or touched:
+//! a first start, with an empty graph. Vsync is on, as in the app. After the window closes it also
+//! times, apart, loading the catalog once more and the app's fonts on a fresh `egui::Context`.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -440,6 +447,7 @@ fn median(mut values: Vec<f64>) -> f64 {
 fn headless(catalog: Result<Catalog, String>, target: usize) {
     let ctx = egui::Context::default();
     aic_app::theme::install(&ctx);
+    aic_app::icons::install(&ctx);
     let mut app = App::new(Strings::english(), catalog, None);
     let live = build(&mut app, target);
     let mut time = 0.0;
@@ -556,7 +564,181 @@ fn zoom() -> Option<f32> {
     std::env::var("PERF_ZOOM").ok().and_then(|v| v.parse().ok())
 }
 
+/// How long ago the process was created, from Windows' own record of it.
+#[cfg(windows)]
+fn since_process_start() -> Option<Duration> {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    // SAFETY: the pseudo-handle of this process, and four FILETIMEs that outlive the call.
+    let ok = unsafe {
+        GetProcessTimes(
+            GetCurrentProcess(),
+            &mut created,
+            &mut exited,
+            &mut kernel,
+            &mut user,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    // FILETIME counts 100 ns from 1601; the Unix epoch is this many of them later.
+    const UNIX_EPOCH_AS_FILETIME: u64 = 116_444_736_000_000_000;
+    let created = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    let created = Duration::from_nanos(created.checked_sub(UNIX_EPOCH_AS_FILETIME)? * 100);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    now.checked_sub(created)
+}
+
+#[cfg(not(windows))]
+fn since_process_start() -> Option<Duration> {
+    None
+}
+
+/// Points in a start-up, in order, from the moment `main` began.
+struct Marks {
+    main: Instant,
+    /// The process's creation, before `main`.
+    before_main: Option<Duration>,
+    marks: Vec<(&'static str, Instant)>,
+}
+
+impl Marks {
+    fn mark(&mut self, what: &'static str) {
+        self.marks.push((what, Instant::now()));
+    }
+
+    fn report(&self) {
+        let before = self.before_main.map_or(0.0, |d| d.as_secs_f64() * 1000.0);
+        println!("{:<34} {:>9} {:>9}", "start-up", "part ms", "total ms");
+        if self.before_main.is_some() {
+            println!(
+                "{:<34} {before:>9.1} {before:>9.1}",
+                "process created to main"
+            );
+        }
+        let mut last = self.main;
+        for (what, at) in &self.marks {
+            let part = at.duration_since(last).as_secs_f64() * 1000.0;
+            let total = before + at.duration_since(self.main).as_secs_f64() * 1000.0;
+            println!("{what:<34} {part:>9.1} {total:>9.1}");
+            last = *at;
+        }
+    }
+}
+
+/// The app during a timed start-up: marks its first frame and the start of the second, which is
+/// when the first has been painted and presented, then closes.
+struct Startup {
+    app: App,
+    marks: Marks,
+    frame: usize,
+    folder: Result<aic_app::data::DataFolder, String>,
+}
+
+impl eframe::App for Startup {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.frame += 1;
+        match self.frame {
+            1 => {
+                self.marks.mark("first pass begins (fonts, input)");
+                eframe::App::ui(&mut self.app, ui, frame);
+                self.marks.mark("first frame's UI built");
+                ui.ctx().request_repaint();
+            }
+            2 => {
+                self.marks.mark("first frame painted and presented");
+                self.marks.report();
+                after_startup(self.folder.as_ref().ok());
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Times apart what the start-up did inside larger parts: loading the catalog, and the fonts.
+fn after_startup(folder: Option<&aic_app::data::DataFolder>) {
+    if let Some(folder) = folder {
+        let started = Instant::now();
+        let _ = folder.load(&aic_app::data::DataChoice::default());
+        println!(
+            "again, apart: loading the catalog {:.1} ms",
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+    let first_pass = |install: bool| {
+        let ctx = egui::Context::default();
+        let started = Instant::now();
+        if install {
+            aic_app::theme::install(&ctx);
+        }
+        ctx.run_ui(Default::default(), |ui| {
+            ui.label("0123456789 AIC Modeler");
+        })
+        .textures_delta
+        .clear();
+        started.elapsed().as_secs_f64() * 1000.0
+    };
+    let defaults = first_pass(false);
+    let ours = first_pass(true);
+    println!(
+        "again, apart: a first pass with egui's fonts {defaults:.1} ms, with the app's {ours:.1} ms"
+    );
+}
+
+/// `PERF_STARTUP=1`: a start-up as `main.rs` does it, timed.
+fn startup(main: Instant, before_main: Option<Duration>) -> eframe::Result {
+    let mut marks = Marks {
+        main,
+        before_main,
+        marks: Vec::new(),
+    };
+    let folder = aic_app::data::DataFolder::find(None).map_err(|error| error.to_string());
+    marks.mark("finding the data");
+    let strings = Strings::english();
+    let title = strings.get("app-title");
+    let storage = std::env::var_os("PERF_STORAGE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("aic-perf-startup"));
+    let options = eframe::NativeOptions {
+        persistence_path: Some(storage),
+        ..aic_app::native_options(&title)
+    };
+    marks.mark("options");
+    eframe::run_native(
+        &title,
+        options,
+        Box::new(move |cc| {
+            marks.mark("window and renderer (eframe)");
+            aic_app::theme::install(&cc.egui_ctx);
+            marks.mark("theme installed");
+            aic_app::icons::install(&cc.egui_ctx);
+            marks.mark("icons decoded and uploaded");
+            let app = App::from_folder(strings, folder.clone(), cc.storage);
+            marks.mark("data loaded, editor opened");
+            Ok(Box::new(Startup {
+                app,
+                marks,
+                frame: 0,
+                folder,
+            }))
+        }),
+    )
+}
+
 fn main() -> eframe::Result {
+    let main_entered = Instant::now();
+    if std::env::var("PERF_STARTUP").is_ok_and(|v| v == "1") {
+        return startup(main_entered, since_process_start());
+    }
     let catalog = load_catalog(None).map_err(|error| error.to_string());
     let target: usize = std::env::var("PERF_NODES")
         .ok()
@@ -577,7 +759,7 @@ fn main() -> eframe::Result {
         });
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1600.0, 900.0]),
-        ..Default::default()
+        ..aic_app::native_options("perf app")
     };
     if idle.is_none() {
         options.wgpu_options.surface.present_mode = eframe::wgpu::PresentMode::AutoNoVsync;
@@ -587,6 +769,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             aic_app::theme::install(&cc.egui_ctx);
+            aic_app::icons::install(&cc.egui_ctx);
             let mut app = App::new(Strings::english(), catalog, None);
             let live = build(&mut app, target);
             Ok(Box::new(PerfApp {

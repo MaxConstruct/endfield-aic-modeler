@@ -123,13 +123,11 @@ impl TestCatalog {
             "items": items,
             "recipes": self.recipes,
         });
-        let i18n = json!({});
-        Catalog::from_bytes(
-            data.to_string().as_bytes(),
-            i18n.to_string().as_bytes(),
-            None,
-        )
-        .expect("test catalog loads")
+        let names = aic_data::Names {
+            file: "names.json",
+            json: b"{}",
+        };
+        Catalog::from_bytes(data.to_string().as_bytes(), names).expect("test catalog loads")
     }
 }
 

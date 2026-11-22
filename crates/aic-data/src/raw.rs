@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use serde::Deserialize;
 
-/// `data.json`.
+/// A data version's file, `data/<version>.json`.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawData {
     /// `{ "arknights-endfield": "v1.5.3" }`
@@ -119,8 +119,8 @@ pub(crate) struct RawRecipe {
     pub locations: Vec<String>,
 }
 
-/// `overlay.json`: our own patches on top of `data.json`, with items and recipes written in the same
-/// format. Unknown keys are an error, so a typo doesn't silently do nothing.
+/// `<version>_overlay.json`: our own patches on top of the version's data, with items and recipes
+/// written in the same format. Unknown keys are an error, so a typo doesn't silently do nothing.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawOverlay {
@@ -174,7 +174,8 @@ impl RawEntry for RawRecipe {
     }
 }
 
-/// `i18n/<lang>.json`: display names keyed by the same IDs as `data.json`.
+/// A names table, `crates/aic-editor/i18n/names/<lang>.json`: display names keyed by the data's
+/// IDs, the same for every data version.
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct RawI18n {
     #[serde(default)]

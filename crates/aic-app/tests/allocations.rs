@@ -70,6 +70,7 @@ fn plate_chain(app: &mut App) {
 #[test]
 fn an_idle_frame_allocates_no_more_than_it_did() {
     let ctx = egui::Context::default();
+    // The fixture is not the game's data: no icons (`aic_app::icons::install`).
     aic_app::theme::install(&ctx);
     let catalog = aic_editor::testing::fixture_catalog();
     let mut app = App::new(Strings::english(), Ok(catalog), None);

@@ -1,11 +1,16 @@
 //! Which data version and language the app loads, and switching between them while it runs.
+//!
+//! The data versions come from a `data/` folder on disk or from the program; the names, in every
+//! language, always come from the program (`i18n/names/`, ADR 0012).
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use aic_data::{Bundle, Catalog, DataVersion, LoadError};
+use aic_data::{Bundle, Catalog, DataVersion, LoadError, Names};
 use serde::{Deserialize, Serialize};
+
+use crate::embedded;
 
 /// The storage key for [`DataChoice`].
 pub const STORAGE_KEY: &str = "data-choice";
@@ -36,8 +41,7 @@ pub enum DataSource {
     /// A `data/` folder on disk.
     #[cfg(not(target_arch = "wasm32"))]
     Folder(PathBuf),
-    /// The files of a `data/` folder in memory: built into the program, or fetched by the web
-    /// build.
+    /// The files of a `data/` folder built into the program.
     Bundled(Arc<Bundle>),
 }
 
@@ -76,9 +80,8 @@ impl DataFolder {
     }
 
     /// The data built into the program, if any was.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn built_in() -> Option<Self> {
-        Self::bundled(crate::embedded::bundle())
+        Self::bundled(embedded::bundle())
     }
 
     /// The versions in `bundle`, if it has any.
@@ -99,15 +102,9 @@ impl DataFolder {
             .unwrap_or(&self.versions[0])
     }
 
-    /// The languages the chosen version has names in.
-    pub fn languages(&self, choice: &DataChoice) -> Vec<String> {
-        let version = self.version(choice);
-        match &self.source {
-            #[cfg(not(target_arch = "wasm32"))]
-            DataSource::Folder(_) => aic_data::list_languages(&version.path),
-            DataSource::Bundled(bundle) => bundle.languages(&version.name),
-        }
-        .unwrap_or_default()
+    /// The languages game names come in: the program's names tables, the same for every version.
+    pub fn languages(&self) -> Vec<String> {
+        embedded::languages().map(str::to_owned).collect()
     }
 
     /// Opens the data last chosen: that version and language, or, when they are there but fail
@@ -132,22 +129,28 @@ impl DataFolder {
         }
     }
 
-    /// Loads the chosen version in the chosen language, falling back to English when that
-    /// version has no such language.
+    /// Loads the chosen version with the names in the chosen language, falling back to English
+    /// when the program has no names in that language.
     pub fn load(&self, choice: &DataChoice) -> Result<Catalog, LoadError> {
         let version = self.version(choice);
-        let wanted = choice.language.as_deref().unwrap_or(DEFAULT_LANGUAGE);
-        let language = if self.languages(choice).iter().any(|l| l == wanted) {
-            wanted
-        } else {
-            DEFAULT_LANGUAGE
-        };
+        let names = names(choice.language.as_deref().unwrap_or(DEFAULT_LANGUAGE));
         match &self.source {
             #[cfg(not(target_arch = "wasm32"))]
-            DataSource::Folder(_) => aic_data::load(&version.path, language),
-            DataSource::Bundled(bundle) => bundle.load(&version.name, language),
+            DataSource::Folder(_) => aic_data::load(&version.path, names),
+            DataSource::Bundled(bundle) => bundle.load(&version.name, names),
         }
     }
+}
+
+/// The built-in names in `language`, else in English, else none at all (every name then falls
+/// back to the data's Chinese name).
+fn names(language: &str) -> Names<'static> {
+    embedded::names(language)
+        .or_else(|| embedded::names(DEFAULT_LANGUAGE))
+        .unwrap_or(Names {
+            file: "<no built-in names>",
+            json: b"{}",
+        })
 }
 
 #[cfg(test)]
@@ -156,6 +159,15 @@ mod tests {
 
     fn repo_data() -> DataFolder {
         DataFolder::at(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")).unwrap()
+    }
+
+    /// The test data folder of `aic-data`: `v1.10.0.json`, `v1.9.0.json` with an overlay, and
+    /// `broken.json`.
+    fn fixture_data() -> DataFolder {
+        DataFolder::at(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures/data"),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -168,14 +180,12 @@ mod tests {
         assert_eq!(folder.version(&choice).name, folder.versions[0].name);
         let catalog = folder.load(&choice).expect("loads");
         assert_eq!(catalog.version(), folder.versions[0].name);
+        assert_eq!(catalog.item("copper_nugget").unwrap().name, "Cuprium");
     }
 
     #[test]
     fn a_chosen_version_that_fails_to_load_opens_the_newest_and_says_so() {
-        let folder = DataFolder::at(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures"),
-        )
-        .unwrap();
+        let folder = fixture_data();
         let broken = DataChoice {
             version: Some("broken".into()),
             language: None,
@@ -202,6 +212,28 @@ mod tests {
     }
 
     #[test]
+    fn a_data_folder_on_disk_takes_the_built_in_datas_place_named_by_the_programs_names() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures/data");
+        let folder = DataFolder::find(Some(&dir)).expect("the folder is used");
+        assert!(matches!(folder.source, DataSource::Folder(_)));
+        let names: Vec<&str> = folder.versions.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, ["v1.10.0", "v1.9.0", "broken"]);
+        // `v1.9.0_overlay.json` adds an item that the program's names table names.
+        let choice = DataChoice {
+            version: Some("v1.9.0".into()),
+            language: None,
+        };
+        let catalog = folder.load(&choice).expect("loads");
+        assert_eq!(catalog.item("copper_ore").unwrap().name, "Cuprium Ore");
+    }
+
+    #[test]
+    fn the_languages_are_the_programs_names_tables_whatever_the_folder() {
+        assert_eq!(fixture_data().languages(), ["en"]);
+        assert_eq!(repo_data().languages(), ["en"]);
+    }
+
+    #[test]
     fn a_data_flag_that_points_nowhere_is_an_error() {
         assert!(DataFolder::find(Some(Path::new("does-not-exist"))).is_err());
     }
@@ -214,9 +246,9 @@ mod tests {
         };
         assert_eq!(names(&built_in), names(&repo_data()));
         let choice = DataChoice::default();
-        assert_eq!(built_in.languages(&choice), repo_data().languages(&choice));
         let bundled = built_in.load(&choice).expect("loads");
         let from_disk = repo_data().load(&choice).expect("loads");
         assert_eq!(bundled.to_json(), from_disk.to_json());
+        assert!(bundled.warnings().is_empty(), "{:?}", bundled.warnings());
     }
 }

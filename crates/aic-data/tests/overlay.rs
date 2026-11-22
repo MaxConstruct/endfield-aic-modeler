@@ -1,12 +1,15 @@
 //! `overlay.json`: our own fixes on top of `data.json`, merged when the data loads.
 
-use aic_data::{Catalog, ItemId, LoadError};
+use aic_data::{Catalog, ItemId, LoadError, Names};
 
-const DATA: &[u8] = include_bytes!("fixtures/v1.10.0/data.json");
-const EN: &[u8] = include_bytes!("fixtures/v1.10.0/i18n/en.json");
+const DATA: &[u8] = include_bytes!("fixtures/data/v1.10.0.json");
+const EN: Names = Names {
+    file: "names/en.json",
+    json: include_bytes!("fixtures/names/en.json"),
+};
 
 fn with_overlay(overlay: &str) -> Result<Catalog, LoadError> {
-    Catalog::from_bytes_with_overlay(DATA, Some(overlay.as_bytes()), EN, None)
+    Catalog::from_bytes_with_overlay(DATA, Some(overlay.as_bytes()), EN)
 }
 
 #[test]

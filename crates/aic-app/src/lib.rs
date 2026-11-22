@@ -10,6 +10,7 @@ pub mod edit;
 pub mod editor;
 mod export;
 pub mod files;
+pub mod icons;
 mod inspector;
 pub mod picker;
 mod port_menu;
@@ -18,7 +19,7 @@ pub mod theme;
 mod toolbar;
 pub mod views;
 #[cfg(target_arch = "wasm32")]
-mod web;
+pub mod web;
 mod widgets;
 
 /// mimalloc instead of the system allocator on the desktop. A frame makes many small allocations
@@ -56,12 +57,12 @@ pub const WINDOW_SIZE: [f32; 2] = [1280.0, 800.0];
 pub struct App {
     strings: Strings,
     state: State,
+    /// The web build: whether the loading page is still over the canvas.
+    #[cfg(target_arch = "wasm32")]
+    loading_page: bool,
 }
 
 enum State {
-    /// The web build fetching game data from its site.
-    #[cfg(target_arch = "wasm32")]
-    Loading(web::DataDownload),
     Ready(Box<Editor>),
     /// Game data didn't load; the window explains why.
     Failed(String),
@@ -94,7 +95,12 @@ impl App {
             }
             Err(message) => State::Failed(message),
         };
-        Self { strings, state }
+        Self {
+            strings,
+            state,
+            #[cfg(target_arch = "wasm32")]
+            loading_page: true,
+        }
     }
 
     /// An app on the data folder `folder`, loading the data version and language last chosen. The
@@ -146,15 +152,6 @@ impl App {
         app
     }
 
-    /// The web build: fetches the game data from the site, then opens as [`Self::from_folder`].
-    #[cfg(target_arch = "wasm32")]
-    pub fn loading(strings: Strings, ctx: &egui::Context) -> Self {
-        Self {
-            strings,
-            state: State::Loading(web::DataDownload::start(ctx)),
-        }
-    }
-
     /// Keeps drafts in eframe's own folder, and reopens the last document.
     fn open_drafts_dir(&mut self, storage: Option<&dyn eframe::Storage>) {
         #[cfg(not(target_arch = "wasm32"))]
@@ -204,46 +201,10 @@ impl App {
         }
     }
 
-    /// The web build: once the data has come, opens the editor on it.
-    #[cfg(target_arch = "wasm32")]
-    fn poll_download(&mut self, ui: &mut egui::Ui, frame: &eframe::Frame) {
-        let State::Loading(download) = &mut self.state else {
-            return;
-        };
-        match download.poll() {
-            web::Fetched::Loading { done, total } => {
-                let (done, total) = (done.to_string(), total.to_string());
-                let text = self
-                    .strings
-                    .format("data-loading", &[("done", &done), ("total", &total)]);
-                egui::CentralPanel::default().show(ui, |ui| {
-                    ui.centered_and_justified(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(text);
-                        });
-                    });
-                });
-            }
-            web::Fetched::Failed { file, error } => {
-                let message = self
-                    .strings
-                    .format("data-fetch-failed", &[("file", &file), ("error", &error)]);
-                self.state = State::Failed(message);
-            }
-            web::Fetched::Done(bundle) => {
-                let strings = std::mem::replace(&mut self.strings, Strings::english());
-                let folder = DataFolder::bundled(std::sync::Arc::new(bundle))
-                    .ok_or_else(|| strings.get("load-failed-title"));
-                *self = Self::from_folder(strings, folder, frame.storage());
-            }
-        }
-    }
-
     /// The web build: hands the files the editor saved or exported to the browser to download.
     #[cfg(target_arch = "wasm32")]
     fn send_downloads(&mut self) {
-        let Self { strings, state } = self;
+        let Self { strings, state, .. } = self;
         let State::Ready(editor) = state else {
             return;
         };
@@ -257,6 +218,30 @@ impl App {
     }
 }
 
+/// The desktop window's options, titled `title`: `main.rs` opens the app with them, and
+/// `perf_app` times a start-up with them.
+///
+/// On Windows wgpu starts only its DX12 backend. Its default, every backend (Vulkan, DX12 and
+/// GL), took about 300 ms longer to start on the Windows PC and drew no faster (PLAN.md, M13 step
+/// 6). `WGPU_BACKEND` (`vulkan`, `gl`, or a list such as `dx12,vulkan`) still chooses others, for
+/// a PC whose DX12 doesn't work.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn native_options(title: &str) -> eframe::NativeOptions {
+    #[allow(unused_mut)]
+    let mut options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title(title)
+            .with_inner_size(WINDOW_SIZE),
+        ..Default::default()
+    };
+    #[cfg(windows)]
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut options.wgpu_options.wgpu_setup {
+        setup.instance_descriptor.backends =
+            eframe::wgpu::Backends::from_env().unwrap_or(eframe::wgpu::Backends::DX12);
+    }
+    options
+}
+
 /// Finds the data folder (the `--data` flag first, else the built-in data; see `DataFolder::find`)
 /// and loads the newest data version in English.
 #[cfg(not(target_arch = "wasm32"))]
@@ -266,11 +251,7 @@ pub fn load_catalog(flag: Option<&Path>) -> Result<Catalog, LoadError> {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        #[cfg(target_arch = "wasm32")]
-        self.poll_download(ui, _frame);
         match &mut self.state {
-            #[cfg(target_arch = "wasm32")]
-            State::Loading(_) => {}
             State::Ready(editor) => editor.ui(ui, &self.strings),
             State::Failed(message) => {
                 let hint = if cfg!(target_arch = "wasm32") {
@@ -286,7 +267,14 @@ impl eframe::App for App {
             }
         }
         #[cfg(target_arch = "wasm32")]
-        self.send_downloads();
+        {
+            self.send_downloads();
+            // The first frame is drawn at the end of this one: the editor shows, ready, with the
+            // page gone (PLAN.md, M13 step 4).
+            if std::mem::take(&mut self.loading_page) {
+                web::remove_loading_page();
+            }
+        }
     }
 
     /// eframe saves the window size and position with the settings, by default only every 30 s and
