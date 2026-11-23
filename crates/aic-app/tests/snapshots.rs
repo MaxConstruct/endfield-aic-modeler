@@ -90,8 +90,9 @@ fn look_of_a_fixture(ctx: &eframe::egui::Context) {
     aic_app::theme::install(ctx);
 }
 
-/// The app without the frame rate and solve time in its status bar. They change from run to run,
-/// so snapshots leave them out. They go before the first frame, which kittest draws as it builds
+/// The app without the frame rate and solve time in its status bar. They are off by default; this
+/// keeps them off on storage that saved them on too. They change from run to run, so snapshots
+/// leave them out. They go before the first frame, which kittest draws as it builds
 /// a harness: digits drawn even once enter the font atlas in a different order each run, and a
 /// glyph drawn smaller than it was rasterized, as on a zoomed-out card, takes a little of its
 /// neighbour in the atlas.
@@ -595,7 +596,7 @@ fn going_over_a_raw_resource_shows_a_warning() {
         0.0,
     );
     harness.run();
-    harness.get_by_label("Settings…").click();
+    settings_header(&harness).click();
     harness.run();
     let role = eframe::egui::accesskit::Role::TextInput;
     harness.get_by_role_and_label(role, "Iron Ore").focus();
@@ -1295,10 +1296,23 @@ fn data_folder_app() -> Harness<'static, App> {
     let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
     let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
         look_of_a_fixture(&cc.egui_ctx);
-        steady(App::from_folder(Strings::english(), folder.clone(), None))
+        without_tutorial(steady(App::from_folder(
+            Strings::english(),
+            folder.clone(),
+            None,
+        )))
     });
     harness.run();
     harness
+}
+
+/// A start with nothing to reopen opens the tutorial; the data tests and their pictures leave it
+/// closed, as `App::new` does.
+fn without_tutorial(mut app: App) -> App {
+    if let Some(editor) = app.editor_mut() {
+        editor.set_tutorial_open(false);
+    }
+    app
 }
 
 /// The saved data version is there but doesn't load: the newest loads instead, and everything
@@ -1315,11 +1329,11 @@ fn a_saved_data_version_that_fails_to_load_is_not_kept_as_the_choice() {
     eframe::set_value(&mut storage, aic_app::data::STORAGE_KEY, &saved);
     let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
         look_of_a_fixture(&cc.egui_ctx);
-        steady(App::from_folder(
+        without_tutorial(steady(App::from_folder(
             Strings::english(),
             folder.clone(),
             Some(&storage),
-        ))
+        )))
     });
     harness.run();
     assert_eq!(editor(&mut harness).catalog().version(), "v1.10.0");
@@ -1328,7 +1342,24 @@ fn a_saved_data_version_that_fails_to_load_is_not_kept_as_the_choice() {
         Some(&aic_app::data::DataChoice::default()),
         "the choice is what loaded"
     );
-    harness.get_by_label_contains("Could not load that data");
+    let message = harness
+        .get_by_label_contains("Could not load that data")
+        .rect();
+    // The message names the folder it tried, so it is long (and differs from one computer to the
+    // next: no picture of it). It is cut short where the bar's right side begins, instead of
+    // pushing the zoom and the save state off the bar.
+    let zoom = harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::Slider, "Zoom")
+        .rect();
+    let save_state = harness.get_by_label("Nothing to save yet").rect();
+    assert!(
+        message.right() <= zoom.left(),
+        "the message ends before the zoom: {message:?} and {zoom:?}"
+    );
+    assert!(
+        save_state.right() <= WINDOW_SIZE[0],
+        "the save state stays on the bar: {save_state:?}"
+    );
 
     let mut next = MemoryStorage::default();
     eframe::App::save(harness.state_mut(), &mut next);
@@ -1352,10 +1383,10 @@ fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
         0.0,
     );
     harness.run();
-    editor(&mut harness)
-        .settings_mut()
-        .open_on(&"jinlong".into());
+    editor(&mut harness).set_settings_open(true);
     harness.run();
+    harness.get_by_label("Data version");
+    harness.get_by_label("Game names");
     harness.snapshot("settings_data");
 
     let choice = aic_app::data::DataChoice {
@@ -1874,6 +1905,8 @@ fn a_missing_or_broken_last_file_starts_a_new_graph_and_is_left_alone() {
 #[test]
 fn the_region_can_change_with_nodes_on_the_graph() {
     let mut harness = harness(&aic_editor::testing::fixture_file());
+    settings_header(&harness).click();
+    harness.run();
     harness
         .get_by_role_and_label(eframe::egui::accesskit::Role::ComboBox, "Region")
         .click();
@@ -1894,6 +1927,7 @@ fn the_region_can_change_with_nodes_on_the_graph() {
     harness.run();
     let ed = editor(&mut harness);
     assert_eq!(ed.document().graph().region().as_str(), "tundra");
+    harness.get_by_label("Valley IV");
     // A step of its own: undo takes the region back, nodes and all.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     harness.run();
@@ -2466,21 +2500,303 @@ fn in_the_browser_the_last_graph_reopens_from_storage() {
     assert!(editor(&mut again).document().is_draft());
 }
 
+// The tutorial.
+
+/// A start with nothing to reopen, the first run among them, shows the tutorial.
 #[test]
-fn the_status_bar_shows_the_frame_rate_and_solve_time_until_turned_off() {
-    let mut harness = harness(&aic_editor::testing::fixture_file());
-    editor(&mut harness).set_show_performance(true);
+fn a_start_with_nothing_to_reopen_opens_the_tutorial() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures/data");
+    let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
+    let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
+        look_of_a_fixture(&cc.egui_ctx);
+        steady(App::from_folder(Strings::english(), folder.clone(), None))
+    });
+    harness.run();
+    assert!(editor(&mut harness).tutorial_is_open());
+    harness.get_by_label("Grow the chain");
+}
+
+/// A start that reopens the last graph goes straight back to work.
+#[test]
+fn a_start_that_reopens_a_graph_leaves_the_tutorial_closed() {
+    let mut harness = browser_harness();
     smelter(&mut harness, 0.0, 0.0);
     harness.run();
-    harness.get_by_label_contains(" fps");
-    harness.get_by_label_contains("Solve ");
+    let mut storage = MemoryStorage::default();
+    eframe::App::save(harness.state_mut(), &mut storage);
+
+    let catalog = aic_editor::testing::load(&aic_editor::testing::fixture_file()).unwrap();
+    let mut again = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
+        look_of_a_fixture(&cc.egui_ctx);
+        steady(App::in_browser(
+            Strings::english(),
+            Ok(catalog),
+            Some(&storage),
+        ))
+    });
+    again.run();
+    assert_eq!(node_count(&mut again), 1, "the graph reopened");
+    assert!(!editor(&mut again).tutorial_is_open());
+    assert!(again.query_by_label("Grow the chain").is_none());
+}
+
+fn tutorial_button<'a>(harness: &'a Harness<'_, App>) -> egui_kittest::Node<'a> {
+    harness.get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Tutorial")
+}
+
+fn tutorial_button_is_lit(harness: &Harness<'_, App>) -> bool {
+    use egui_kittest::kittest::NodeT as _;
+    tutorial_button(harness).accesskit_node().toggled()
+        == Some(eframe::egui::accesskit::Toggled::True)
+}
+
+#[test]
+fn the_tutorial_button_opens_and_closes_the_tutorial() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    assert!(
+        !editor(&mut harness).tutorial_is_open(),
+        "App::new starts without it"
+    );
+    assert!(!tutorial_button_is_lit(&harness));
+
+    tutorial_button(&harness).click();
+    harness.run();
+    assert!(editor(&mut harness).tutorial_is_open());
+    assert!(tutorial_button_is_lit(&harness));
+    harness.get_by_label("Add a node");
+
+    tutorial_button(&harness).click();
+    harness.run();
+    assert!(!editor(&mut harness).tutorial_is_open());
+    assert!(harness.query_by_label("Add a node").is_none());
+}
+
+#[test]
+fn the_tutorial_windows_close_button_closes_it_and_the_button_goes_dark() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    tutorial_button(&harness).click();
+    harness.run();
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Close window")
+        .click();
+    harness.run();
+    assert!(!editor(&mut harness).tutorial_is_open());
+    assert!(!tutorial_button_is_lit(&harness));
+}
+
+/// The tutorial is not modal: the canvas beside it still opens the picker on a right click.
+#[test]
+fn the_canvas_takes_a_right_click_while_the_tutorial_is_open() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    tutorial_button(&harness).click();
+    harness.run();
+    let center = editor(&mut harness).canvas_center_on_screen();
+    secondary_click_at(&mut harness, center);
+    assert_eq!(editor(&mut harness).picker_origin(), Some(&Origin::Canvas));
+    assert!(editor(&mut harness).tutorial_is_open());
+}
+
+/// The editor as a first start shows it: the tutorial over the empty canvas's bottom right.
+#[test]
+fn tutorial() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    // The inspector starts closed, as at a real start.
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Inspector")
+        .click();
+    harness.run();
+    // Opened as a start opens it, not by a click, so the pointer doesn't cover its button.
+    editor(&mut harness).set_tutorial_open(true);
+    harness.run();
+    harness.snapshot("tutorial");
+}
+
+/// The app on the fixture as a start builds it, from `storage`: without [`steady`], which would
+/// hide the frame rate whatever was saved.
+fn started_from(storage: Option<&MemoryStorage>) -> Harness<'static, App> {
+    let catalog = aic_editor::testing::load(&aic_editor::testing::fixture_file()).unwrap();
+    let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(|cc| {
+        look_of_a_fixture(&cc.egui_ctx);
+        App::new(
+            Strings::english(),
+            Ok(catalog),
+            storage.map(|s| s as &dyn eframe::Storage),
+        )
+    });
+    harness.run();
+    harness
+}
+
+#[test]
+fn the_frame_rate_and_solve_time_show_once_turned_on_and_stay_on_at_the_next_start() {
+    let mut harness = started_from(None);
+    smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    assert!(!editor(&mut harness).show_performance());
+    assert!(harness.query_by_label_contains(" fps").is_none());
+    assert!(harness.query_by_label_contains("Solve ").is_none());
 
     harness.get_by_label("View").click();
     harness.run();
     harness.get_by_label("Frame rate and solve time").click();
     harness.run();
-    assert!(harness.query_by_label_contains(" fps").is_none());
-    assert!(harness.query_by_label_contains("Solve ").is_none());
+    harness.get_by_label_contains(" fps");
+    harness.get_by_label_contains("Solve ");
+
+    let mut storage = MemoryStorage::default();
+    eframe::App::save(harness.state_mut(), &mut storage);
+    let mut again = started_from(Some(&storage));
+    assert!(editor(&mut again).show_performance());
+    again.get_by_label_contains(" fps");
+}
+
+// The top bar, the Settings section and the status bar's app info.
+
+fn settings_header<'a>(harness: &'a Harness<'_, App>) -> egui_kittest::Node<'a> {
+    harness.get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Settings")
+}
+
+fn region_combo<'a>(harness: &'a Harness<'_, App>) -> Option<egui_kittest::Node<'a>> {
+    harness.query_by_role_and_label(eframe::egui::accesskit::Role::ComboBox, "Region")
+}
+
+#[test]
+fn the_top_bar_offers_no_round_up_settings_or_data_version_and_the_view_menu_still_rounds_up() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    assert!(harness.query_by_label("Round up").is_none());
+    assert!(harness.query_by_label("Settings…").is_none());
+    assert!(harness.query_by_label_contains("Data v").is_none());
+
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Round up facilities").click();
+    harness.run();
+    assert!(editor(&mut harness).session().round_up());
+}
+
+#[test]
+fn the_settings_section_starts_closed_with_the_region_in_its_header() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    settings_header(&harness);
+    harness.get_by_label("Valley IV");
+    assert!(region_combo(&harness).is_none(), "closed, it costs one row");
+    let supply = eframe::egui::accesskit::Role::TextInput;
+    assert!(
+        harness
+            .query_by_role_and_label(supply, "Iron Ore")
+            .is_none()
+    );
+
+    settings_header(&harness).click();
+    harness.run();
+    region_combo(&harness).expect("open, it shows the region picker");
+    harness.get_by_role_and_label(supply, "Iron Ore");
+}
+
+#[test]
+fn a_supply_typed_in_the_settings_stays_with_its_region() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    editor(&mut harness).set_settings_open(true);
+    harness.run();
+    type_into(&mut harness, "Iron Ore", "45");
+    let (valley, wuling) = (
+        aic_data::RegionId::from("tundra"),
+        aic_data::RegionId::from("jinlong"),
+    );
+    let ore = aic_data::ItemId::from("iron_ore");
+    assert_eq!(
+        editor(&mut harness).availability().get(&valley, &ore),
+        Some(45.0)
+    );
+
+    let choose = |harness: &mut Harness<'_, App>, name: &str| {
+        region_combo(harness).expect("the section is open").click();
+        harness.run();
+        harness.get_by_label(name).click();
+        harness.run();
+    };
+    choose(&mut harness, "Wuling");
+    assert_eq!(editor(&mut harness).availability().get(&wuling, &ore), None);
+    let role = eframe::egui::accesskit::Role::TextInput;
+    if let Some(field) = harness.query_by_role_and_label(role, "Iron Ore") {
+        assert_eq!(field.value().as_deref(), Some(""), "Wuling's own supply");
+    }
+    choose(&mut harness, "Valley IV");
+    let field = harness.get_by_role_and_label(role, "Iron Ore");
+    assert_eq!(field.value().as_deref(), Some("45"));
+}
+
+/// The Settings section open on the game's data, at the panel's default width.
+#[test]
+fn settings_open() {
+    let mut harness = harness(&fixture("../../data/v1.5.3.json"));
+    editor(&mut harness).set_settings_open(true);
+    harness.run();
+    type_into(&mut harness, "Originium Ore", "120");
+    harness.key_press(Key::Escape);
+    harness.run();
+    harness.snapshot("settings_open");
+
+    // Wuling's raw resources, the other region's names, at the same width.
+    region_combo(&harness).expect("open").click();
+    harness.run();
+    harness.get_by_label("Wuling").click();
+    harness.run();
+    harness.snapshot("settings_open_wuling");
+}
+
+#[test]
+fn the_status_bar_shows_the_version_author_github_link_and_license() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    harness.get_by_label(&format!("v{}", env!("CARGO_PKG_VERSION")));
+    harness.get_by_label("MaxConstruct");
+    let url = "https://github.com/MaxConstruct/endfield-aic-modeler";
+    harness.get_by_label("GitHub").hover();
+    harness.run();
+    harness.get_by_label(url);
+
+    harness.get_by_label("GitHub").click();
+    harness.step();
+    let opened: Vec<_> = harness
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            eframe::egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(opened, [url]);
+
+    harness.get_by_label("MIT OR Apache-2.0").hover();
+    harness.run();
+    harness.get_by_label_contains("belong to Hypergryph / Gryphline");
+}
+
+/// A file made with another data version: its warning shares the bar's left with the app info.
+#[test]
+fn other_data_version() {
+    let mut harness = data_folder_app();
+    smelter(&mut harness, 0.0, 0.0);
+    let older = aic_app::data::DataChoice {
+        version: Some("v1.9.0".into()),
+        language: None,
+    };
+    editor(&mut harness).switch_data(older);
+    let dir = std::env::temp_dir().join(format!("aic-other-version-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("older.aicm");
+    editor(&mut harness).save_to(&file);
+    editor(&mut harness).switch_data(aic_app::data::DataChoice::default());
+    editor(&mut harness).reopen(&file);
+    harness.run();
+    editor(&mut harness).fit_canvas();
+    harness.run();
+    harness.get_by_label_contains("This file was made with data v1.9.0");
+    harness.snapshot("other_data_version");
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 // M10: multiple views.

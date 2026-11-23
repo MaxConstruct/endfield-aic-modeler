@@ -74,6 +74,9 @@ fn an_idle_frame_allocates_no_more_than_it_did() {
     aic_app::theme::install(&ctx);
     let catalog = aic_editor::testing::fixture_catalog();
     let mut app = App::new(Strings::english(), Ok(catalog), None);
+    // With the status bar's frame rate and solve time drawn, as when the ceiling was set: they
+    // were on by default then.
+    app.editor_mut().expect("loaded").set_show_performance(true);
     plate_chain(&mut app);
     let mut time = 0.0;
     let mut frame = |app: &mut App| {

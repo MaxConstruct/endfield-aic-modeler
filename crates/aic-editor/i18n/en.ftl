@@ -45,7 +45,6 @@ view-duplicate = Duplicate view
 view-move-to-window = Move to new window
 view-close = Close view
 view-numbered = { $title } · { $number }
-toggle-round-up = Round up
 toolbar-hint = { $name } ({ $keys })
 
 ## Save indicator (status bar)
@@ -77,11 +76,20 @@ file-other-data-version = This file was made with data { $file }; the app uses {
 
 ## Top bar
 
-region-label = Region
-data-version = Data { $version }
-settings-button = Settings…
 toggle-recipes = Recipes
 toggle-inspector = Inspector
+toggle-tutorial = Tutorial
+
+## Status bar
+
+# The app's own version, before the author's name.
+status-version = v{ $version }
+# Between the version, the author's name and the GitHub link.
+status-separator = ·
+# A link to the app's code on GitHub.
+status-github = GitHub
+# Hover text on the code's license, shown after the GitHub link.
+status-license-hint = The app's code is under this license; the game's data, names and icons belong to Hypergryph / Gryphline and are not.
 status-slow-solve = Solving this slowly may make the canvas stutter.
 status-solve-time = Solve { $ms } ms
 status-frame-rate = { $fps } fps
@@ -89,6 +97,19 @@ zoom-label = Zoom
 zoom-in = Zoom in
 zoom-out = Zoom out
 zoom-percent = { $percent }%
+
+## Tutorial
+
+tutorial-title = Tutorial
+tutorial-add-title = Add a node
+tutorial-add-body = Right-click the canvas and pick a recipe. Type a limit on its card, or double-click a port to limit it by rate.
+tutorial-grow-title = Grow the chain
+tutorial-grow-body = Drag a port onto empty canvas to add a node that makes or uses its item. It comes already linked.
+tutorial-keys-title = Keys
+tutorial-save-title = Save and export
+tutorial-save-desktop = Edits save on their own, to a draft until you save the graph to a file.
+tutorial-save-browser = Edits save on their own in this browser. Save also downloads the file.
+tutorial-export = { $menu } › { $item } saves the canvas as a picture.
 
 ## Node kinds
 
@@ -258,6 +279,7 @@ link-error-other = these ports don't fit together.
 ## Settings
 
 settings-title = Settings
+region-label = Region
 settings-raw-title = Raw resources
 settings-data-version = Data version
 settings-language = Game names

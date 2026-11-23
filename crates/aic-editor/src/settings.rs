@@ -63,10 +63,48 @@ pub fn parse_amount(text: &str) -> Result<Option<f64>, BadAmount> {
         _ => Err(BadAmount),
     }
 }
+
+/// What the player typed in the raw resource fields, per region and item. Text that doesn't parse
+/// stays as typed, so the field keeps showing it.
+#[derive(Debug, Clone, Default)]
+pub struct SupplyEdits(HashMap<(RegionId, ItemId), String>);
+
+impl SupplyEdits {
+    /// The text of `region`'s field for `item`: what was typed there, or else its supply as it is.
+    pub fn field(
+        &mut self,
+        availability: &Availability,
+        region: &RegionId,
+        item: &ItemId,
+    ) -> &mut String {
+        self.0
+            .entry((region.clone(), item.clone()))
+            .or_insert_with(|| {
+                availability
+                    .get(region, item)
+                    .map(|v| v.to_string())
+                    .unwrap_or_default()
+            })
+    }
+
+    /// The field's text changed: sets the item's supply from it if it parses (blank is unlimited).
+    /// Text that doesn't parse changes nothing.
+    pub fn typed(
+        &mut self,
+        availability: &mut Availability,
+        region: &RegionId,
+        item: &ItemId,
+    ) -> Result<(), BadAmount> {
+        let supply = parse_amount(self.field(availability, region, item))?;
+        availability.set(region, item, supply);
+        Ok(())
+    }
+}
 /// What a UI keeps between runs, as one value: the data choice, the raw resource availability, the
-/// recent files, the document open last and whether the status bar shows performance. The egui app
-/// keeps these under separate eframe keys; a UI with a settings file writes this.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// recent files, the document open last and whether the status bar shows performance (off until
+/// the player turns it on). The egui app keeps these under separate eframe keys; a UI with a
+/// settings file writes this.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub data: DataChoice,
@@ -74,18 +112,6 @@ pub struct Settings {
     pub recent_files: Vec<PathBuf>,
     pub last_document: Option<PathBuf>,
     pub show_performance: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            data: DataChoice::default(),
-            availability: Availability::default(),
-            recent_files: Vec::new(),
-            last_document: None,
-            show_performance: true,
-        }
-    }
 }
 
 impl Settings {
@@ -124,6 +150,38 @@ mod tests {
     }
 
     #[test]
+    fn a_supply_field_shows_the_supply_and_keeps_what_was_typed_per_region() {
+        let (wuling, valley) = (RegionId::from("jinlong"), RegionId::from("tundra"));
+        let ore = ItemId::from("copper_ore");
+        let mut availability = Availability::default();
+        availability.set(&valley, &ore, Some(120.0));
+        let mut edits = SupplyEdits::default();
+        assert_eq!(edits.field(&availability, &valley, &ore), "120");
+        assert_eq!(edits.field(&availability, &wuling, &ore), "");
+
+        "lots".clone_into(edits.field(&availability, &wuling, &ore));
+        assert_eq!(
+            edits.typed(&mut availability, &wuling, &ore),
+            Err(BadAmount)
+        );
+        assert_eq!(
+            availability.get(&wuling, &ore),
+            None,
+            "bad input changes nothing"
+        );
+        assert_eq!(edits.field(&availability, &wuling, &ore), "lots");
+
+        "45".clone_into(edits.field(&availability, &wuling, &ore));
+        assert_eq!(edits.typed(&mut availability, &wuling, &ore), Ok(()));
+        assert_eq!(availability.get(&wuling, &ore), Some(45.0));
+        assert_eq!(availability.get(&valley, &ore), Some(120.0));
+
+        "".clone_into(edits.field(&availability, &valley, &ore));
+        assert_eq!(edits.typed(&mut availability, &valley, &ore), Ok(()));
+        assert_eq!(availability.get(&valley, &ore), None, "blank is unlimited");
+    }
+
+    #[test]
     fn settings_round_trip_and_missing_fields_take_defaults() {
         let mut settings = Settings::default();
         settings.recent_files.push("plan.aicm".into());
@@ -136,5 +194,13 @@ mod tests {
         assert_eq!(Settings::from_json(&settings.to_json()).unwrap(), settings);
         assert_eq!(Settings::from_json("{}").unwrap(), Settings::default());
         assert!(Settings::from_json("not json").is_err());
+    }
+
+    #[test]
+    fn the_performance_readout_is_off_until_turned_on() {
+        assert!(!Settings::default().show_performance);
+        assert!(!Settings::from_json("{}").unwrap().show_performance);
+        let on = Settings::from_json(r#"{ "show_performance": true }"#).unwrap();
+        assert!(on.show_performance);
     }
 }

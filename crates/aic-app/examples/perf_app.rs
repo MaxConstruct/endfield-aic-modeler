@@ -260,6 +260,11 @@ impl PerfApp {
 /// The graph `PERF_GRAPH` asks for, with about `target` nodes. Returns a node whose limit the live
 /// phase changes.
 fn build(app: &mut App, target: usize) -> Option<NodeId> {
+    // Measured with the status bar's frame rate and solve time drawn, so the numbers compare with
+    // the earlier runs, made while the readout was on by default.
+    if let Some(editor) = app.editor_mut() {
+        editor.set_show_performance(true);
+    }
     if std::env::var("PERF_GRAPH").is_ok_and(|v| v == "chain") {
         build_chain(app, target)
     } else {
@@ -722,7 +727,15 @@ fn startup(main: Instant, before_main: Option<Duration>) -> eframe::Result {
             marks.mark("theme installed");
             aic_app::icons::install(&cc.egui_ctx);
             marks.mark("icons decoded and uploaded");
-            let app = App::from_folder(strings, folder.clone(), cc.storage);
+            let mut app = App::from_folder(strings, folder.clone(), cc.storage);
+            // Timed without the tutorial a start with nothing to reopen shows, so start-ups stay
+            // comparable whatever the storage holds.
+            if let Some(editor) = app.editor_mut() {
+                editor.set_tutorial_open(false);
+                // With the frame rate and solve time drawn, as a first start drew them before they
+                // went off by default.
+                editor.set_show_performance(true);
+            }
             marks.mark("data loaded, editor opened");
             Ok(Box::new(Startup {
                 app,

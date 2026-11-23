@@ -215,7 +215,8 @@ egui `TextStyle`s set in `theme::apply`; steps about 1.15 apart.
 ## Layout
 
 Canvas-first. First viewport: menu bar and toolbar on top (~52pt together), recipe browser left
-(~240-260pt), canvas taking the rest, inspector right (~300pt), status bar at the bottom (~22pt).
+(~240-260pt) under its one-row Settings section, canvas taking the rest, inspector right (~300pt),
+status bar at the bottom (~22pt).
 Panels toggle away; the canvas never does.
 
 egui `Spacing` (in `theme::apply`): `item_spacing` 8x3, `button_padding` 8x2, `interact_size` 40x20,
@@ -263,7 +264,19 @@ Wires 2pt `LINKED`. The label is 12pt text on `INSET` at 90%, radius 3, 3pt pad,
 `RAISED`, 1pt `BORDER`; menus and popovers radius medium with the popover shadow, windows radius large with the window shadow. Popups open fully formed and focused in the frame they are called; the node picker opens on right-click with search focused.
 
 ### Toolbar
-30x26 buttons; pressing a command's shortcut flashes its button for 400ms.
+30x26 buttons; pressing a command's shortcut flashes its button for 400ms. The top bar has three icon toggles: `📖 Recipes` after the menus, and `🎓 Tutorial  🔍 Inspector` at its right end. Each is a symbol from egui's built-in fonts in front of its word (`widgets::icon_toggle`), lit while its panel or window is open, known to a screen reader by the word alone, and mirrored as a checkbox in the View menu, with Round up facilities and the frame rate. The region, the data version and the raw resources live in the Settings section.
+
+### Tutorial
+A small window (`crates/aic-app/src/tutorial.rs`) that teaches four things in four flat rows: adding a node, growing the chain from a port, the editing keys, saving and exporting. It opens by itself only at a start that reopened neither a file nor a draft (`aic_editor::tutorial::opens_at_start`), and from the top bar's Tutorial toggle; nothing about it is stored, and closing it lasts for the session. Not modal: it first sits with its bottom-right corner 16pt inside the canvas's, the canvas around it keeps working, and the picker and port menu open above it. The theme's window look as is, 300pt of content, no footer, buttons or step counter, and no animation, so an idle tutorial draws nothing.
+- **Row:** a picture well, 10pt gap, then a `theme::strong` 13pt title over 13pt `TEXT` body wrapped to the row; 3pt between lines, 12pt between rows.
+- **Picture well:** 56x44, `INSET` fill, 1pt `DIVIDER` outline, radius small. Inside, a drawing of the app's own objects (picker popover, recipe card and wire, key caps, file and picture) in theme neutrals, pixel-snapped 1pt lines, 2pt wires; no blue, no state hue.
+- **Key cap:** a command's name in 13pt `TEXT`, then its keys on a chip: `CONTROL` fill, 1pt `BORDER`, radius small, 4x1pt padding, 12pt `TEXT` (words, not mono), on the name's baseline. Keys come from `format_shortcut`, so a Mac shows ⌘. Names and caps line up in columns.
+
+### Settings Section
+The top of the recipe browser's panel (`crates/aic-app/src/settings.rs`), above the Recipes title and the panel's 1pt separator. Closed by default, so it costs one row: an egui collapsing arrow, `Settings` in 13pt `TEXT` (`TEXT_STRONG` under the pointer; a click on it or the arrow opens or closes the section), and the graph's region right-aligned in `TEXT_MUTED` on the same baseline. egui remembers whether it is open. Open, indented 16pt with no frame or inner separator: label-and-picker rows for Region (the graph's; undo takes it back) and, when there is a data folder, Data version and Game names; the labels share one column and the combo boxes fill the rest of the row to one right edge. Then `theme::strong` "Raw resources", its long explanation as hover text, and one row per raw resource of the graph's region: 18pt icon, name cut short with the whole name on hover, a 56pt right-aligned mono supply field (red text when it doesn't parse) and a `TEXT_MUTED` `/min`, the fields in one column. Nothing overflows the panel at its 240pt default.
+
+### Status Bar
+Left: the app info, `v0.1.0 · MaxConstruct · GitHub · MIT OR Apache-2.0`, in 13pt `TEXT_FAINT` except the GitHub hyperlink (`TEXT_MUTED`, the repository URL on hover, opening in the system browser or a new tab). Version, author, repository and license come from the workspace's Cargo metadata; only the words around them are Fluent strings, and the license's hover text says the game's data, names and icons are not under it. After a separator, the data version warning and the status message in `WARN`, cut short (whole on hover) where they would reach the right side. Right: the frame rate and solve time, off by default and turned on in the View menu (the choice is kept), then the zoom control and the save state.
 
 ## Do's and Don'ts
 

@@ -20,6 +20,7 @@ pub mod style;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod throttle;
+pub mod tutorial;
 pub use command::{Chord, ChordKey, Command};
 pub use document::{Document, Level};
 pub use files::Opened;

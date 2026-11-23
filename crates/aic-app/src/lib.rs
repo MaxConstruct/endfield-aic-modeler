@@ -17,6 +17,7 @@ mod port_menu;
 pub mod settings;
 pub mod theme;
 mod toolbar;
+mod tutorial;
 pub mod views;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
@@ -104,7 +105,7 @@ impl App {
     }
 
     /// An app on the data folder `folder`, loading the data version and language last chosen. The
-    /// settings window can switch between the folder's versions.
+    /// Settings section can switch between the folder's versions.
     pub fn from_folder(
         strings: Strings,
         folder: Result<DataFolder, String>,
@@ -175,10 +176,14 @@ impl App {
         self.reopen_last(storage);
     }
 
+    /// Reopens the last document and view layout; with nothing reopened, opens the tutorial.
     fn reopen_last(&mut self, storage: Option<&dyn eframe::Storage>) {
         let last = storage.and_then(|s| eframe::get_value::<PathBuf>(s, files::LAST_KEY));
         if let (State::Ready(editor), Some(last)) = (&mut self.state, last) {
             editor.reopen(&last);
+        }
+        if let State::Ready(editor) = &mut self.state {
+            editor.open_tutorial_if_fresh();
         }
         let layout =
             storage.and_then(|s| eframe::get_value::<views::Layout>(s, views::STORAGE_KEY));

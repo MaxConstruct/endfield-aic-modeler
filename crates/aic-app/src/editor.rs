@@ -1,5 +1,6 @@
 //! Everything on screen once game data has loaded: the menu bar, the recipe browser, the canvas, the
-//! inspector, the node picker, the dialogs and the settings window.
+//! inspector, the node picker and the dialogs. The settings are a section above the recipe
+//! browser.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -15,13 +16,12 @@ use crate::files::{Download, Pending, Upload};
 use crate::i18n::Strings;
 use crate::picker::{self, Choice, Origin, Picker};
 use crate::port_menu::{self, PortMenu};
-use crate::settings::{Availability, SettingsWindow};
+use crate::settings::{Availability, SettingsSection};
 use crate::views::Views;
-use crate::widgets::colors;
+use crate::widgets::{self, colors};
 use aic_editor::Command;
 use aic_editor::Session;
 use aic_editor::format;
-use aic_editor::names;
 use aic_editor::picker::recipe_node;
 
 /// A solve slower than this is reported in the status bar.
@@ -34,6 +34,16 @@ const FRAME_RATE_WINDOW: f32 = 1.0;
 const ZOOM_SLIDER_WIDTH: f32 = 96.0;
 /// Space between a port's pin and the menu it opens.
 const PORT_MENU_GAP: f32 = 12.0;
+/// The top bar's Recipes and Inspector buttons' pictures: symbols egui's built-in fonts draw, as
+/// the toolbar's are (checked by eye in a snapshot).
+const RECIPES_ICON: &str = "📖";
+const INSPECTOR_ICON: &str = "🔍";
+/// The app's version, author, code and license, from its Cargo metadata (the workspace's
+/// `Cargo.toml`). Shown as they are: data, not words to translate.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
+const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+const LICENSE: &str = env!("CARGO_PKG_LICENSE");
 
 pub struct Editor {
     /// The catalog, the document, the selection, the clipboard and every edit that isn't drawing.
@@ -44,13 +54,15 @@ pub struct Editor {
     pub(crate) canvas: Canvas,
     pub(crate) views: Views,
     pub(crate) picker: Option<Picker>,
-    pub(crate) settings: SettingsWindow,
+    pub(crate) settings: SettingsSection,
     pub(crate) browser: crate::browser::Browser,
     /// What the player is typing in the inspector's limit field.
     pub(crate) limit_edit: String,
     pub(crate) port_menu: Option<PortMenu>,
     pub(crate) show_browser: bool,
     pub(crate) show_inspector: bool,
+    /// Whether the tutorial window is open.
+    pub(crate) show_tutorial: bool,
     /// Files for the browser to download.
     pub(crate) downloads: Vec<Download>,
     /// The name typed into the browser's Save As prompt, while it is open.
@@ -77,18 +89,19 @@ impl Editor {
             canvas: Canvas::default(),
             views: Views::default(),
             picker: None,
-            settings: SettingsWindow::default(),
+            settings: SettingsSection::default(),
             browser: crate::browser::Browser::default(),
             limit_edit: String::new(),
             port_menu: None,
             show_browser: true,
             show_inspector: false,
+            show_tutorial: false,
             downloads: Vec::new(),
             save_as_prompt: None,
             upload: None,
             export_to: None,
             flash: None,
-            show_performance: true,
+            show_performance: false,
             frames: egui::util::History::new(2..1000, FRAME_RATE_WINDOW),
             last_title: String::new(),
         }
@@ -119,8 +132,9 @@ impl Editor {
         self.session.set_data_folder(folder, choice);
     }
 
-    pub fn settings_mut(&mut self) -> &mut SettingsWindow {
-        &mut self.settings
+    /// Opens or closes the Settings section above the recipe browser, from the next frame.
+    pub fn set_settings_open(&mut self, open: bool) {
+        self.settings.set_open(open);
     }
 
     pub fn data_choice(&self) -> Option<&DataChoice> {
@@ -185,6 +199,21 @@ impl Editor {
     /// Whether the status bar shows the frame rate and the last solve's time.
     pub fn set_show_performance(&mut self, on: bool) {
         self.show_performance = on;
+    }
+
+    pub fn tutorial_is_open(&self) -> bool {
+        self.show_tutorial
+    }
+
+    /// Opens or closes the tutorial window.
+    pub fn set_tutorial_open(&mut self, open: bool) {
+        self.show_tutorial = open;
+    }
+
+    /// Opens the tutorial if the start left the player on an empty Untitled graph, with no file
+    /// or draft reopened.
+    pub(crate) fn open_tutorial_if_fresh(&mut self) {
+        self.show_tutorial = aic_editor::tutorial::opens_at_start(&self.session);
     }
 
     /// Opens the node picker as if from `origin`, with the new node going to `graph_pos`.
@@ -285,6 +314,8 @@ impl Editor {
             .resizable(true)
             .default_size(240.0)
             .show_collapsible(ui, &mut show_browser, |ui| {
+                self.settings_section(ui, strings);
+                ui.separator();
                 if let Some(kind) = self
                     .browser
                     .ui(ui, self.session.catalog(), strings)
@@ -310,15 +341,8 @@ impl Editor {
         if !self.views.is_in_window(self.views.focused()) {
             self.overlays_ui(ui.ctx(), strings);
         }
+        self.tutorial_ui(ui.ctx(), strings);
         self.save_as_prompt_ui(ui.ctx(), strings);
-        let (catalog, availability, data) = self.session.settings_parts();
-        let data = data.map(|(folder, choice)| (folder, choice.clone()));
-        let switch = self
-            .settings
-            .show(ui.ctx(), catalog, strings, availability, data);
-        if let Some(choice) = switch {
-            self.switch_data(choice);
-        }
         self.keyboard(ui.ctx());
         self.finish_export(ui.ctx(), strings);
         self.end_undo_step(ui.ctx());
@@ -486,6 +510,7 @@ impl Editor {
             ui.menu_button(strings.get("menu-view"), |ui| {
                 ui.checkbox(&mut self.show_browser, strings.get("toggle-recipes"));
                 ui.checkbox(&mut self.show_inspector, strings.get("toggle-inspector"));
+                ui.checkbox(&mut self.show_tutorial, strings.get("toggle-tutorial"));
                 let mut round_up = self.session.round_up();
                 ui.checkbox(&mut round_up, strings.get("menu-round-up"));
                 self.session.set_round_up(round_up);
@@ -510,54 +535,17 @@ impl Editor {
                 }
             });
             ui.separator();
-            ui.toggle_value(&mut self.show_browser, strings.get("toggle-recipes"));
+            let recipes = strings.get("toggle-recipes");
+            widgets::icon_toggle(ui, &mut self.show_browser, RECIPES_ICON, recipes);
             ui.separator();
             self.toolbar(ui, strings);
             // Right to left: the last added sits leftmost.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.toggle_value(&mut self.show_inspector, strings.get("toggle-inspector"));
-                ui.separator();
-                if ui.button(strings.get("settings-button")).clicked() {
-                    self.settings
-                        .open_on(&self.session.document().graph().region().clone());
-                }
-                let mut round_up = self.session.round_up();
-                ui.toggle_value(&mut round_up, strings.get("toggle-round-up"))
-                    .on_hover_text(strings.get("menu-round-up"));
-                self.session.set_round_up(round_up);
-                ui.separator();
-                ui.weak(strings.format(
-                    "data-version",
-                    &[("version", self.session.catalog().version())],
-                ));
-                ui.separator();
-                self.region_picker(ui, strings);
-                ui.label(strings.get("region-label"));
+                let inspector = strings.get("toggle-inspector");
+                widgets::icon_toggle(ui, &mut self.show_inspector, INSPECTOR_ICON, inspector);
+                self.tutorial_toggle(ui, strings);
             });
         });
-    }
-
-    /// The graph's region. It can change at any time: what the new region lacks shows as
-    /// warnings on the cards, and undo takes it back.
-    fn region_picker(&mut self, ui: &mut Ui, strings: &Strings) {
-        let current = self.session.document().graph().region().clone();
-        let mut chosen = None;
-        let picker = egui::ComboBox::from_id_salt("region")
-            .selected_text(names::region(self.session.catalog(), current.as_str()))
-            .show_ui(ui, |ui| {
-                for region in self.session.catalog().regions().keys() {
-                    let name = names::region(self.session.catalog(), region.as_str());
-                    if ui.selectable_label(*region == current, name).clicked() {
-                        chosen = Some(region.clone());
-                    }
-                }
-            });
-        let label = strings.get("region-label");
-        ui.ctx()
-            .accesskit_node_builder(picker.response.id, |node| node.set_label(label));
-        if let Some(region) = chosen.filter(|r| *r != current) {
-            self.session.set_region(region);
-        }
     }
 
     fn file_menu(&mut self, ui: &mut Ui, strings: &Strings) {
@@ -627,20 +615,9 @@ impl Editor {
 
     fn status_bar(&mut self, ui: &mut Ui, strings: &Strings) {
         ui.horizontal(|ui| {
-            if let Some(version) = self.session.other_data_version() {
-                let text = strings.format(
-                    "file-other-data-version",
-                    &[
-                        ("file", version),
-                        ("active", self.session.catalog().version()),
-                    ],
-                );
-                ui.label(RichText::new(text).color(colors::WARN));
-                ui.separator();
-            }
-            if let Some(status) = self.session.status() {
-                ui.label(RichText::new(status).color(colors::WARN));
-            }
+            app_info(ui, strings);
+            // The right side first, so the messages get what is left between the two and are cut
+            // short there (whole on hover) instead of pushing it off the bar.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 self.save_indicator(ui, strings);
                 ui.separator();
@@ -649,8 +626,33 @@ impl Editor {
                     ui.separator();
                     self.performance(ui, strings);
                 }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                    self.status_messages(ui, strings);
+                });
             });
         });
+    }
+
+    /// The data version warning and the status message, after the app info.
+    fn status_messages(&self, ui: &mut Ui, strings: &Strings) {
+        if self.session.other_data_version().is_some() || self.session.status().is_some() {
+            ui.separator();
+        }
+        if let Some(version) = self.session.other_data_version() {
+            let text = strings.format(
+                "file-other-data-version",
+                &[
+                    ("file", version),
+                    ("active", self.session.catalog().version()),
+                ],
+            );
+            ui.label(RichText::new(text).color(colors::WARN));
+            ui.separator();
+        }
+        if let Some(status) = self.session.status() {
+            ui.label(RichText::new(status).color(colors::WARN));
+        }
     }
 
     /// `60 fps · Solve 0.4 ms`, laid out right to left. Solving runs on the UI thread, so a solve
@@ -720,6 +722,26 @@ impl Editor {
             self.canvas.zoom_to(zoom);
         }
     }
+}
+
+/// `v0.1.0 · MaxConstruct · GitHub · MIT OR Apache-2.0`: the app's version, its author, a link
+/// to its code and the code's license, faint so they never compete with the save state and the
+/// warnings on the same bar.
+fn app_info(ui: &mut Ui, strings: &Strings) {
+    let faint = |text: String| RichText::new(text).color(colors::TEXT_FAINT);
+    let separator = strings.get("status-separator");
+    ui.label(faint(
+        strings.format("status-version", &[("version", VERSION)]),
+    ));
+    ui.label(faint(separator.clone()));
+    ui.label(faint(AUTHORS.to_owned()));
+    ui.label(faint(separator.clone()));
+    let link = egui::Hyperlink::from_label_and_url(strings.get("status-github"), REPOSITORY)
+        .open_in_new_tab(true);
+    ui.add(link).on_hover_text(REPOSITORY);
+    ui.label(faint(separator));
+    ui.label(faint(LICENSE.to_owned()))
+        .on_hover_text(strings.get("status-license-hint"));
 }
 
 /// Where the port menu's top-left goes for a pin on screen: beside the pin, away from its node.

@@ -60,6 +60,15 @@ impl LimitField<'_> {
     }
 }
 
+/// A top bar toggle: `icon`, a symbol egui's built-in fonts draw, in front of `name`, lit while
+/// `on`. A screen reader (and a test) knows it by `name` alone.
+pub fn icon_toggle(ui: &mut Ui, on: &mut bool, icon: &str, name: String) -> egui::Response {
+    let response = ui.toggle_value(on, format!("{icon} {name}"));
+    ui.ctx()
+        .accesskit_node_builder(response.id, |node| node.set_label(name));
+    response
+}
+
 /// The image of a source node, under `assets/icons/nodes/` (the game's Depot Unloader).
 pub const SOURCE_IMAGE: &str = "source";
 /// The image of a sink node, under `assets/icons/nodes/` (the game's Depot Loader).
