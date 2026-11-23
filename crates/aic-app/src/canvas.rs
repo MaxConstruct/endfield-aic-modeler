@@ -1436,7 +1436,13 @@ impl Cards<'_> {
             tint,
             egui::epaint::RectShape::new(
                 Rect::from_min_max(layout.corner(), pos2(layout.right(), header_bottom)),
-                CornerRadius::same(CARD_RADIUS),
+                // Rounded where it meets the card's corners, square where the body begins.
+                CornerRadius {
+                    nw: CARD_RADIUS,
+                    ne: CARD_RADIUS,
+                    sw: 0,
+                    se: 0,
+                },
                 header_tint(card.member, kind),
                 Stroke::new(crisp(CARD_STROKE), theme::color::BORDER),
                 egui::StrokeKind::Inside,
@@ -1617,7 +1623,23 @@ impl Cards<'_> {
         };
         let painter = ui.painter();
         // Links run behind cards, so a link seems to end at the card's edge, at this tile.
-        painter.rect_filled(tile, crisp(4.0), fill.gamma_multiply(0.35));
+        // Square on the side that meets the card's edge, rounded on the side facing in.
+        let round = crisp(4.0) as u8;
+        let corners = match side {
+            Side::Input => CornerRadius {
+                nw: 0,
+                sw: 0,
+                ne: round,
+                se: round,
+            },
+            Side::Output => CornerRadius {
+                nw: round,
+                sw: round,
+                ne: 0,
+                se: 0,
+            },
+        };
+        painter.rect_filled(tile, corners, fill.gamma_multiply(0.35));
         let picture = match item {
             Some(item) => ItemPicture::of(ui.ctx(), self.catalog, item.as_str()),
             // A port without an item yet asks for one.

@@ -24,21 +24,21 @@ const SAVE_STATES: [&str; 6] = [
 const FLASH: f64 = 0.4;
 const BUTTON: egui::Vec2 = vec2(28.0, 22.0);
 
-/// The toolbar's buttons in order; `None` is a separator. File commands live in the File menu.
-const LAYOUT: [Option<Command>; 12] = [
+/// The toolbar's buttons in order; `None` is a separator. File commands live in the File menu;
+/// cut, duplicate, select all and the workspace commands in the Edit menu and on their keys.
+const LAYOUT: [Option<Command>; 6] = [
     Some(Command::Undo),
     Some(Command::Redo),
     None,
-    Some(Command::Cut),
     Some(Command::Copy),
     Some(Command::Paste),
-    Some(Command::Duplicate),
     Some(Command::Delete),
-    Some(Command::SelectAll),
-    None,
-    Some(Command::MakeWorkspace),
-    Some(Command::Dissolve),
 ];
+
+/// Whether the command has a button on the toolbar, so its key has one to light.
+pub(crate) fn on_toolbar(command: Command) -> bool {
+    LAYOUT.contains(&Some(command))
+}
 
 /// The button's picture: a symbol egui's built-in fonts draw (checked by eye in a snapshot;
 /// many symbols, such as 📋 and ⧉, are missing from them).
@@ -50,16 +50,16 @@ fn icon(command: Command) -> &'static str {
         Command::SaveAs => "🖹",
         Command::Undo => "⟲",
         Command::Redo => "⟳",
-        Command::Cut => "✂",
         Command::Copy => "🗐",
         Command::Paste => "🗊",
-        Command::Duplicate => "✚",
         Command::Delete => "🗑",
-        Command::SelectAll => "⛶",
-        Command::MakeWorkspace => "⊞",
-        Command::Dissolve => "⊟",
-        // Not on the toolbar: in the View menu and the tab menus only.
-        Command::SplitRight
+        // Not on the toolbar: in the menus and on their keys only.
+        Command::Cut
+        | Command::Duplicate
+        | Command::SelectAll
+        | Command::MakeWorkspace
+        | Command::Dissolve
+        | Command::SplitRight
         | Command::SplitDown
         | Command::DuplicateView
         | Command::MoveToWindow

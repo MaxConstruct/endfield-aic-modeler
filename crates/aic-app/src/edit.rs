@@ -162,6 +162,10 @@ impl Editor {
     /// Lights the shortcut's toolbar button for a moment, so a key press shows where its button is.
     /// The time is egui's, so a test's stepped clock decides when it goes dark.
     pub(crate) fn flash(&mut self, ctx: &egui::Context, shortcut: Command) {
+        // A command without a button has nothing to light, and no frames to ask for.
+        if !crate::toolbar::on_toolbar(shortcut) {
+            return;
+        }
         // The toolbar is drawn before the keys are read; egui draws another frame after any input
         // event, and that one lights it.
         self.flash = Some((shortcut, ctx.input(|i| i.time)));

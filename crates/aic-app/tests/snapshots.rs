@@ -1934,7 +1934,9 @@ fn the_toolbar_runs_commands_and_lights_up_for_their_keys() {
     editor(&mut harness).select_nodes(vec![node]);
     harness.run();
 
-    harness.get_by_label("Duplicate").click();
+    harness.get_by_label("Copy").click();
+    harness.run();
+    harness.get_by_label("Paste").click();
     harness.run();
     assert_eq!(node_count(&mut harness), 2);
     // Off the toolbar: egui draws a button's hover from the frame before, so a button the key
@@ -1993,20 +1995,22 @@ fn an_idle_app_asks_for_no_frames_even_after_a_lit_button() {
 
     // Key events ask for a frame of their own, so the frame asked for is checked once they are
     // handled: the key goes down, the next frame lights the button, and only the flash is left.
+    // Redo, with nothing to redo: the key lights its button and changes nothing else.
     let ctx = harness.ctx.clone();
+    let redo = Modifiers::COMMAND | Modifiers::SHIFT;
     let a = |pressed: bool| eframe::egui::Event::Key {
-        key: Key::A,
+        key: Key::Z,
         pressed,
-        modifiers: Modifiers::COMMAND,
+        modifiers: redo,
         repeat: false,
         physical_key: None,
     };
-    harness.event(eframe::egui::Event::ModifiersChanged(Modifiers::COMMAND));
+    harness.event(eframe::egui::Event::ModifiersChanged(redo));
     harness.event(a(true));
     harness.run_steps(3);
     assert_eq!(
         editor(&mut harness).flashing(&ctx),
-        Some(aic_editor::Command::SelectAll)
+        Some(aic_editor::Command::Redo)
     );
     let wait = next_frame_in(&harness);
     assert!(
