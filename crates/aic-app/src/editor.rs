@@ -724,7 +724,7 @@ impl Editor {
     }
 }
 
-/// `v0.1.0 · MaxConstruct · GitHub · MIT`: the app's version, its author, a link
+/// `v0.1.1 · MaxConstruct · GitHub · MIT`: the app's version, its author, a link
 /// to its code and the code's license, faint so they never compete with the save state and the
 /// warnings on the same bar.
 fn app_info(ui: &mut Ui, strings: &Strings) {

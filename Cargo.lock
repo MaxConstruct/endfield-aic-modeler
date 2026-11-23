@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "aic-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aic-core",
  "aic-data",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "aic-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aic-data",
  "good_lp",
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "aic-data"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "indexmap",
  "serde",
@@ -218,7 +218,7 @@ dependencies = [
 
 [[package]]
 name = "aic-editor"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aic-core",
  "aic-data",
@@ -231,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "aic-node-graph"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "egui",
  "siphasher",
