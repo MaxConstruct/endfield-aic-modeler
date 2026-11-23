@@ -218,6 +218,18 @@ impl App {
     }
 }
 
+/// The window's icon, for its title bar, the taskbar and the Dock: the plate drawn for Windows, or
+/// the macOS-shaped one (with Apple's margin and shadow) on a Mac. A packaged app's own icon is in
+/// its .exe (`build.rs`) or its bundle (`scripts/package-macos.sh`).
+#[cfg(not(target_arch = "wasm32"))]
+fn window_icon() -> egui::IconData {
+    #[cfg(target_os = "macos")]
+    let png = include_bytes!("../assets/app-icon/window-macos.png");
+    #[cfg(not(target_os = "macos"))]
+    let png = include_bytes!("../assets/app-icon/window-windows.png");
+    eframe::icon_data::from_png_bytes(png).expect("the window icon is a PNG")
+}
+
 /// The desktop window's options, titled `title`: `main.rs` opens the app with them, and
 /// `perf_app` times a start-up with them.
 ///
@@ -231,7 +243,8 @@ pub fn native_options(title: &str) -> eframe::NativeOptions {
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(title)
-            .with_inner_size(WINDOW_SIZE),
+            .with_inner_size(WINDOW_SIZE)
+            .with_icon(window_icon()),
         ..Default::default()
     };
     #[cfg(windows)]

@@ -13,8 +13,9 @@
 # Trunk.toml's [tools]), for the release build's wasm-opt pass; the build downloads no tools.
 #
 # Deploying (PLAN.md, M13 step 5): upload everything in target/web/ (the page, the JS glue, the
-# .wasm and icons-<n>-<hash>.png), replacing the old files; the old hashed ones may be deleted
-# after. Every file but index.html has a hash of its content in its name, so:
+# .wasm, icons-<n>-<hash>.png and the favicon AppIcon-Windows-<hash>.svg), replacing the old files;
+# the old hashed ones may be deleted after. Every file but index.html has a hash of its content in
+# its name, so:
 #   - index.html must not be cached for long (or revalidated each time), so a new upload is seen;
 #   - the other files can be cached for good (`Cache-Control: public, max-age=31536000,
 #     immutable`), since a changed file has a new name.

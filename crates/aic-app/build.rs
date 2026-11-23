@@ -42,6 +42,7 @@ struct Icon {
 
 fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("set by cargo"));
+    exe_icon(&manifest);
     let data = manifest
         .ancestors()
         .nth(2)
@@ -124,6 +125,21 @@ fn main() {
     }
     table.push_str("];\n");
     fs::write(out.join("icons.rs"), table).expect("OUT_DIR is writable");
+}
+
+/// Puts the app icon into a Windows .exe as its first icon resource, which Explorer, the Start
+/// menu and a pinned taskbar button show. The window's own icon is set at run time
+/// (`native_options`). Needs the Windows SDK's `rc.exe`, which the MSVC toolchain brings.
+fn exe_icon(manifest: &Path) {
+    let ico = manifest.join("assets").join("app-icon").join("AppIcon.ico");
+    watch(&ico);
+    #[cfg(windows)]
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        winresource::WindowsResource::new()
+            .set_icon(&ico.to_string_lossy())
+            .compile()
+            .expect("the app icon compiles into a Windows resource");
+    }
 }
 
 /// Writes `sheet` as a PNG at the encoder's best compression: the web build downloads it.

@@ -7,8 +7,9 @@
     <!-- The app, built for wasm32 by Trunk. Trunk.toml's pattern_script starts it, with the
          .wasm this page fetches (PLAN.md, M13 step 4). -->
     <link data-trunk rel="rust" data-bin="aic-app" data-wasm-opt="2" />
-    <!-- No favicon: say so, so the browser doesn't ask for one. -->
-    <link rel="icon" href="data:,">
+    <!-- The app icon, as the Windows plate's SVG: sharp at any tab size. Trunk copies it under a
+         hashed name, so it can be cached for good like the other files. -->
+    <link data-trunk rel="icon" type="image/svg+xml" href="assets/app-icon/AppIcon-Windows.svg">
     <style>
         html, body {
             margin: 0;
