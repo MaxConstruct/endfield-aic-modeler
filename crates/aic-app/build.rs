@@ -7,10 +7,16 @@
 //! promises; more icons than fit make a second sheet. Icons no data version uses stay in the
 //! folder and out of the sheet. The node pictures (`nodes/`) are always in it.
 //!
-//! Writes `$OUT_DIR/icons-<n>.png` and `$OUT_DIR/icons.rs`, which `src/icons.rs` reads: the
-//! sheets' bytes (on the desktop; the web build fetches the PNGs, which `scripts/web-assets.sh`
-//! copies out of here), and a table from kind and ID to sheet and rectangle, sorted for a binary
-//! search.
+//! Writes `$OUT_DIR/icons.rs`, which `src/icons.rs` reads: each sheet's size, its bytes (on the
+//! desktop only), and a table from kind and ID to sheet and rectangle, sorted for a binary search.
+//! The sheets themselves:
+//!
+//! - **Desktop:** `$OUT_DIR/icons-<n>.png`, lossless, built into the program.
+//! - **Web,** with the `avif-sheets` feature (`index.html` asks Trunk for it):
+//!   `$OUT_DIR/icons-<n>.avif`, lossy AVIF, about a quarter of the PNG's bytes, which
+//!   `scripts/web-assets.sh` copies into the site and the loading page decodes. Without the
+//!   feature (a plain `cargo check --target wasm32-unknown-unknown`) no sheet is written, and the
+//!   encoder isn't built: a desktop build never compiles it.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -95,19 +101,27 @@ fn main() {
     // The web build fetches the sheets beside the page (scripts/web-assets.sh copies them from
     // here), so only the desktop builds them in.
     let web = env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|arch| arch == "wasm32");
-    let mut table = format!("pub const SHEET_COUNT: usize = {};\n", sheets.len());
+    let mut table = String::from("/// Each sheet's width and height in pixels.\n");
+    table.push_str("pub static SHEET_SIZES: &[[usize; 2]] = &[\n");
+    for sheet in &sheets {
+        writeln!(table, "    [{}, {}],", sheet.width(), sheet.height()).expect("String");
+    }
+    table.push_str("];\n");
     table.push_str("#[allow(dead_code)]\npub static SHEETS: &[&[u8]] = &[\n");
     for (index, sheet) in sheets.iter().enumerate() {
+        if web {
+            #[cfg(feature = "avif-sheets")]
+            write_avif(sheet, &out.join(format!("icons-{index}.avif")));
+            continue;
+        }
         let file = out.join(format!("icons-{index}.png"));
         write_png(sheet, &file);
-        if !web {
-            writeln!(
-                table,
-                "    include_bytes!({:?}),",
-                file.display().to_string()
-            )
-            .expect("String");
-        }
+        writeln!(
+            table,
+            "    include_bytes!({:?}),",
+            file.display().to_string()
+        )
+        .expect("String");
     }
     table.push_str("];\n");
     table.push_str("/// Folder, ID, sheet, and the icon's rectangle in it: x, y, width, height.\n");
@@ -142,13 +156,42 @@ fn exe_icon(manifest: &Path) {
     }
 }
 
-/// Writes `sheet` as a PNG at the encoder's best compression: the web build downloads it.
+/// Writes `sheet` as a PNG at the encoder's best compression, for the desktop to build in.
 fn write_png(sheet: &RgbaImage, file: &Path) {
     let out = std::io::BufWriter::new(fs::File::create(file).expect("OUT_DIR is writable"));
     let encoder = PngEncoder::new_with_quality(out, CompressionType::Best, FilterType::Adaptive);
     sheet
         .write_with_encoder(encoder)
         .expect("an RGBA sheet encodes as PNG");
+}
+
+/// The web sheet's quality, colour and alpha, on ravif's 1 to 100 scale. 87 gives 41.5 dB PSNR
+/// against the PNG (premultiplied RGBA) at 22% of its bytes, which is what libaom's "quality 80"
+/// gave (41.4 dB): ravif's scale is its own (PLAN.md, M13 step 5).
+#[cfg(feature = "avif-sheets")]
+const AVIF_QUALITY: f32 = 87.0;
+#[cfg(feature = "avif-sheets")]
+const AVIF_ALPHA_QUALITY: f32 = 87.0;
+/// rav1e's preset, 1 (slowest, smallest) to 10.
+#[cfg(feature = "avif-sheets")]
+const AVIF_SPEED: u8 = 4;
+
+/// Writes `sheet` as an AVIF, full chroma (ravif is always 4:4:4), for the web build to download.
+#[cfg(feature = "avif-sheets")]
+fn write_avif(sheet: &RgbaImage, file: &Path) {
+    let (pixels, _) = sheet.as_raw().as_chunks::<4>();
+    let pixels: Vec<ravif::RGBA8> = pixels
+        .iter()
+        .map(|&[r, g, b, a]| ravif::RGBA8::new(r, g, b, a))
+        .collect();
+    let (width, height) = (sheet.width() as usize, sheet.height() as usize);
+    let encoded = ravif::Encoder::new()
+        .with_quality(AVIF_QUALITY)
+        .with_alpha_quality(AVIF_ALPHA_QUALITY)
+        .with_speed(AVIF_SPEED)
+        .encode_rgba(ravif::Img::new(&pixels[..], width, height))
+        .expect("an RGBA sheet encodes as AVIF");
+    fs::write(file, encoded.avif_file).expect("OUT_DIR is writable");
 }
 
 /// Places the icons in cells, row by row, as many sheets as it takes. Returns the sheets and, for

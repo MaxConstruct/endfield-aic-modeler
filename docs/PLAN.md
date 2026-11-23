@@ -1515,9 +1515,10 @@ touched.
      - **Sizes.** `scripts/web-assets.sh`, Trunk's `post_build` hook, writes the `.wasm`'s name
        and size and each sheet's into the page (`data-wasm`, `data-sheets`). It finds the sheets
        in `aic-app`'s `OUT_DIR` by running Trunk's own cargo build again, a no-op, with
-       `--message-format=json`, and copies them in as `icons-<n>-<16 hex of SHA-256>.png`. The
-       desktop has the sheets built in; for `wasm32` `build.rs` leaves them out and tells the
-       app how many there are, and `icons::install_sheets` refuses another count.
+       `--message-format=json`, and copies them in as `icons-<n>-<16 hex of SHA-256>.png` (`.avif`
+       since step 5's AVIF sheet). The desktop has the sheets built in; for `wasm32` `build.rs`
+       leaves them out and tells the app how many there are, and `icons::install_sheets` refuses
+       another count (and, since step 5, another size).
      - **The page**: a percentage and a bar under it, no words, in the app's colours. One count
        over every byte, which stops at 99% until the app has decoded the sheet and drawn its
        first frame, when it removes the page (`web::remove_loading_page`, from `App::ui`). So
@@ -1616,6 +1617,58 @@ touched.
 
      The sheet is now 43% of the compressed bytes: it is PNG, which brotli doesn't shrink (the
      step-1 icons were PNG too). A smaller encoding of the sheet would be the next saving.
+   - **The web sheet as AVIF** (2026-11-23, asked for by the user as "AVIF at 80% quality"). As
+     built:
+     - `aic-app` has a feature, `avif-sheets`, that adds `ravif` 0.13 (rav1e, pure Rust, without
+       its `asm`, which needs nasm) as an optional build-dependency. `index.html` asks Trunk for
+       it (`data-cargo-features`) and `web-assets.sh` builds with the page's features to find the
+       same `OUT_DIR`. For `wasm32` with the feature, `build.rs` writes `icons-<n>.avif` and no
+       PNG; without it (a plain `cargo check --target wasm32-unknown-unknown`) no sheet at all.
+       The desktop never compiles the encoder and still builds in its lossless PNG. rav1e and
+       ravif are `opt-level = 3` in the workspace's profiles, as the PNG crates are.
+     - The setting: ravif quality 87 for colour and alpha, speed 4, 4:4:4 (ravif's only chroma),
+       unassociated alpha with the colour of clear pixels cleaned. ravif's scale is not
+       libaom's: its 80 gave 38.2 dB at 421 KB, below what the user had seen of libaom's q80
+       (41.4 dB, 629 KB, with Pillow); 87 gives the same outcome, 41.5 dB PSNR on premultiplied
+       RGBA against the PNG, at 598 KB. The encode takes about 13 s in the build script, which
+       runs only when the icons or the data change.
+     - The loading page decodes the sheet, as the browser can and an AV1 decoder in the `.wasm`
+       would cost more than it saves: `createImageBitmap` (no premultiplying, no colour
+       conversion), an `OffscreenCanvas` and `getImageData`, and hands `{ width, height, rgba }`
+       to the app (`web::icon_sheets`). `icons::install_sheets` takes pixels on both builds and
+       refuses a count or size other than the build's (`SHEET_SIZES` in the generated table);
+       the desktop decodes its PNG first (`icons::install`). A sheet that downloads but doesn't
+       decode shows its name, as a failed download shows its name and status. No PNG fallback:
+       old browsers are not a target.
+     - The `.wasm` lost the PNG decoder (94 KB raw); the PNG encoder stays, for exporting the
+       canvas as an image.
+     - Tests (written before the code): the built sheets' pixels are installed; another count of
+       sheets, a sheet of another size, and pixels short of their sheet are refused. The
+       snapshots, all on the desktop, did not change.
+   - **Measured** 2026-11-23 on the Windows PC:
+
+     | Web, a cold load | Files | Raw | brotli -q 9 |
+     |---|---|---|---|
+     | Before: page 7.8 KB, JS 157 KB, `.wasm` 11.86 MB, sheet (PNG) 2.72 MB | 4 | 14.75 MB | 6.36 MB |
+     | After: page 9.1 KB, JS 158 KB, `.wasm` 11.76 MB, sheet (AVIF) 0.61 MB | 4 | 12.54 MB | 4.21 MB |
+
+     - A third less to download with brotli (2.15 MB less: 2.11 MB of sheet, 35 KB of `.wasm`).
+     - The browser's decoding of the AVIF against the PNG: 41.51 dB, the same as the encoder's
+       own check; where the PNG is clear, the AVIF's alpha reaches at most 12 of 255 (5 in the
+       gutters between cells). The recipe list's icons on screen differed from the PNG build's
+       by at most 24 of 255 in a channel, inside icons only; magnified, no icon showed a
+       difference to the eye and none took anything from its neighbour.
+     - Time to `aic-editor-shown`, Chrome 3 alternating cold loads each, over loopback: before
+       707, 706, 599 ms; after 786, 718, 642 ms. Over loopback the bytes cost nothing and the
+       decode is the browser's (about 108 ms for the sheet, partly while the `.wasm` compiles),
+       so it is 10–80 ms slower there. On an emulated 50 Mbit/s link (20 ms latency, files
+       served uncompressed): before 3,100, 3,076, 3,053 ms; after 2,675, 2,659, 2,685 ms.
+       Headless Chrome (`--headless=new`, driven over its DevTools protocol, a new browser
+       context a load), not a window: no Windows browser was connected to the session's tools.
+     - Clean builds, each in an empty target folder, one run each: web (`build-web.sh`) 282 →
+       223 s, likely (not timed apart) because the wasm32 build no longer writes the PNG at its
+       best compression (about 21 s) and rav1e compiles beside the rest, and from noise; desktop `cargo build --release -p aic-app` 199 →
+       195 s, the same 222 crates (rav1e and ravif are not among them).
 6. **Windows, from step 1's numbers.** Candidates, each only if the baseline points at it:
    which renderer and backend eframe starts (the lock file has both wgpu and glow), a faster
    encoding for the built-in sheet than PNG, the size of the `.exe`. Measured with the

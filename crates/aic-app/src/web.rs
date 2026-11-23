@@ -6,25 +6,42 @@ use std::sync::mpsc::{self, Receiver};
 use wasm_bindgen::{JsCast as _, JsValue};
 
 use crate::files::{Download, Upload};
+use crate::icons::SheetPixels;
 
-/// The icon sheets, as the loading page in `index.html` fetched them (`window.aicLoading.sheets`,
-/// a promise of one `Uint8Array` a sheet). An error when a sheet didn't come: the page shows
-/// which.
-pub async fn icon_sheets() -> Result<Vec<Vec<u8>>, String> {
+/// The icon sheets, as the loading page in `index.html` fetched and decoded them
+/// (`window.aicLoading.sheets`, a promise of one `{ width, height, rgba }` a sheet, `rgba` being
+/// the browser's decoding of the AVIF, unmultiplied). An error when a sheet didn't come or didn't
+/// decode: the page shows which.
+pub async fn icon_sheets() -> Result<Vec<SheetPixels>, String> {
     let window = web_sys::window().ok_or("no window")?;
-    let loading =
-        js_sys::Reflect::get(&window, &JsValue::from_str("aicLoading")).map_err(describe)?;
-    let promise = js_sys::Reflect::get(&loading, &JsValue::from_str("sheets"))
-        .map_err(describe)?
+    let loading = get(&window, "aicLoading")?;
+    let promise = get(&loading, "sheets")?
         .dyn_into::<js_sys::Promise>()
         .map_err(|_| "the page fetched no icon sheets".to_owned())?;
     let sheets = wasm_bindgen_futures::JsFuture::from(promise)
         .await
         .map_err(describe)?;
-    Ok(js_sys::Array::from(&sheets)
+    js_sys::Array::from(&sheets)
         .iter()
-        .map(|sheet| js_sys::Uint8Array::new(&sheet).to_vec())
-        .collect())
+        .map(|sheet| {
+            let side = |name| {
+                get(&sheet, name)?
+                    .as_f64()
+                    .map(|side| side as usize)
+                    .ok_or_else(|| format!("an icon sheet's {name} is not a number"))
+            };
+            let size = [side("width")?, side("height")?];
+            let rgba = get(&sheet, "rgba")?
+                .dyn_into::<js_sys::Uint8Array>()
+                .map_err(|_| "an icon sheet's pixels are not a Uint8Array".to_owned())?
+                .to_vec();
+            Ok(SheetPixels { size, rgba })
+        })
+        .collect()
+}
+
+fn get(object: &JsValue, key: &str) -> Result<JsValue, String> {
+    js_sys::Reflect::get(object, &JsValue::from_str(key)).map_err(describe)
 }
 
 /// Takes the loading page away, once the editor has drawn its first frame, and marks the moment

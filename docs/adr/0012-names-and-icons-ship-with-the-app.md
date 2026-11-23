@@ -24,5 +24,6 @@ The web build is a folder of static files (`target/web/`), uploaded by hand to t
 - The languages a player can choose are the app's name tables, not a version's.
 - `Catalog` holds no image bytes. What picture stands for a recipe is still decided from which IDs have an icon, which the app now tells it.
 - The web build's loading page shows one percentage and one bar over every byte (the `.wasm`, which carries the fonts, names and data, and the icon sheet), and the editor appears at 100%. A file that fails to load shows its name and HTTP status.
+- The sheet is encoded twice (2026-11-23, PLAN.md M13 step 5): the desktop builds in a lossless PNG, and the web build downloads a lossy AVIF, about a quarter of its bytes, which the loading page decodes with the browser's own decoder and hands to the app as pixels. A browser that can't decode AVIF shows the sheet's name as a failure; there is no PNG fallback.
 - factoriolab's `icons.webp` sprite sheet, read but never drawn, is no longer read. The `icons` list of the data stays, for its colours.
 - The term stays **overlay** (GLOSSARY: "patch" is avoided for a data version).

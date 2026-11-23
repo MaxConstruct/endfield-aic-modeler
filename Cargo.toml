@@ -66,3 +66,14 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.simd-adler32]
 opt-level = 3
+
+# The AVIF encoder likewise, for the web build's sheet (`avif-sheets`, PLAN.md M13 step 5): it takes
+# about 13 s on the sheet optimized. Only a web build compiles these.
+[profile.dev.package.rav1e]
+opt-level = 3
+[profile.dev.package.ravif]
+opt-level = 3
+[profile.release.package.rav1e]
+opt-level = 3
+[profile.release.package.ravif]
+opt-level = 3

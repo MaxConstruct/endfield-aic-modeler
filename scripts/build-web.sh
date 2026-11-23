@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the web version into target/web/: index.html (with its loading page), the JS glue, the
-# .wasm (which holds the game data and the names, ADR 0012) and the icon sheet. Serve that folder
+# .wasm (which holds the game data and the names, ADR 0012) and the icon sheet, as AVIF, which the
+# page decodes (the desktop builds in a PNG; PLAN.md, M13 step 5). Serve that folder
 # from any static web server.
 #
 #   scripts/build-web.sh          # release build into target/web/
@@ -13,7 +14,7 @@
 # Trunk.toml's [tools]), for the release build's wasm-opt pass; the build downloads no tools.
 #
 # Deploying (PLAN.md, M13 step 5): upload everything in target/web/ (the page, the JS glue, the
-# .wasm, icons-<n>-<hash>.png and the favicon AppIcon-Windows-<hash>.svg), replacing the old files;
+# .wasm, icons-<n>-<hash>.avif and the favicon AppIcon-Windows-<hash>.svg), replacing the old files;
 # the old hashed ones may be deleted after. Every file but index.html has a hash of its content in
 # its name, so:
 #   - index.html must not be cached for long (or revalidated each time), so a new upload is seen;
@@ -22,8 +23,8 @@
 # The server must send the .wasm as `application/wasm`, or the browser won't compile it as it
 # downloads. Behind Cloudflare, check that it caches the .wasm (it may need a Cache Rule: .wasm may
 # not be among the extensions it caches by default) and compresses it (brotli or gzip on the
-# `application/wasm` type), and that the PNG sheet is cached. The build compresses nothing
-# itself.
+# `application/wasm` type), and that the AVIF sheet is cached (it is compressed already: no need to
+# compress it again). The build compresses nothing itself.
 set -euo pipefail
 
 cd "$(dirname "$0")/../crates/aic-app"

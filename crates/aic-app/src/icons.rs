@@ -32,35 +32,65 @@ fn sheets_id() -> Id {
     Id::new("icon-sheets")
 }
 
-/// Decodes the sheets built into the program and uploads them to `ctx`. Call once, before the
-/// first frame. The web build has none built in: it fetches them ([`install_sheets`]).
-#[cfg(not(target_arch = "wasm32"))]
-pub fn install(ctx: &egui::Context) {
-    install_sheets(ctx, table::SHEETS.iter().copied())
-        .expect("the icon sheets built into the program decode");
+/// A sheet's pixels: RGBA, unmultiplied, row by row from the top. The desktop decodes them from
+/// the PNG built into it; the web build's loading page decodes the AVIF it fetched
+/// (`web::icon_sheets`).
+pub struct SheetPixels {
+    /// Width and height.
+    pub size: [usize; 2],
+    pub rgba: Vec<u8>,
 }
 
-/// Decodes `sheets` (PNG files, every one the build wrote, in its order) and uploads them to
-/// `ctx`. Returns why they don't fit: one that doesn't decode, or not as many as the build wrote.
-pub fn install_sheets<'a>(
-    ctx: &egui::Context,
-    sheets: impl IntoIterator<Item = &'a [u8]>,
-) -> Result<(), String> {
-    let sheets: Vec<&[u8]> = sheets.into_iter().collect();
-    if sheets.len() != table::SHEET_COUNT {
+/// Decodes the sheets built into the program and uploads them to `ctx`. Call once, before the
+/// first frame. The web build has none built in: its page decodes them ([`install_sheets`]).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install(ctx: &egui::Context) {
+    let sheets = table::SHEETS.iter().map(|png| decode_png(png)).collect();
+    install_sheets(ctx, sheets).expect("the icon sheets built into the program fit");
+}
+
+/// A PNG built into the program, decoded.
+#[cfg(not(target_arch = "wasm32"))]
+fn decode_png(png: &[u8]) -> SheetPixels {
+    let image = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+        .expect("the icon sheets built into the program decode")
+        .to_rgba8();
+    SheetPixels {
+        size: [image.width() as usize, image.height() as usize],
+        rgba: image.into_raw(),
+    }
+}
+
+/// Uploads `sheets` (every one the build wrote, in its order) to `ctx`. Returns why they don't
+/// fit, and installs none then: not as many as the build wrote, or one whose size isn't the one
+/// the build packed or whose pixels don't fill it.
+pub fn install_sheets(ctx: &egui::Context, sheets: Vec<SheetPixels>) -> Result<(), String> {
+    if sheets.len() != table::SHEET_SIZES.len() {
         return Err(format!(
             "{} icon sheets, not {}",
             sheets.len(),
-            table::SHEET_COUNT
+            table::SHEET_SIZES.len()
         ));
     }
+    for (index, (sheet, &built)) in sheets.iter().zip(table::SHEET_SIZES).enumerate() {
+        let [width, height] = sheet.size;
+        if sheet.size != built {
+            return Err(format!(
+                "icon sheet {index} is {width} × {height} pixels, not {} × {}",
+                built[0], built[1]
+            ));
+        }
+        if sheet.rgba.len() != width * height * 4 {
+            return Err(format!(
+                "icon sheet {index} has {} bytes of pixels, not {}",
+                sheet.rgba.len(),
+                width * height * 4
+            ));
+        }
+    }
     let mut textures = Vec::new();
-    for (index, png) in sheets.into_iter().enumerate() {
-        let image = image::load_from_memory_with_format(png, image::ImageFormat::Png)
-            .map_err(|error| format!("icon sheet {index}: {error}"))?
-            .to_rgba8();
-        let size = [image.width() as usize, image.height() as usize];
-        let image = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+    for (index, sheet) in sheets.into_iter().enumerate() {
+        let image = egui::ColorImage::from_rgba_unmultiplied(sheet.size, &sheet.rgba);
         textures.push(ctx.load_texture(
             format!("icon-sheet-{index}"),
             image,
@@ -130,6 +160,53 @@ mod tests {
             table::CELLS.is_sorted_by_key(|&(folder, id, _, _)| (folder, id)),
             "build.rs sorts by folder, then ID"
         );
+    }
+
+    /// The built-in sheets, decoded, as the app is handed them.
+    fn built_in() -> Vec<SheetPixels> {
+        table::SHEETS.iter().map(|png| decode_png(png)).collect()
+    }
+
+    #[test]
+    fn sheets_of_the_built_size_are_installed() {
+        let ctx = egui::Context::default();
+        install_sheets(&ctx, built_in()).expect("the built sheets fit");
+        assert!(get(&ctx, ImageKind::Item, "copper_nugget").is_some());
+    }
+
+    #[test]
+    fn another_count_of_sheets_is_refused() {
+        let ctx = egui::Context::default();
+        let error = install_sheets(&ctx, Vec::new()).unwrap_err();
+        assert!(error.contains("icon sheets"), "{error}");
+        let mut more = built_in();
+        more.extend(built_in());
+        assert!(install_sheets(&ctx, more).is_err());
+        assert!(get(&ctx, ImageKind::Item, "copper_nugget").is_none());
+    }
+
+    #[test]
+    fn a_sheet_of_another_size_is_refused() {
+        let ctx = egui::Context::default();
+        let mut sheets = built_in();
+        let [width, height] = sheets[0].size;
+        sheets[0] = SheetPixels {
+            size: [width - 1, height],
+            rgba: vec![0; (width - 1) * height * 4],
+        };
+        let error = install_sheets(&ctx, sheets).unwrap_err();
+        assert!(error.contains("icon sheet 0"), "{error}");
+        assert!(get(&ctx, ImageKind::Item, "copper_nugget").is_none());
+    }
+
+    #[test]
+    fn pixels_short_of_the_sheet_are_refused() {
+        let ctx = egui::Context::default();
+        let mut sheets = built_in();
+        let short = sheets[0].rgba.len() - 4;
+        sheets[0].rgba.truncate(short);
+        let error = install_sheets(&ctx, sheets).unwrap_err();
+        assert!(error.contains("icon sheet 0"), "{error}");
     }
 
     #[test]

@@ -41,8 +41,8 @@ fn main() {
     use eframe::wasm_bindgen::JsCast as _;
 
     wasm_bindgen_futures::spawn_local(async {
-        // The page fetches the icon sheets while the .wasm loads; a sheet that doesn't come is
-        // shown on the page, by name and status.
+        // The page fetches and decodes the icon sheets while the .wasm loads; a sheet that
+        // doesn't come or doesn't decode is shown on the page, by name (and status).
         let Ok(sheets) = aic_app::web::icon_sheets().await else {
             return;
         };
@@ -61,7 +61,7 @@ fn main() {
                 eframe::WebOptions::default(),
                 Box::new(move |cc| {
                     aic_app::theme::install(&cc.egui_ctx);
-                    aic_app::icons::install_sheets(&cc.egui_ctx, sheets.iter().map(Vec::as_slice))?;
+                    aic_app::icons::install_sheets(&cc.egui_ctx, sheets)?;
                     // The data and the names are built into the .wasm (ADR 0012).
                     let folder = aic_app::data::DataFolder::built_in().ok_or_else(|| {
                         aic_data::LoadError::NoDataDir { tried: Vec::new() }.to_string()

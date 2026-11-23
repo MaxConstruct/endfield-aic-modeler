@@ -45,6 +45,10 @@ mimalloc = "0.1.52"
 dhat = { version = "0.3.3", optional = true }
 
 [features]
+# The web build's icon sheet as AVIF (build.rs, PLAN.md M13 step 5): `index.html` asks Trunk for
+# it, and only a wasm32 build encodes with it. A desktop build leaves it off and never compiles the
+# encoder.
+avif-sheets = ["dep:ravif"]
 # Swaps mimalloc for dhat's counting allocator: `perf_app` then prints allocations per frame and
 # writes dhat's file of allocation sites. Slow; never in a build for players. Does nothing on wasm.
 dhat-heap = ["dep:dhat"]
@@ -69,6 +73,9 @@ winresource = "0.1.34"
 [build-dependencies]
 aic-data.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
+# The AVIF encoder for the web sheet, with the `avif-sheets` feature. Without `asm`, which would
+# need nasm: the workspace's Cargo.toml optimizes rav1e in build scripts instead.
+ravif = { version = "0.13", default-features = false, features = ["threading"], optional = true }
 
 [dev-dependencies]
 aic-editor = { workspace = true, features = ["testing"] }

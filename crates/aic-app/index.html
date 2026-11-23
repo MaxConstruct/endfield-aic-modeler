@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AIC Modeler</title>
     <!-- The app, built for wasm32 by Trunk. Trunk.toml's pattern_script starts it, with the
-         .wasm this page fetches (PLAN.md, M13 step 4). -->
-    <link data-trunk rel="rust" data-bin="aic-app" data-wasm-opt="2" />
+         .wasm this page fetches (PLAN.md, M13 step 4). `avif-sheets` has build.rs write the
+         icon sheet as AVIF (step 5); scripts/web-assets.sh builds with the same features. -->
+    <link data-trunk rel="rust" data-bin="aic-app" data-cargo-features="avif-sheets" data-wasm-opt="2" />
     <!-- The app icon, as the Windows plate's SVG: sharp at any tab size. Trunk copies it under a
          hashed name, so it can be cached for good like the other files. -->
     <link data-trunk rel="icon" type="image/svg+xml" href="assets/app-icon/AppIcon-Windows.svg">
@@ -67,9 +68,9 @@
     </div>
     <script>
         // One count from 0 to 100% over every byte the editor needs: the .wasm and the icon
-        // sheets, all fetched from here at once. It stops at 99% until the app has decoded the
-        // sheets and drawn the editor, which then takes this page away. A file that fails shows
-        // its name and HTTP status (PLAN.md, M13 step 4).
+        // sheets (AVIF), all fetched from here at once. It stops at 99% until this page has
+        // decoded the sheets and the app has drawn the editor, which then takes this page away.
+        // A file that fails shows its name and HTTP status (PLAN.md, M13 steps 4 and 5).
         (() => {
             const page = document.getElementById("loading");
             const text = document.getElementById("loading-text");
@@ -150,6 +151,30 @@
                 return new Response(body, { status: response.status, headers: response.headers });
             };
 
+            // A sheet's pixels: the browser decodes the AVIF (the desktop's PNG would be four
+            // times the bytes, and an AV1 decoder in the .wasm more than it saves), and a canvas
+            // hands over its RGBA, unmultiplied, for the app (src/web.rs). A sheet that doesn't
+            // decode shows its name.
+            const decoded = async (f) => {
+                const blob = await (await counted(f)).blob();
+                try {
+                    const bitmap = await createImageBitmap(blob, {
+                        premultiplyAlpha: "none",
+                        colorSpaceConversion: "none",
+                    });
+                    const { width, height } = bitmap;
+                    const canvas = new OffscreenCanvas(width, height);
+                    const context = canvas.getContext("2d", { willReadFrequently: true });
+                    context.drawImage(bitmap, 0, 0);
+                    bitmap.close();
+                    const pixels = context.getImageData(0, 0, width, height).data;
+                    return { width, height, rgba: new Uint8Array(pixels.buffer) };
+                } catch (error) {
+                    fail(f.name);
+                    throw error;
+                }
+            };
+
             if (!wasm.name || sheets.length === 0) {
                 // Built without scripts/web-assets.sh: the page doesn't know its files.
                 fail(location.pathname.split("/").pop() || "index.html");
@@ -158,9 +183,7 @@
                 // The .wasm as a response, for wasm-bindgen to compile as it arrives.
                 wasm: counted(wasm),
                 // The app awaits these before it starts (src/web.rs).
-                sheets: Promise.all(
-                    sheets.map((f) => counted(f).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b))),
-                ),
+                sheets: Promise.all(sheets.map(decoded)),
                 failed: failAsking,
                 steps,
             };
