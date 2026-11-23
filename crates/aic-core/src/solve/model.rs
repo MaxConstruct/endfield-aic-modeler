@@ -2,6 +2,13 @@
 //!
 //! Variables: a facility count per recipe node, a rate per source, sink and logistics node, and a
 //! flow per link. Depot flows are expressions of those. Every limit is an upper bound on a variable.
+//!
+//! A facility's activation input (ADR 0013) is needed in full by each running facility. On a port
+//! with no links it needs no variable: the depot supplies it, and it is added to the port's flow
+//! after the solve. On a port fed by links, pass 1 ([`Program::Pass1`]) gives the node a whole
+//! number of running facilities, which makes the section a mixed-integer program; every later
+//! program takes that number as given ([`Program::Fixed`]) and is linear. A section without such a
+//! port builds the same linear program as before activation inputs.
 
 use std::collections::HashMap;
 
@@ -9,7 +16,46 @@ use aic_data::{Catalog, ItemId};
 use good_lp::{Constraint, Expression, ProblemVariables, Variable, variable};
 
 use crate::graph::{Graph, LinkId, NodeId, NodeKind, Port, Side};
+use crate::solve::RoundUp;
 use crate::solve::sections::Section;
+
+/// How far below the next whole number the running facilities must stay above the count, so that
+/// a count of exactly 1 runs one facility, not two, and a count of 0 runs none. It must be well
+/// above microlp's integrality tolerance (1e-6): a running count of 0.999999 would be taken for 1.
+const GAP: f64 = 1e-5;
+
+/// The most facilities one node may run in pass 1: microlp's whole numbers need finite bounds that
+/// fit an `i32`, so a node without a limit gets this one. A solve that reaches it means the node
+/// could run without end: the section is unbounded.
+const MOST_RUNNING: f64 = 1e6;
+
+/// How the nodes whose activation input has links are built (ADR 0013).
+#[derive(Debug, Clone)]
+pub(crate) enum Program {
+    /// Pass 1: each runs a whole number of facilities, tied to its count from both sides.
+    Pass1,
+    /// Every later program: each runs the facilities pass 1 settled on, `running`, with its count
+    /// kept inside them. The `scaled` node, if any, has its activation input scale with its count
+    /// instead, as the data has it: the throttle analysis asks what holds that node back.
+    Fixed {
+        running: HashMap<NodeId, u32>,
+        scaled: Option<NodeId>,
+    },
+}
+
+/// How one activation port is built.
+#[derive(Debug, Clone, Copy)]
+enum Activation {
+    /// No links (or relaxed): only the part that scales is in the program; each running facility's
+    /// whole activation input is added to the port's flow after the solve.
+    Depot,
+    /// Pass 1: this whole number of facilities runs.
+    Running(Variable),
+    /// This many facilities run.
+    Fixed(u32),
+    /// The activation input scales with the count.
+    Scaled,
+}
 
 pub(crate) struct Ctx<'a> {
     pub catalog: &'a Catalog,
@@ -35,12 +81,31 @@ pub(crate) struct Model {
     pub fan_groups: Vec<Vec<LinkId>>,
     /// Every port with links, and those links.
     pub linked_ports: HashMap<Port, Vec<LinkId>>,
+    /// Pass 1: the whole number of facilities each node whose activation input has links runs.
+    pub running: Vec<(NodeId, Variable)>,
+    /// Those of `running` with no limit, bounded only by [`MOST_RUNNING`]. If a solve takes one
+    /// there, the section is unbounded.
+    pub open_running: Vec<Variable>,
+    /// Activation ports with no links, the node's count and the activation input per running
+    /// facility: what each running facility needs is added to the port's flow after the solve.
+    pub depot_activation: Vec<(Port, Variable, f64)>,
 }
 
-/// Builds the LP for `section`. A `relaxed` port stops constraining its node, as if it were on the
-/// depot; its links stay bound by their other ends. Throttle reasons use this to ask whether a port
-/// holds its node back.
-pub(crate) fn build(ctx: &Ctx<'_>, section: &Section, relaxed: Option<&Port>) -> Model {
+/// Whether a solution runs one of `open_running` up to [`MOST_RUNNING`]: that node would run
+/// without end, so the program is unbounded.
+pub(crate) fn runs_without_end(open_running: &[Variable], value: impl Fn(Variable) -> f64) -> bool {
+    (open_running.iter()).any(|&running| value(running) > MOST_RUNNING - 0.5)
+}
+
+/// Builds the LP for `section`, its activation inputs as `program` says. A `relaxed` port stops
+/// constraining its node, as if it were on the depot; its links stay bound by their other ends.
+/// Throttle reasons use this to ask whether a port holds its node back.
+pub(crate) fn build(
+    ctx: &Ctx<'_>,
+    section: &Section,
+    program: &Program,
+    relaxed: Option<&Port>,
+) -> Model {
     let mut linked_ports: HashMap<Port, Vec<LinkId>> = HashMap::new();
     for &id in &section.links {
         let link = &ctx.graph.links[id];
@@ -101,7 +166,11 @@ pub(crate) fn build(ctx: &Ctx<'_>, section: &Section, relaxed: Option<&Port>) ->
             throughput: Expression::from(0.0),
             fan_groups,
             linked_ports,
+            running: Vec::new(),
+            open_running: Vec::new(),
+            depot_activation: Vec::new(),
         },
+        program,
         has_throughput: false,
     };
     for &node in &section.nodes {
@@ -119,6 +188,7 @@ struct Builder<'a, 'b> {
     ctx: &'a Ctx<'b>,
     relaxed: Option<&'a Port>,
     model: Model,
+    program: &'a Program,
     has_throughput: bool,
 }
 
@@ -163,15 +233,49 @@ impl Builder<'_, '_> {
     fn recipe(&mut self, node: NodeId, recipe: &str, facility: &str, limit: Option<f64>) {
         let catalog = self.ctx.catalog;
         let recipe = catalog.recipe(recipe).expect("validated: recipe exists");
-        let speed = catalog
+        let facility = catalog
             .facility(facility)
-            .expect("validated: facility exists")
-            .speed;
+            .expect("validated: facility exists");
+        let speed = facility.speed;
         let count = self.activity(node, limit);
         let mut fed_by_links = false;
-        for (item, qty) in &recipe.inputs {
-            let rate = recipe.rate_per_min(*qty, speed);
-            fed_by_links |= self.side(node, item, Side::Input, count * rate);
+        for (item, rate) in recipe.input_rates(facility) {
+            let port = Port {
+                node,
+                item: item.clone(),
+                side: Side::Input,
+            };
+            let linked = self.model.linked_ports.contains_key(&port);
+            let (scaled, amount) = if rate.activation > 0.0 {
+                let activation =
+                    self.activation(node, count, limit, linked && self.relaxed != Some(&port));
+                match activation {
+                    Activation::Depot => {
+                        self.model
+                            .depot_activation
+                            .push((port, count, rate.activation));
+                        (rate.scaled, count * rate.scaled)
+                    }
+                    Activation::Running(running) => {
+                        (rate.scaled, count * rate.scaled + running * rate.activation)
+                    }
+                    Activation::Fixed(running) => (
+                        rate.scaled,
+                        count * rate.scaled + f64::from(running) * rate.activation,
+                    ),
+                    Activation::Scaled => {
+                        let all = rate.scaled + rate.activation;
+                        (all, count * all)
+                    }
+                }
+            } else {
+                // Not an activation input: as it always was.
+                (rate.scaled, count * rate.scaled)
+            };
+            self.side(node, item, Side::Input, amount);
+            // Links into a port of which nothing scales don't tie the count to them: a node fed
+            // only so is still an origin, measured by what it puts out (ADR 0013).
+            fed_by_links |= linked && scaled > 0.0;
         }
         for (item, qty) in &recipe.outputs {
             let rate = recipe.rate_per_min(*qty, speed);
@@ -190,6 +294,51 @@ impl Builder<'_, '_> {
                 .map(|(_, qty)| recipe.rate_per_min(*qty, speed))
                 .sum();
             self.add_throughput(count * total);
+        }
+    }
+
+    /// How the activation port of `node` is built, adding what it needs: the whole number of
+    /// running facilities in pass 1, or the bounds that keep the count inside the facilities pass
+    /// 1 settled on. `fed` says whether the port has links (and isn't relaxed).
+    fn activation(
+        &mut self,
+        node: NodeId,
+        count: Variable,
+        limit: Option<f64>,
+        fed: bool,
+    ) -> Activation {
+        match self.program {
+            Program::Fixed { scaled, .. } if *scaled == Some(node) => Activation::Scaled,
+            _ if !fed => Activation::Depot,
+            Program::Pass1 => {
+                // Tied from both sides, so it can neither fall short of the count nor start a
+                // facility the count has no work for. `running ≥ count` has no allowance for
+                // solver noise of its own: every pass maximizes something and would use it up;
+                // microlp already takes a whole number within its feasibility tolerance (1e-7) of
+                // a constraint as meeting it.
+                let most = limit.map_or(MOST_RUNNING, |limit| {
+                    f64::from(RoundUp::of(limit).facilities).min(MOST_RUNNING)
+                });
+                let running = (self.model.vars).add(variable().integer().min(0).max(most));
+                if most >= MOST_RUNNING {
+                    self.model.open_running.push(running);
+                }
+                self.model.running.push((node, running));
+                let constraints = &mut self.model.constraints;
+                constraints.push(Expression::from(running).geq(count));
+                constraints.push(Expression::from(running).leq(count + (1.0 - GAP)));
+                Activation::Running(running)
+            }
+            Program::Fixed { running, .. } => {
+                let running = running.get(&node).copied().unwrap_or(0);
+                // Inside the facilities that run, so its count rounded up is still `running`.
+                let constraints = &mut self.model.constraints;
+                constraints.push(Expression::from(count).leq(f64::from(running)));
+                if running >= 1 {
+                    constraints.push(Expression::from(count).geq(f64::from(running) - 1.0 + GAP));
+                }
+                Activation::Fixed(running)
+            }
         }
     }
 

@@ -10,7 +10,7 @@ use good_lp::{Solution as _, SolverModel, microlp};
 
 use crate::graph::{NodeId, NodeKind, Port, Side};
 use crate::solve::ThrottleReason;
-use crate::solve::model::{Ctx, build};
+use crate::solve::model::{Ctx, Program, build};
 use crate::solve::passes::{Values, tolerance};
 use crate::solve::sections::Section;
 
@@ -19,7 +19,7 @@ pub(crate) fn reasons(
     section: &Section,
     values: &Values,
 ) -> HashMap<NodeId, ThrottleReason> {
-    let reference = build(ctx, section, None);
+    let reference = build(ctx, section, &fixed(values, None), None);
     let mut reasons = HashMap::new();
     for (&node, &limit) in &reference.limits {
         let current = values.activity[&node];
@@ -32,12 +32,12 @@ pub(crate) fn reasons(
             .filter(|p| p.node == node)
             .collect();
         ports.sort();
-        let Some(baseline) = max_activity(ctx, section, node, None) else {
+        let Some(baseline) = max_activity(ctx, section, values, node, None) else {
             continue;
         };
         let freeing = ports
             .iter()
-            .filter_map(|port| Some((*port, max_activity(ctx, section, node, Some(port))?)))
+            .filter_map(|port| Some((*port, max_activity(ctx, section, values, node, Some(port))?)))
             .filter(|(_, freed)| *freed > baseline + tolerance(baseline))
             .max_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(port, _)| port);
@@ -64,15 +64,29 @@ pub(crate) fn reasons(
     reasons
 }
 
+/// The section as solved: every node with an activation input runs the facilities it settled on,
+/// except `scaled`, whose activation input scales again.
+fn fixed(values: &Values, scaled: Option<NodeId>) -> Program {
+    Program::Fixed {
+        running: values.running.clone(),
+        scaled,
+    }
+}
+
 /// The most `node` could run, with `relaxed` on the depot. `None` if that can't be solved; infinite
 /// if nothing bounds it.
+///
+/// Its own activation input scales here, while every other node keeps the facilities it runs:
+/// with its running facilities fixed, a node switched off for want of its activation input could
+/// not rise, and the analysis could not name that input as what holds it back (ADR 0013).
 fn max_activity(
     ctx: &Ctx<'_>,
     section: &Section,
+    values: &Values,
     node: NodeId,
     relaxed: Option<&Port>,
 ) -> Option<f64> {
-    let model = build(ctx, section, relaxed);
+    let model = build(ctx, section, &fixed(values, Some(node)), relaxed);
     let target = model.activity[&node];
     let mut problem = model.vars.maximise(target).using(microlp);
     for constraint in model.constraints {

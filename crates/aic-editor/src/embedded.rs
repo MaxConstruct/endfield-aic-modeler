@@ -48,6 +48,20 @@ mod tests {
         assert!(versions.iter().any(|v| v.name == "v1.5.3"));
     }
 
+    /// The overlay beside a version is built in with it, on the desktop and the web alike.
+    #[test]
+    fn the_built_in_v1_5_3_has_its_overlay() {
+        let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
+        if !data.join("v1.5.3_overlay.json").is_file() {
+            return;
+        }
+        let names = super::names("en").expect("English names are built in");
+        let catalog = super::bundle().load("v1.5.3", names).expect("v1.5.3 loads");
+        let unit = catalog.facility("phase_trans_2").expect("facility exists");
+        let activation = unit.activation.as_ref().expect("has an activation input");
+        assert_eq!(activation.item().as_str(), "gas_xiranite");
+    }
+
     #[test]
     fn english_names_are_built_in() {
         assert!(super::languages().any(|lang| lang == "en"));

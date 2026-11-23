@@ -57,3 +57,35 @@ fn real_v1_5_3_loads_and_is_consistent() {
     // The English names name every item and recipe.
     assert!(catalog.warnings().is_empty(), "{:?}", catalog.warnings());
 }
+
+/// `data/v1.5.3_overlay.json` declares the transmuting units' activation inputs, which the data
+/// folds into every one of their recipes.
+#[test]
+#[ignore = "reads the real data/v1.5.3.json"]
+fn real_v1_5_3_transmuting_units_have_activation_inputs() {
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/v1.5.3.json");
+    let names = Names {
+        file: "names/en.json",
+        json: include_bytes!("../../aic-editor/i18n/names/en.json"),
+    };
+    let catalog = load(&file, names).expect("real data loads");
+
+    let activation = |id: &str| {
+        let facility = catalog.facility(id).expect("facility exists");
+        let activation = facility
+            .activation
+            .as_ref()
+            .expect("has an activation input");
+        (activation.item().as_str(), activation.per_min())
+    };
+    // Solid-Gas Transmuting Unit: 6 Xiragen per minute.
+    assert_eq!(activation("phase_trans_2"), ("gas_xiranite", 6.0));
+    // Fluid-Gas Transmuting Unit: 6 Liquid Xiranite per minute.
+    assert_eq!(activation("phase_trans_1"), ("liquid_xiranite", 6.0));
+    let others: Vec<&str> = (catalog.facilities().values())
+        .filter(|facility| facility.activation.is_some())
+        .map(|facility| facility.id.as_str())
+        .filter(|id| !["phase_trans_1", "phase_trans_2"].contains(id))
+        .collect();
+    assert!(others.is_empty(), "{others:?}");
+}

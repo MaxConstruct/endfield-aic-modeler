@@ -131,6 +131,19 @@ pub(crate) struct RawOverlay {
     /// Facility ID to its new speed.
     #[serde(default)]
     pub facility_speeds: IndexMap<String, f64>,
+    /// Facility ID to its activation input. Not part of factoriolab's format: the data folds it
+    /// into every recipe of the facility as an ordinary input.
+    #[serde(default)]
+    pub facility_activation: IndexMap<String, RawActivation>,
+}
+
+/// `{ "item": "gas_xiranite", "per_min": 6 }`: each running facility needs this much of the item
+/// per minute, whatever its throughput.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RawActivation {
+    pub item: String,
+    pub per_min: f64,
 }
 
 #[derive(Debug, Deserialize)]

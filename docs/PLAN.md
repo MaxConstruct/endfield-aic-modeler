@@ -15,6 +15,7 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 - [0008](adr/0008-views-are-layout-not-document.md): views are layout state, not part of the document.
 - [0010](adr/0010-one-frontend-editor-crate-stays.md): one UI (egui) over a GUI-free editor crate; supersedes [0009](adr/0009-two-frontends-one-editor-crate.md).
 - [0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md): the canvas is drawn by `aic-node-graph`, our own copy of egui_graph, in place of egui-snarl (M11).
+- [0013](adr/0013-activation-inputs-run-whole-facilities.md): a facility's activation input is needed in full by every running facility; where links feed it, pass 1 settles the running facilities as whole numbers with a search capped at 200 nodes.
 
 Tech:
 
@@ -26,7 +27,9 @@ Tech:
   was tried beside it and dropped after its performance spike failed; see
   [ADR 0010](adr/0010-one-frontend-editor-crate-stays.md) and
   [`archive/TASK_GUI_ICED.md`](archive/TASK_GUI_ICED.md).
-- Solver: linear programming via `good_lp` (pure-Rust `microlp` backend by default)
+- Solver: linear programming via `good_lp` (pure-Rust `microlp` backend by default); pass 1 of a
+  section with a link-fed activation input is mixed-integer, solved by microlp's branch and bound
+  with a node limit (ADR 0013)
 - Data: copied by hand into `data/<version>/`. The first set comes from
   [endfield-calc/factoriolab](https://github.com/endfield-calc/factoriolab) `src/data/aef/`, but the app
   doesn't depend on that repo.
@@ -197,7 +200,8 @@ endfield-aic-modeler/
 │  └─ ref/                    # reference screenshots used by golden tests
 ├─ data/
 │  ├─ README.md
-│  └─ v1.5.3.json             # a data version (ADR 0012); its names and icons are in the crates
+│  ├─ v1.5.3.json             # a data version (ADR 0012); its names and icons are in the crates
+│  └─ v1.5.3_overlay.json     # its overlay: the transmuting units' activation inputs (ADR 0013)
 └─ crates/
    ├─ aic-data/               # parse + normalize -> Catalog; native discovery. deps: serde, serde_json, thiserror, indexmap
    ├─ aic-core/               # Graph model, validation, sections, solver. deps: aic-data, good_lp, serde, slotmap
@@ -241,6 +245,17 @@ Links have no settings. They carry whatever flow the solver gives them.
 ### Flow rules
 
 - **Linked input port:** the links must fully feed it. `Σ link flow = count · rate_in`.
+- **Activation input (ADR 0013):** on a facility with one (the transmuting units, from the overlay),
+  each running facility needs it in full whatever its throughput: the port carries
+  `count · (rate_in − activation) + ceil(count) · activation`. A recipe's inputs still list the total
+  at one facility flat out.
+  - On the depot, the program has only `count · (rate_in − activation)`; the rest is added to the
+    port's flow after the solve.
+  - Fed by links, pass 1 gives the node a whole number `running` in place of `ceil(count)`, tied by
+    `running ≥ count` and `running ≤ count + 1 − 1e-5`, and stops its branch and bound after 200 nodes
+    with the best answer found (`NODE_LIMIT`). If it found none, those nodes are switched off and
+    pass 1 is solved again as a linear program. Pass 2 and the throttle analysis take `running` as
+    given and keep each count within `(running − 1, running]`.
 - **Linked output port:** the links must carry away everything. `Σ link flow = count · rate_out`. There is
   no surplus variable. A backed-up output **throttles** its facility, as the in-game stall does.
 - **Unconnected port:** depot I/O, unlimited (ADR 0001). `depot flow = count · rate`.
@@ -256,7 +271,8 @@ Links have no settings. They carry whatever flow the solver gives them.
 ### Sections
 
 Cut the graph at every storage node (storage belongs to both sides). Each connected piece is a
-**section**, solved as its own LP. A section that fails (unbounded, or no driver) goes blank and gets a
+**section**, solved as its own LP (pass 1 mixed-integer if a node's activation input has links, ADR
+0013). A section that fails (unbounded, or no driver) goes blank and gets a
 warning, while every other section still shows numbers. This also keeps each LP small.
 
 ### Two passes per section
@@ -265,7 +281,8 @@ warning, while every other section still shows numbers. This also keeps each LP 
    could be avoided. Throughput is the output of every **origin** plus the consumption of every sink
    (ADR 0004). An origin is a node nothing in the graph feeds: a source, a recipe node with no linked
    input (measured by its inputs if it has no outputs), a storage's output side, or a splitter, merger
-   or control port pulling from the depot. A section with neither is a closed loop and maximizes the
+   or control port pulling from the depot. Links into an activation input that has no part that scales
+   don't count as feeding the node (ADR 0013). A section with neither is a closed loop and maximizes the
    sum of node activity instead.
 2. **Split evenly among equally good answers.** Hold the pass-1 optimum (relative tolerance 1e-9), then
    minimize, over every fan group (the links sharing one port), its largest link minus its mean link.
@@ -282,6 +299,10 @@ If a section's LP is unbounded (nothing limits it), every value in that section 
 blank, never 0 or ∞. This covers "no driver at all" and "a sink fed by draining storage with no limit".
 A section with no limits at all is caught structurally, before solving.
 
+microlp's whole numbers need finite bounds, so a node whose activation input has links and that has
+no limit runs at most 1,000,000 facilities in pass 1; a solve that reaches that bound counts as
+unbounded (ADR 0013).
+
 Since every limit is an upper bound and 0 always satisfies them, an infeasible result should never
 happen. Keep `Infeasible` as a status for numerical failure only, and report it as a bug.
 
@@ -294,6 +315,8 @@ on the depot? The port that frees it most is the reason (or, if none does, a por
 group). The limit behind it is the nearest node at its limit, following links upstream from an input or
 downstream from an output, stopping at storage. This costs one LP per linked port of each throttled
 node; measure it in M4. On the canvas, mark the binding port. The inspector shows the full reason.
+A unit whose activation input can't reach one facility's worth names that input; the source behind it
+sends nothing and so isn't at its limit, and no limiting node is named (ADR 0013).
 
 ### Solution
 
@@ -608,7 +631,12 @@ Done.
 Done, except where noted.
 - `data/<version>/overlay.json`, merged into `data.json` before it is checked, so overlay entries get the
   same checks. Format: `{ "items": { "add": [...], "replace": [...], "remove": ["id"] }, "recipes": { same },
-  "facility_speeds": { "<facility id>": <speed> } }`, with items and recipes written as in `data.json`.
+  "facility_speeds": { "<facility id>": <speed> }, "facility_activation": { "<facility id>": { "item":
+  "<item id>", "per_min": <rate> } } }`, with items and recipes written as in `data.json`.
+  `facility_activation` (ADR 0013) names a facility's activation input: the facility must exist, the
+  item too, the rate must be positive, and every recipe of the facility must take at least that much
+  of the item at one facility; otherwise it is a load error. `data/v1.5.3_overlay.json` declares the
+  two transmuting units'.
   Adding an ID that exists, or replacing or removing one that doesn't, is an error that names
   `overlay.json` and the path; unknown keys are errors too. `Catalog::from_bytes_with_overlay` for the web.
 - Settings (renamed from Raw resources): data version and game-name language (from `i18n/*.json`), kept in

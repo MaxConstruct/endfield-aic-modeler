@@ -386,7 +386,7 @@ fn record(
             (known(&values.depot), known(&values.ports))
         }
         None => {
-            let model = model::build(ctx, section, None);
+            let model = model::build(ctx, section, &model::Program::Pass1, None);
             let blank = |list: Vec<(Port, good_lp::Expression)>| -> Vec<(Port, Option<f64>)> {
                 list.into_iter().map(|(port, _)| (port, None)).collect()
             };

@@ -23,8 +23,8 @@ mod version;
 
 pub use bundle::Bundle;
 pub use catalog::{
-    Catalog, Category, Facility, Icon, IconRect, ImageKind, Item, LoadWarning, NameKind, Recipe,
-    Region,
+    ActivationInput, Catalog, Category, Facility, Icon, IconRect, ImageKind, InputRate, Item,
+    LoadWarning, NameKind, Recipe, Region,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use discover::{DATA_DIR_ENV, DataDirSearch, find_data_dir, list_versions, load};

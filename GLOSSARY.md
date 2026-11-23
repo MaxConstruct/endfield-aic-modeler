@@ -14,6 +14,10 @@ _Avoid_: Machine, producer, building
 A transformation of input items into output items that one facility performs over a fixed time.
 _Avoid_: Formula, craft
 
+**Activation input**:
+An input a facility needs at a fixed rate for each facility that is running, whatever its throughput (e.g. 6 Xiragen per minute for each Solid-Gas Transmuting Unit, even one at half load). A recipe's inputs include it; only the rest of that item's rate scales with the facility count.
+_Avoid_: Fuel, upkeep, idle cost, base input
+
 **Byproduct**:
 Any output of a recipe other than the one the player is producing it for (e.g. `liquid_sewage` from `copper_nugget`).
 _Avoid_: Secondary output, waste

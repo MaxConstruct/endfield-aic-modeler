@@ -7,6 +7,9 @@ use serde::Serialize;
 
 use crate::ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};
 
+/// Two rates closer than this fraction of the larger are the same rate, apart from rounding.
+pub(crate) const SAME_RATE: f64 = 1e-9;
+
 /// All game data for one data version.
 ///
 /// Built only by the loaders in this crate, which check that every ID a recipe refers to exists. The
@@ -165,12 +168,53 @@ pub struct Facility {
     pub power_kw: f64,
     /// Regions the facility can be built in. Empty means every region.
     pub regions: Vec<RegionId>,
+    /// What each running facility needs whatever its throughput, if anything. Every recipe of the
+    /// facility lists that item among its inputs at this rate or more.
+    pub activation: Option<ActivationInput>,
 }
 
 impl Facility {
     pub fn available_in(&self, region: &RegionId) -> bool {
         self.regions.is_empty() || self.regions.contains(region)
     }
+}
+
+/// An input a facility needs at a fixed rate for each facility that is running, whatever its
+/// throughput: a unit at half load still needs all of it.
+///
+/// Only the loaders in this crate make one, after checking that the item exists, the rate is
+/// positive and every recipe of the facility takes at least that much of the item.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ActivationInput {
+    item: ItemId,
+    per_min: f64,
+}
+
+impl ActivationInput {
+    pub(crate) fn new(item: ItemId, per_min: f64) -> Self {
+        Self { item, per_min }
+    }
+
+    pub fn item(&self) -> &ItemId {
+        &self.item
+    }
+
+    /// Items per minute for each running facility. Always positive.
+    pub fn per_min(&self) -> f64 {
+        self.per_min
+    }
+}
+
+/// One input of a recipe on a facility, per minute: the part that scales with the facility
+/// count, and the part each running facility needs whatever its throughput (its activation input).
+/// The two add up to the recipe's rate for one facility running flat out.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InputRate {
+    /// Per facility, times the facility count.
+    pub scaled: f64,
+    /// Per running facility: the facility count rounded up. Zero for an item that is not the
+    /// facility's activation input.
+    pub activation: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -203,6 +247,37 @@ impl Recipe {
     /// Items per minute for one facility running at `speed`.
     pub fn rate_per_min(&self, qty: f64, speed: f64) -> f64 {
         qty * 60.0 / self.time_s * speed
+    }
+
+    /// Each input on `facility`, in data order, split into the part that scales with the facility
+    /// count and the part that doesn't (the facility's activation input). Without an activation
+    /// input, every rate scales.
+    pub fn input_rates<'a>(
+        &'a self,
+        facility: &'a Facility,
+    ) -> impl Iterator<Item = (&'a ItemId, InputRate)> + 'a {
+        self.inputs.iter().map(move |(item, qty)| {
+            let rate = self.rate_per_min(*qty, facility.speed);
+            let split = match &facility.activation {
+                Some(activation) if activation.item() == item => {
+                    let scaled = rate - activation.per_min();
+                    InputRate {
+                        // Rounding in `rate` doesn't leave a sliver that scales.
+                        scaled: if scaled > SAME_RATE * rate {
+                            scaled
+                        } else {
+                            0.0
+                        },
+                        activation: activation.per_min(),
+                    }
+                }
+                _ => InputRate {
+                    scaled: rate,
+                    activation: 0.0,
+                },
+            };
+            (item, split)
+        })
     }
 
     pub fn available_in(&self, region: &RegionId) -> bool {

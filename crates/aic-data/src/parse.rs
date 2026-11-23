@@ -6,12 +6,14 @@ use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 
 use crate::catalog::{
-    Catalog, Category, Facility, Icon, IconRect, Item, LoadWarning, NameKind, Recipe, Region,
+    ActivationInput, Catalog, Category, Facility, Icon, IconRect, Item, LoadWarning, NameKind,
+    Recipe, Region, SAME_RATE,
 };
 use crate::error::LoadError;
 use crate::ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};
 use crate::raw::{
-    RawData, RawEntry, RawI18n, RawIcon, RawItem, RawOverlay, RawOverlayList, RawRecipe, RawSpeed,
+    RawActivation, RawData, RawEntry, RawI18n, RawIcon, RawItem, RawOverlay, RawOverlayList,
+    RawRecipe, RawSpeed,
 };
 use crate::version::Names;
 
@@ -66,8 +68,10 @@ pub(crate) fn parse(
     sources: &Sources<'_>,
 ) -> Result<Catalog, LoadError> {
     let mut raw: RawData = from_json(data_json, sources.data)?;
+    let mut activations = IndexMap::new();
     if let Some(overlay) = overlay_json {
-        let overlay: RawOverlay = from_json(overlay, sources.overlay)?;
+        let mut overlay: RawOverlay = from_json(overlay, sources.overlay)?;
+        activations = std::mem::take(&mut overlay.facility_activation);
         apply_overlay(&mut raw, overlay, sources.overlay)?;
     }
     let i18n: RawI18n = from_json(names_json, sources.names)?;
@@ -78,7 +82,77 @@ pub(crate) fn parse(
     };
     let mut catalog = builder.build(raw)?;
     catalog.warnings = builder.warnings;
+    // After the build, so the checks see the items and recipes as the overlay left them.
+    set_activations(&mut catalog, activations, sources.overlay)?;
     Ok(catalog)
+}
+
+/// Gives each facility the overlay names its activation input, once the item, the rate and every
+/// recipe of the facility check out. A recipe that takes less of the item than a running facility
+/// needs would make that input scale below zero, so it is an error, like the data's own
+/// inconsistencies.
+fn set_activations(
+    catalog: &mut Catalog,
+    activations: IndexMap<String, RawActivation>,
+    file: &Path,
+) -> Result<(), LoadError> {
+    let invalid = |path: String, message: String| LoadError::Invalid {
+        file: file.to_path_buf(),
+        path,
+        message,
+    };
+    for (id, activation) in activations {
+        let path = format!("facility_activation.{id}");
+        let Some(facility) = catalog.facilities.get(id.as_str()) else {
+            let message = if catalog.items.contains_key(id.as_str()) {
+                format!("`{id}` is not a facility")
+            } else {
+                format!("unknown facility `{id}`")
+            };
+            return Err(invalid(path, message));
+        };
+        let Some((item, _)) = catalog.items.get_key_value(activation.item.as_str()) else {
+            return Err(invalid(
+                format!("{path}.item"),
+                format!("unknown item `{}`", activation.item),
+            ));
+        };
+        check_positive(activation.per_min).map_err(|m| invalid(format!("{path}.per_min"), m))?;
+        let recipes =
+            (catalog.recipes.values()).filter(|recipe| recipe.facilities.contains(&facility.id));
+        for recipe in recipes {
+            let rate = (recipe.inputs.iter())
+                .find(|(input, _)| input == item)
+                .map(|(_, qty)| recipe.rate_per_min(*qty, facility.speed));
+            let needed = activation.per_min;
+            match rate {
+                None => {
+                    return Err(invalid(
+                        path,
+                        format!("recipe `{}` does not take `{item}`", recipe.id),
+                    ));
+                }
+                Some(rate) if rate < needed - SAME_RATE * needed => {
+                    return Err(invalid(
+                        path,
+                        format!(
+                            "recipe `{}` takes {rate}/min of `{item}`, less than the {needed}/min \
+                             each running facility needs",
+                            recipe.id
+                        ),
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+        let activation = ActivationInput::new(item.clone(), activation.per_min);
+        let facility = catalog
+            .facilities
+            .get_mut(id.as_str())
+            .expect("found above");
+        facility.activation = Some(activation);
+    }
+    Ok(())
 }
 
 /// Merges an overlay into the data before it is checked, so overlay entries get the same checks as
@@ -261,6 +335,8 @@ impl Builder {
                         regions,
                         &format!("{path}.locations"),
                     )?,
+                    // The overlay's, set once the recipes are known (`set_activations`).
+                    activation: None,
                 };
                 facilities.insert(facility.id.clone(), facility);
             }

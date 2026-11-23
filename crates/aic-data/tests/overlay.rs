@@ -57,6 +57,35 @@ fn an_overlay_overrides_facility_speeds() {
 }
 
 #[test]
+fn an_overlay_gives_a_facility_an_activation_input() {
+    // `copper_nugget` on `furnance_1` takes 1 liquid_water per 2 s: 30/min.
+    let catalog = with_overlay(
+        r#"{ "facility_activation": { "furnance_1": { "item": "liquid_water", "per_min": 6 } } }"#,
+    )
+    .unwrap();
+    let activation = (catalog.facility("furnance_1").unwrap().activation.as_ref())
+        .expect("furnance_1 has an activation input");
+    assert_eq!(activation.item(), &ItemId::from("liquid_water"));
+    assert_eq!(activation.per_min(), 6.0);
+    // Every other facility has none.
+    assert!(catalog.facility("planter_1").unwrap().activation.is_none());
+    // The recipe still lists the whole 30/min.
+    let recipe = catalog.recipe("copper_nugget").unwrap();
+    assert!(recipe.inputs.contains(&(ItemId::from("liquid_water"), 1.0)));
+}
+
+#[test]
+fn without_an_overlay_no_facility_has_an_activation_input() {
+    let catalog = Catalog::from_bytes(DATA, EN).unwrap();
+    assert!(
+        catalog
+            .facilities()
+            .values()
+            .all(|facility| facility.activation.is_none())
+    );
+}
+
+#[test]
 fn adding_what_exists_or_changing_what_doesnt_is_an_error() {
     let errors = [
         (
@@ -81,6 +110,81 @@ fn adding_what_exists_or_changing_what_doesnt_is_an_error() {
             }
             other => panic!("{overlay}: expected an error at {expected_path}, got {other:?}"),
         }
+    }
+}
+
+#[test]
+fn a_bad_activation_input_is_an_error() {
+    let activation = |facility: &str, item: &str, per_min: f64| {
+        format!(
+            r#"{{ "facility_activation": {{ "{facility}": {{ "item": "{item}", "per_min": {per_min} }} }} }}"#
+        )
+    };
+    let errors = [
+        (
+            activation("nope", "liquid_water", 6.0),
+            "facility_activation.nope",
+            "unknown facility `nope`",
+        ),
+        (
+            activation("copper_ore", "liquid_water", 6.0),
+            "facility_activation.copper_ore",
+            "`copper_ore` is not a facility",
+        ),
+        (
+            activation("furnance_1", "nope", 6.0),
+            "facility_activation.furnance_1.item",
+            "unknown item `nope`",
+        ),
+        (
+            activation("furnance_1", "liquid_water", 0.0),
+            "facility_activation.furnance_1.per_min",
+            "expected a positive number, found 0",
+        ),
+        (
+            activation("furnance_1", "liquid_water", -6.0),
+            "facility_activation.furnance_1.per_min",
+            "expected a positive number, found -6",
+        ),
+        // `copper_nugget` is the recipe's output, not one of its inputs.
+        (
+            activation("furnance_1", "copper_nugget", 6.0),
+            "facility_activation.furnance_1",
+            "recipe `copper_nugget` does not take `copper_nugget`",
+        ),
+        // The recipe takes 30/min of water at one facility.
+        (
+            activation("furnance_1", "liquid_water", 31.0),
+            "facility_activation.furnance_1",
+            "recipe `copper_nugget` takes 30/min of `liquid_water`, less than the 31/min each \
+             running facility needs",
+        ),
+    ];
+    for (overlay, expected_path, expected_message) in errors {
+        match with_overlay(&overlay) {
+            Err(LoadError::Invalid {
+                file,
+                path,
+                message,
+            }) => {
+                assert_eq!(file.to_str(), Some("overlay.json"));
+                assert_eq!(path, expected_path, "{overlay}");
+                assert_eq!(message, expected_message, "{overlay}");
+            }
+            other => panic!("{overlay}: expected an error at {expected_path}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn an_activation_input_takes_only_an_item_and_a_rate() {
+    let overlay = r#"{ "facility_activation": { "furnance_1": { "item": "liquid_water", "per_min": 6, "per_sec": 1 } } }"#;
+    match with_overlay(overlay) {
+        Err(LoadError::Json { file, path, .. }) => {
+            assert_eq!(file.to_str(), Some("overlay.json"));
+            assert_eq!(path, "facility_activation.furnance_1.per_sec");
+        }
+        other => panic!("expected a JSON error, got {other:?}"),
     }
 }
 

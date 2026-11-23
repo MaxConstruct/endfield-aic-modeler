@@ -18,6 +18,8 @@ pub struct TestCatalog {
     items: Vec<String>,
     facilities: Vec<Value>,
     recipes: Vec<Value>,
+    /// `facility_activation` of the overlay the catalog loads with.
+    activations: serde_json::Map<String, Value>,
 }
 
 impl TestCatalog {
@@ -83,6 +85,15 @@ impl TestCatalog {
         self
     }
 
+    /// Gives `facility` an activation input, declared in an overlay as for real data.
+    pub fn activation(mut self, facility: &str, item: &str, per_min: f64) -> Self {
+        (self.activations).insert(
+            facility.to_owned(),
+            json!({ "item": item, "per_min": per_min }),
+        );
+        self
+    }
+
     /// A mining recipe: no inputs, flagged `mining`, available in every region.
     pub fn mining(mut self, id: &str, facility: &str, time_s: f64, output: (&str, f64)) -> Self {
         self = self.recipe(id, facility, time_s, &[], &[output]);
@@ -127,7 +138,11 @@ impl TestCatalog {
             file: "names.json",
             json: b"{}",
         };
-        Catalog::from_bytes(data.to_string().as_bytes(), names).expect("test catalog loads")
+        let overlay = (!self.activations.is_empty())
+            .then(|| json!({ "facility_activation": self.activations }).to_string());
+        let overlay = overlay.as_ref().map(|overlay| overlay.as_bytes());
+        Catalog::from_bytes_with_overlay(data.to_string().as_bytes(), overlay, names)
+            .expect("test catalog loads")
     }
 }
 

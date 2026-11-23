@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use thiserror::Error;
 
+use crate::solve::RoundUp;
 use crate::workspace::Workspace;
 
 new_key_type! {
@@ -492,11 +493,13 @@ impl Graph {
         Ok(())
     }
 
-    /// The node's limit as a flow through `port`, per minute. On a recipe node that is the facility
-    /// count limit times the port's rate per facility. `None` when the node has no limit.
+    /// The node's limit as a flow through `port`, per minute. On a recipe node that is what the
+    /// port carries at the facility count limit: its rate per facility times the limit, plus, on a
+    /// port of an activation input, that input for every running facility (ADR 0013). `None` when
+    /// the node has no limit.
     pub fn port_limit(&self, catalog: &Catalog, port: &Port) -> Option<f64> {
-        let scale = self.port_scale(catalog, port).ok()?;
-        Some(self.nodes.get(port.node)?.kind.limit()? * scale)
+        let rate = self.port_rate(catalog, port).ok()?;
+        Some(rate.flow(self.nodes.get(port.node)?.kind.limit()?))
     }
 
     /// Sets the node's limit as a flow through `port`, per minute: the same limit as
@@ -513,13 +516,13 @@ impl Graph {
         {
             return Err(EditError::InvalidLimit(value));
         }
-        let scale = self.port_scale(catalog, port)?;
-        self.set_limit(port.node, rate.map(|rate| rate / scale))
+        let per = self.port_rate(catalog, port)?;
+        self.set_limit(port.node, rate.map(|rate| per.most_for(rate)))
     }
 
-    /// How much flow through `port` one unit of the node's limit is worth: the port's rate per
-    /// facility on a recipe node, 1 on a node whose limit is already a rate.
-    fn port_scale(&self, catalog: &Catalog, port: &Port) -> Result<f64, EditError> {
+    /// What flows through `port` for each unit of the node's limit: the port's rates per facility
+    /// on a recipe node, 1 on a node whose limit is already a rate.
+    fn port_rate(&self, catalog: &Catalog, port: &Port) -> Result<PortRate, EditError> {
         let node = self
             .nodes
             .get(port.node)
@@ -531,37 +534,42 @@ impl Graph {
                 let recipe = catalog
                     .recipe(recipe.as_str())
                     .ok_or(EditError::NoSuchPort)?;
-                let speed = catalog
+                let facility = catalog
                     .facility(facility.as_str())
-                    .ok_or(EditError::NoSuchPort)?
-                    .speed;
-                let items = match port.side {
-                    Side::Input => &recipe.inputs,
-                    Side::Output => &recipe.outputs,
-                };
-                let (_, qty) = items
-                    .iter()
-                    .find(|(item, _)| *item == port.item)
                     .ok_or(EditError::NoSuchPort)?;
-                let rate = recipe.rate_per_min(*qty, speed);
-                if rate > 0.0 {
-                    Ok(rate)
-                } else {
-                    Err(EditError::NoSuchPort)
+                let rate = match port.side {
+                    Side::Input => recipe
+                        .input_rates(facility)
+                        .find(|(item, _)| **item == port.item)
+                        .map(|(_, rate)| PortRate {
+                            scaled: rate.scaled,
+                            activation: rate.activation,
+                        }),
+                    Side::Output => recipe
+                        .outputs
+                        .iter()
+                        .find(|(item, _)| *item == port.item)
+                        .map(|(_, qty)| {
+                            PortRate::scaled(recipe.rate_per_min(*qty, facility.speed))
+                        }),
+                };
+                match rate {
+                    Some(rate) if rate.scaled > 0.0 || rate.activation > 0.0 => Ok(rate),
+                    _ => Err(EditError::NoSuchPort),
                 }
             }
             NodeKind::Source { item, .. } if port.side == Side::Output && *item == port.item => {
-                Ok(1.0)
+                Ok(PortRate::scaled(1.0))
             }
             NodeKind::Sink { item, .. } | NodeKind::OutpostOrder { item, .. }
                 if port.side == Side::Input && *item == port.item =>
             {
-                Ok(1.0)
+                Ok(PortRate::scaled(1.0))
             }
             NodeKind::ControlPort { item, .. }
                 if item.as_ref().is_none_or(|item| *item == port.item) =>
             {
-                Ok(1.0)
+                Ok(PortRate::scaled(1.0))
             }
             NodeKind::Splitter { .. }
             | NodeKind::Merger { .. }
@@ -729,5 +737,50 @@ impl Graph {
             }
             NodeKind::MissingRecipe { .. } => Err(no_port()),
         }
+    }
+}
+
+/// What flows through one port for each unit of its node's limit (see [`Graph::port_limit`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PortRate {
+    /// Per unit of the limit, times the limit.
+    scaled: f64,
+    /// Per running facility: the facility count rounded up. Zero but on a port of an activation
+    /// input.
+    activation: f64,
+}
+
+impl PortRate {
+    fn scaled(rate: f64) -> Self {
+        Self {
+            scaled: rate,
+            activation: 0.0,
+        }
+    }
+
+    /// What flows through the port at `limit`.
+    fn flow(self, limit: f64) -> f64 {
+        if self.activation == 0.0 {
+            return limit * self.scaled;
+        }
+        let running = f64::from(RoundUp::of(limit).facilities);
+        limit * self.scaled + running * self.activation
+    }
+
+    /// The largest limit whose flow through the port is at most `rate`.
+    fn most_for(self, rate: f64) -> f64 {
+        if self.activation == 0.0 {
+            return rate / self.scaled;
+        }
+        // Facilities that `rate` runs flat out, allowing for rounding in `rate` itself.
+        let flat_out = (rate / (self.scaled + self.activation) * (1.0 + 1e-9)).floor();
+        if self.scaled > 0.0 {
+            // One more facility, busy with what its activation input leaves over.
+            let partly = (rate - self.activation * (flat_out + 1.0)) / self.scaled;
+            if partly > flat_out {
+                return partly;
+            }
+        }
+        flat_out
     }
 }
