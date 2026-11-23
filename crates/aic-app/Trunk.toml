@@ -41,9 +41,10 @@ wasm_bindgen = "0.2.130"
 wasm_opt = "version_133"
 
 # Copies the icon sheets into the site under hashed names and writes the files' sizes into the
-# page for its loading bar (PLAN.md, M13 step 4). Started through `sh`: on Windows a plain `bash`
-# finds WSL's in System32 before PATH, which doesn't see Trunk's variables, while `sh` is only Git
-# Bash's, whose PATH then finds its own bash.
+# page for its loading bar (PLAN.md, M13 step 4), and does the same for the link preview's
+# thumbnail and the apple-touch-icon, which Trunk has no pipeline for. Started through `sh`: on
+# Windows a plain `bash` finds WSL's in System32 before PATH, which doesn't see Trunk's variables,
+# while `sh` is only Git Bash's, whose PATH then finds its own bash.
 [[hooks]]
 stage = "post_build"
 command = "sh"

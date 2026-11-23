@@ -3,14 +3,42 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AIC Modeler</title>
+    <title>AIC Modeler: factory planner for Arknights: Endfield</title>
+    <meta name="description" content="Graph-first factory planner for Arknights: Endfield.">
+    <!-- theme::color::CANVAS, like the page's background, for the browser's own bar. -->
+    <meta name="theme-color" content="#111214">
     <!-- The app, built for wasm32 by Trunk. Trunk.toml's pattern_script starts it, with the
          .wasm this page fetches (PLAN.md, M13 step 4). `avif-sheets` has build.rs write the
          icon sheet as AVIF (step 5); scripts/web-assets.sh builds with the same features. -->
     <link data-trunk rel="rust" data-bin="aic-app" data-cargo-features="avif-sheets" data-wasm-opt="2" />
-    <!-- The app icon, as the Windows plate's SVG: sharp at any tab size. Trunk copies it under a
-         hashed name, so it can be cached for good like the other files. -->
+    <!-- The app icon, as the Windows plate's SVG: sharp at any tab size. Trunk copies both icons
+         under hashed names, so they can be cached for good like the other files. The .ico
+         (16, 32 and 48 px, from assets/web/) is for browsers and crawlers that can't use the SVG;
+         it comes first, with a size, so a browser that can use the SVG picks the SVG. Trunk
+         drops `sizes` and `type` from its icon links; scripts/web-assets.sh puts them back. -->
+    <link data-trunk rel="icon" href="assets/web/favicon.ico" sizes="48x48">
     <link data-trunk rel="icon" type="image/svg+xml" href="assets/app-icon/AppIcon-Windows.svg">
+    <!-- The home-screen icon for iOS (180 px). Trunk has no pipeline for it, so
+         scripts/web-assets.sh copies it under a hashed name and writes that name in. -->
+    <link rel="apple-touch-icon" href="">
+    <!-- The link preview, for chat apps and social sites. Their crawlers need absolute URLs, and
+         this page doesn't know its address: scripts/web-assets.sh writes in AIC_SITE_URL and the
+         thumbnail's hashed name (assets/web/og-image.png, 1200 by 630 px), or, without AIC_SITE_URL,
+         takes out the tags that need it and asks for the small card. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="AIC Modeler">
+    <meta property="og:title" content="AIC Modeler">
+    <meta property="og:description" content="Graph-first factory planner for Arknights: Endfield.">
+    <meta property="og:url" content="">
+    <meta property="og:image" content="">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="AIC Modeler app icon beside the name and subtitle on a dark grid">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AIC Modeler">
+    <meta name="twitter:description" content="Graph-first factory planner for Arknights: Endfield.">
+    <meta name="twitter:image" content="">
+    <meta name="twitter:image:alt" content="AIC Modeler app icon beside the name and subtitle on a dark grid">
     <style>
         html, body {
             margin: 0;

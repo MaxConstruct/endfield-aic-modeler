@@ -85,6 +85,12 @@ cargo install --locked wasm-opt
 On Windows, run `scripts/build-web.sh` from Git Bash. Notes on hosting the site are at the top of
 that script.
 
+For a link preview with a thumbnail, give the build the site's address:
+
+```sh
+AIC_SITE_URL=https://example.org/aic scripts/build-web.sh
+```
+
 ### Optional: settings when you run it
 
 These are read when the app starts, not when it is built.
