@@ -2,8 +2,8 @@
 
 - `src/`: copied from [nannou-org/egui_graph](https://github.com/nannou-org/egui_graph) 0.19.1,
   commit `1a5e2b5385c8c81a49cbde836317848b06849966`, on 2026-11-17, with the tests in its files.
-- `LICENSE-MIT`: egui_graph's licence, copied unchanged. This crate is MIT only, while the rest of
-  the workspace is MIT OR Apache-2.0 (ADR 0011).
+- `LICENSE-MIT`: egui_graph's licence, copied unchanged. This crate is MIT under
+  egui_graph's copyright notice; the rest of the workspace is MIT under its own (ADR 0011).
 - Upstream fixes are merged by hand. The code keeps egui_graph's words (edge, socket), not the
   project glossary's.
 

@@ -17,7 +17,7 @@ ADR 0005 was reserved for "egui + egui-snarl is the shipping UI" and waited on t
 
 ## Consequences
 
-- `aic-node-graph` is MIT only, while the rest of the workspace is MIT OR Apache-2.0. The crate keeps egui_graph's `LICENSE-MIT` with its copyright notice, and its `Cargo.toml` says `license = "MIT"`.
+- `aic-node-graph` is MIT only. The rest of the workspace was MIT OR Apache-2.0 when this was decided and has been MIT only since 2026-11-24. The crate keeps egui_graph's `LICENSE-MIT` with its copyright notice, and its `Cargo.toml` says `license = "MIT"`.
 - The crate is a general widget and knows nothing of the AIC. It depends on egui and on no `aic-*` crate, and keeps egui_graph's words: edge, socket. `aic-app` turns links into edges and ports into sockets. This is the second exception to "use the glossary's terms in code", after `raw.rs`.
 - `aic-data`, `aic-core` and `aic-editor` must not depend on it; `scripts/check-frontends.sh` checks that.
 - Upstream fixes are merged by hand. `crates/aic-node-graph/SOURCE.md` names the commit copied and lists every change made here. egui_graph's automatic layout is left out of the copy.

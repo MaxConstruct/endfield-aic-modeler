@@ -11,7 +11,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 publish = false
 # The app's status bar shows these two and the license (crates/aic-app/src/editor.rs); this is
 # their only copy.

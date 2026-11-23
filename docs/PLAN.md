@@ -65,7 +65,7 @@ Tech:
   browser from any static site.
 - Until the repo goes public there are no CI binaries; everything is built from source. After that,
   releases are unsigned binaries on GitHub Releases, with README steps for Gatekeeper and SmartScreen.
-- Code license: MIT OR Apache-2.0. Game data and icons belong to Hypergryph/Gryphline and are committed to
+- Code license: MIT. Game data and icons belong to Hypergryph/Gryphline and are committed to
   the repo (as factoriolab does), with a disclaimer in `../data/README.md` saying they are not under the
   code's license.
 
@@ -190,7 +190,7 @@ endfield-aic-modeler/
 ├─ Cargo.toml                 # [workspace]
 ├─ CLAUDE.md
 ├─ GLOSSARY.md
-├─ LICENSE-MIT, LICENSE-APACHE
+├─ LICENSE-MIT
 ├─ docs/
 │  ├─ PLAN.md
 │  ├─ adr/

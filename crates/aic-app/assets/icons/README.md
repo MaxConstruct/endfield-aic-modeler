@@ -40,6 +40,6 @@ renamed to our IDs (2026-11-09):
 ## License
 
 The icons are images from *Arknights: Endfield* and belong to Hypergryph / Gryphline. They are
-**not** covered by this repository's code license (MIT OR Apache-2.0). They are included for
+**not** covered by this repository's code license (MIT). They are included for
 reference so the planner can work, as other community tools do. If you are a rights holder and want
 something removed, open an issue.

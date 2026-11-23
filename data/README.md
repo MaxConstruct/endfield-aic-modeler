@@ -45,5 +45,5 @@ working directory. It brings versions only; the names and icons stay the app's.
 
 The game data, names and icons (names, recipes, numbers and images from *Arknights: Endfield*)
 belong to Hypergryph / Gryphline. They are **not** covered by this repository's code license
-(MIT OR Apache-2.0). They are included for reference so the planner can work, as other community
+(MIT). They are included for reference so the planner can work, as other community
 tools do. If you are a rights holder and want something removed, open an issue.

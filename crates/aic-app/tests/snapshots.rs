@@ -2829,7 +2829,7 @@ fn the_status_bar_shows_the_version_author_github_link_and_license() {
         .collect();
     assert_eq!(opened, [url]);
 
-    harness.get_by_label("MIT OR Apache-2.0").hover();
+    harness.get_by_label("MIT").hover();
     harness.run();
     harness.get_by_label_contains("belong to Hypergryph / Gryphline");
 }

@@ -4,7 +4,7 @@ description = "Node graph widget for egui. A copy of egui_graph 0.19.1 (SOURCE.m
 version.workspace = true
 # egui_graph's edition, not the workspace's, so the copied code stays as upstream wrote it.
 edition = "2021"
-# egui_graph's licence (LICENSE-MIT), not the workspace's MIT OR Apache-2.0 (ADR 0011).
+# egui_graph's licence (LICENSE-MIT), with its copyright notice (ADR 0011).
 license = "MIT"
 publish = false
 
