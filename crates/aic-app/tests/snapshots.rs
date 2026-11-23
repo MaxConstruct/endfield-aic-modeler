@@ -1161,7 +1161,7 @@ fn copy_and_paste_keep_links_inside_the_copy() {
     editor(&mut harness).select_nodes(vec![ingot, plate]);
     harness.run();
 
-    // The window sends clipboard events rather than Cmd+C and Cmd+V key presses.
+    // A native window sends clipboard events rather than Cmd+C and Cmd+V key presses.
     harness.event(Event::Copy);
     harness.run();
     harness.event(Event::Paste("some text".into()));
@@ -1177,6 +1177,66 @@ fn copy_and_paste_keep_links_inside_the_copy() {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::D);
     harness.run();
     assert_eq!(node_count(&mut harness), 6);
+}
+
+/// What a browser sends for Cmd+`key`: the key press and its own clipboard event, in one frame.
+/// kittest gives each queued event a frame of its own, so this writes the next frame's input.
+fn browser_chord(harness: &mut Harness<'_, App>, key: Key, clipboard: Event) {
+    let chord = |pressed| Event::Key {
+        key,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    };
+    harness.input_mut().events.extend([
+        Event::ModifiersChanged(Modifiers::COMMAND),
+        chord(true),
+        clipboard,
+        chord(false),
+        Event::ModifiersChanged(Modifiers::default()),
+    ]);
+    harness.run();
+}
+
+#[test]
+fn a_browser_paste_pastes_once() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    let ingot = smelter(&mut harness, 0.0, 0.0);
+    editor(&mut harness).select_nodes(vec![ingot]);
+    harness.run();
+
+    harness.event(Event::Copy);
+    harness.run();
+    browser_chord(&mut harness, Key::V, Event::Paste("some text".into()));
+    assert_eq!(node_count(&mut harness), 2);
+}
+
+#[test]
+fn a_browser_cut_cuts_once() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    let ingot = smelter(&mut harness, 0.0, 0.0);
+    editor(&mut harness).select_nodes(vec![ingot]);
+    harness.run();
+
+    browser_chord(&mut harness, Key::X, Event::Cut);
+    assert_eq!(node_count(&mut harness), 0);
+    browser_chord(&mut harness, Key::V, Event::Paste("some text".into()));
+    assert_eq!(node_count(&mut harness), 1);
+}
+
+#[test]
+fn a_browser_copy_then_a_window_paste_pastes_once() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    let ingot = smelter(&mut harness, 0.0, 0.0);
+    editor(&mut harness).select_nodes(vec![ingot]);
+    harness.run();
+
+    browser_chord(&mut harness, Key::C, Event::Copy);
+    // A native window sends only the clipboard event.
+    harness.event(Event::Paste("some text".into()));
+    harness.run();
+    assert_eq!(node_count(&mut harness), 2);
 }
 
 #[test]

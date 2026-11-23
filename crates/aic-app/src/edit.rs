@@ -74,7 +74,7 @@ impl Editor {
             return;
         }
         for command in Command::ALL {
-            if typing && !command.works_while_typing() {
+            if command.comes_as_clipboard_event() || (typing && !command.works_while_typing()) {
                 continue;
             }
             // egui reads Ctrl as Command off macOS; Backspace deletes too, as on a Mac keyboard.
@@ -90,7 +90,8 @@ impl Editor {
         if typing {
             return;
         }
-        // The window turns Cmd+C, Cmd+X and Cmd+V into clipboard events instead of key presses.
+        // Cmd+C, Cmd+X and Cmd+V arrive as clipboard events, and these do them: a window sends
+        // only the event, a browser sends the key press too, which the loop above skips.
         let (copy, cut, pasted) = ctx.input(|i| {
             let mut pasted = None;
             let (mut copy, mut cut) = (false, false);

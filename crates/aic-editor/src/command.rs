@@ -131,6 +131,13 @@ impl Command {
         matches!(self, Self::New | Self::Open | Self::Save | Self::SaveAs)
     }
 
+    /// Whether its keys arrive as a clipboard event, which is what does it. A native window sends
+    /// only the event; a browser sends the event and the key press, so acting on the key press
+    /// as well would do it twice.
+    pub fn comes_as_clipboard_event(self) -> bool {
+        matches!(self, Self::Cut | Self::Copy | Self::Paste)
+    }
+
     /// The Fluent key of its name, shared by the menus and the toolbar.
     pub fn label_key(self) -> &'static str {
         match self {
