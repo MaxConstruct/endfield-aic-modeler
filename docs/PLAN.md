@@ -544,7 +544,7 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
   - Ports: one per item, with icon and rate. Unconnected ports are colored by depot direction:
     **pink = pulled from the depot, green = sent to the depot**, with the rate beside them. A small marker
     on the port that throttles the node.
-  - Storage: balance in the header (green +, red −), pass-through below.
+  - Storage: balance in the header (green +, red −); pass-through is in the inspector only.
   - Splitter, merger, control port: compact nodes. Control port shows its limit.
   - Undetermined values are blank.
   - `connect()` refuses mismatched items and solid ↔ fluid, and sets the item of an unset logistics node.
@@ -688,9 +688,11 @@ Done, except where noted.
   it has several; blank links stay free and share the rest evenly. A lock holds even when it costs
   throughput.
 - **Every region's recipes:** the recipe browser and the node picker list the recipes of every
-  region, not only the graph's. A recipe only some regions have shows their names as badges
-  ("Wuling", "Valley IV") before its name there and on its card. A card whose recipe or facility the
-  graph's region lacks shows a warning sign before its title, from the solver's region warnings.
+  region, not only the graph's. A recipe the graph's region has carries no mark; one it lacks is muted
+  there, with a one-letter badge ("W", "V") for each region that has it, also on its card. Hovering
+  names the region, and the inspector says "Wuling only" of any recipe limited to some regions. A card
+  whose recipe or facility the graph's region lacks shows a warning sign before its title, from the
+  solver's region warnings.
   Hidden recipes (cross-region transfers) stay hidden.
 - **Outpost orders:** `NodeKind::OutpostOrder`, a sink for a settlement trade (`Recipe::is_trade`: the
   `hideProducer` recipes). Offered in the picker from an output port and in the recipe browser. The

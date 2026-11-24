@@ -221,7 +221,8 @@ Panels toggle away; the canvas never does.
 
 egui `Spacing` (in `theme::apply`): `item_spacing` 8x3, `button_padding` 8x2, `interact_size` 40x20,
 `window_margin` 10, `menu_margin` 4, `indent` 16, `icon_width` 14 (inner 8, spacing 6),
-`combo_height` 320, `ScrollStyle::thin()` (floating). Canvas: 40pt grid (`canvas::paint_background`),
+`combo_height` 320, `ScrollStyle::thin()` (floating) with a `TEXT` handle at 50% (65% with the pointer
+over the list, 85% on the bar; tested ≥3:1 at rest). Canvas: 40pt grid (`canvas::paint_background`),
 cards fixed at 300pt wide with 6pt inner margin, 48pt item-icon pins, 64pt facility image, 2pt wires.
 Sizes are points at 100%. The canvas is laid out at its 200% maximum and drawn shrunk (the canvas
 scales the style with `egui-scale`), so card text is rasterized at the size shown and stays sharp when zoomed

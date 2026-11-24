@@ -31,7 +31,7 @@ use crate::document::{
     Anchor, Card, CardId, DocView, PinTarget, VIEW_SCALE, Wire, is_port, port_ref,
 };
 use crate::i18n::Strings;
-use crate::picker::Origin;
+use crate::picker::{Builtin, Origin, builtin_image};
 use crate::theme;
 use crate::widgets::{self, ItemPicture, LimitField, SINK_IMAGE, SOURCE_IMAGE, colors};
 use aic_editor::format;
@@ -782,8 +782,9 @@ struct Face {
     kind: Option<String>,
     /// What the card is about, or the workspace's name; `None` on a port's tile.
     title: Option<String>,
-    /// The recipe whose region badges go before the title, when only some regions have it.
-    badges: Option<RecipeId>,
+    /// The recipe whose region badges go before the title, when the graph's region lacks it, and
+    /// the regions that have it, as text.
+    badges: Option<(RecipeId, String)>,
     /// The region warnings, a line each, on the sign before the title.
     warnings: Option<String>,
     /// A recipe card's facility, and whether a click on it moves to another.
@@ -814,8 +815,8 @@ enum Body {
         /// The limit as its field shows it, and whether the node needs one.
         limit: Option<(String, bool)>,
     },
-    /// A storage: how much goes straight through.
-    PassThrough(String),
+    /// A storage: its picture. Its balance is in the header.
+    Storage(Option<(ImageKind, String)>),
     /// A recipe node whose recipe the data lacks.
     Missing(String),
     /// A workspace: how many nodes it holds.
@@ -906,9 +907,11 @@ impl Read<'_> {
         } = kind
         {
             let found = catalog.recipe(recipe.as_str());
+            let region = self.graph.region();
             face.badges = found
-                .filter(|found| !widgets::recipe_regions(catalog, found).is_empty())
-                .map(|_| recipe.clone());
+                .filter(|found| !found.available_in(region))
+                .and_then(|found| names::recipe_regions(catalog, strings, found))
+                .map(|regions| (recipe.clone(), regions));
             let choices = found.map_or(0, |found| found.facilities.len());
             face.facility = Some((
                 names::facility(catalog, facility.as_str()).to_owned(),
@@ -962,6 +965,15 @@ impl Read<'_> {
             coupons: Vec::new(),
             limit,
         };
+        // A logistics node's picture: the game's part for what it carries, the belt's while it
+        // carries nothing yet.
+        let part = |builtin: Builtin, item: &Option<ItemId>| {
+            let carries = (item.as_ref())
+                .and_then(|item| catalog.item(item.as_str()))
+                .map(|item| item.phase);
+            let image = builtin_image(builtin, carries).to_owned();
+            Some((ImageKind::Node, image, None))
+        };
         match kind {
             NodeKind::Recipe {
                 facility,
@@ -993,9 +1005,11 @@ impl Read<'_> {
                 let image = Some((ImageKind::Node, SOURCE_IMAGE.to_owned(), None));
                 numbers(image, rate, limit(Some(*most), true))
             }
-            NodeKind::ControlPort { limit: most, .. } => {
-                numbers(None, rate, limit(Some(*most), true))
-            }
+            NodeKind::ControlPort { item, limit: most } => numbers(
+                part(Builtin::ControlPort, item),
+                rate,
+                limit(Some(*most), true),
+            ),
             NodeKind::Sink { limit: most, .. } => {
                 let image = Some((ImageKind::Node, SINK_IMAGE.to_owned(), None));
                 numbers(image, rate, limit(*most, false))
@@ -1013,12 +1027,10 @@ impl Read<'_> {
                     .collect(),
                 limit: limit(*most, false),
             },
-            NodeKind::Splitter { .. } | NodeKind::Merger { .. } => numbers(None, rate, None),
-            NodeKind::Storage { .. } => {
-                let through = solution.storage.get(&id).and_then(|s| s.pass_through);
-                Body::PassThrough(
-                    strings.format("storage-pass-through", &[("rate", &format::short(through))]),
-                )
+            NodeKind::Splitter { item } => numbers(part(Builtin::Splitter, item), rate, None),
+            NodeKind::Merger { item } => numbers(part(Builtin::Merger, item), rate, None),
+            NodeKind::Storage { item } => {
+                Body::Storage(part(Builtin::Storage, item).map(|(kind, image, _)| (kind, image)))
             }
             NodeKind::WorkspacePort { .. } => Body::Empty,
             NodeKind::MissingRecipe { .. } => Body::Missing(strings.get("kind-missing-recipe")),
@@ -1562,12 +1574,15 @@ impl Cards<'_> {
     }
 
     /// A node's title, after a warning sign when the region lacks its recipe or facility, and the
-    /// recipe's region badges when only some regions have it.
+    /// badges of the regions that have its recipe.
     fn title_row(&self, ui: &mut Ui, face: &Face, title: RichText) {
         let catalog = self.catalog;
-        let badges = (face.badges.as_ref())
-            .and_then(|recipe| catalog.recipe(recipe.as_str()))
-            .map(|recipe| widgets::RegionBadges::new(ui, catalog, recipe, VIEW_SCALE));
+        let region = self.graph.region();
+        let badges = (face.badges.as_ref()).and_then(|(recipe, regions)| {
+            let recipe = catalog.recipe(recipe.as_str())?;
+            let badges = widgets::RegionBadges::new(ui, catalog, region, recipe, VIEW_SCALE);
+            Some((badges, regions))
+        });
         if badges.is_none() && face.warnings.is_none() {
             title_label(ui, title);
             return;
@@ -1576,8 +1591,8 @@ impl Cards<'_> {
             if let Some(warnings) = &face.warnings {
                 widgets::warning_icon(ui, crisp(WARNING_ICON)).on_hover_text(warnings.as_str());
             }
-            if let Some(badges) = &badges {
-                badges.ui(ui);
+            if let Some((badges, regions)) = &badges {
+                badges.ui(ui).on_hover_text(regions.as_str());
             }
             ui.add(egui::Label::new(title).truncate());
         });
@@ -1769,11 +1784,8 @@ impl Cards<'_> {
                     self.limit_field(ui, id, limit, *required);
                 }
             }
-            (Body::PassThrough(text), _) => {
-                if plain {
-                    ui.set_invisible();
-                }
-                ui.add(egui::Label::new(RichText::new(text).small()).truncate());
+            (Body::Storage(Some((kind, image))), _) => {
+                widgets::image(ui, *kind, image, crisp(FACILITY_IMAGE));
             }
             (Body::Missing(text), _) => {
                 if plain {
@@ -1805,7 +1817,7 @@ impl Cards<'_> {
 
     /// A workspace's card: how many nodes it holds, and a button to open it.
     fn workspace_body(&mut self, ui: &mut Ui, workspace: WorkspaceId, count: &str, plain: bool) {
-        ui.label(RichText::new("🏭").size(crisp(FACILITY_IMAGE * 0.6)));
+        ui.label(RichText::new(widgets::WORKSPACE_GLYPH).size(crisp(FACILITY_IMAGE * 0.6)));
         if plain {
             ui.set_invisible();
         }
@@ -1836,7 +1848,7 @@ impl Cards<'_> {
                 if !ui.memory(|m| m.has_focus(id)) {
                     *self.title_edit = name.clone();
                 }
-                let field = ui.add(egui::TextEdit::singleline(self.title_edit).id(id));
+                let field = ui.add(widgets::text_field(ui, self.title_edit).id(id));
                 let typed = self.title_edit.trim();
                 if field.changed() && !typed.is_empty() && typed != name {
                     self.events

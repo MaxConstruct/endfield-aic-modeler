@@ -64,7 +64,7 @@ impl Editor {
             .clone();
         ui.label(RichText::new(strings.get("kind-workspace")).small().weak());
         let mut name = info.name.clone();
-        let response = ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY));
+        let response = ui.add(widgets::text_field(ui, &mut name).desired_width(f32::INFINITY));
         let label = strings.get("inspector-workspace-name");
         ui.ctx()
             .accesskit_node_builder(response.id, |node| node.set_label(label));
@@ -146,6 +146,13 @@ impl Editor {
                 .color(theme::color::TEXT_STRONG)
                 .size(theme::text::HEADING),
         );
+
+        if let NodeKind::Recipe { recipe, .. } = &kind
+            && let Some(recipe) = catalog.recipe(recipe.as_str())
+            && let Some(regions) = names::recipe_regions(catalog, strings, recipe)
+        {
+            ui.label(RichText::new(regions).small().weak());
+        }
 
         let mut facility_choice = None;
         egui::Grid::new("node-details")

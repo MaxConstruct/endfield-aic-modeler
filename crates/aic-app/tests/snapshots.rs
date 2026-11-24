@@ -989,7 +989,92 @@ fn icons_from_the_data_folder() {
         at,
     );
     harness.run();
+    // From a liquid's port the built-in nodes are the pipe's parts and the Fluid Tank.
     harness.snapshot("icons_picker");
+}
+
+// The picker from the canvas, where nothing says what a built-in node will carry: the belt's
+// splitter, converger and control port, the Protocol Stash, and the glyph of a workspace's card.
+#[test]
+fn the_canvas_picker_shows_each_builtin_nodes_picture() {
+    let mut harness = harness(&fixture("../../data/v1.5.3.json"));
+    editor(&mut harness).open_picker(Origin::Canvas, eframe::egui::pos2(0.0, 0.0));
+    harness.run();
+    // Its glyph is not part of its name.
+    harness.get_by_label("Workspace");
+    harness.snapshot("icons_picker_canvas");
+}
+
+// A logistics node's card shows the game's part for what it carries: the belt's splitter,
+// converger and control port and the Protocol Stash for ore, the pipe's and the Fluid Tank for
+// water, and the Gas Tank for a gas.
+#[test]
+fn logistics_cards_show_the_part_that_carries_their_item() {
+    let mut harness = harness(&fixture("../../data/v1.5.3.json"));
+    editor(&mut harness).new_graph("jinlong".into());
+    harness.run();
+    let mining = |recipe: &str, facility: &str| NodeKind::Recipe {
+        recipe: recipe.into(),
+        facility: facility.into(),
+        limit: Some(1.0),
+    };
+    let valve = || NodeKind::ControlPort {
+        item: None,
+        limit: 30.0,
+    };
+    let storage = || NodeKind::Storage { item: None };
+    // Each row ends in a sink, at the canvas's edge; each splitter also fills a storage on the
+    // third row.
+    let rows = [
+        (
+            mining("originium_ore", "miner_2"),
+            "originium_ore",
+            0.0,
+            720.0,
+        ),
+        (
+            mining("liquid_water", "pump_1"),
+            "liquid_water",
+            230.0,
+            1080.0,
+        ),
+    ];
+    for (source, item, y, storage_x) in rows {
+        let source = add(&mut harness, source, 0.0, y);
+        let splitter = add(&mut harness, NodeKind::Splitter { item: None }, 360.0, y);
+        let merger = add(&mut harness, NodeKind::Merger { item: None }, 720.0, y);
+        let valve = add(&mut harness, valve(), 1080.0, y);
+        let sink = NodeKind::Sink {
+            item: item.into(),
+            limit: None,
+        };
+        let sink = add(&mut harness, sink, 1440.0, y);
+        let storage = add(&mut harness, storage(), storage_x, 460.0);
+        for (from, to) in [
+            (source, splitter),
+            (splitter, merger),
+            (merger, valve),
+            (valve, sink),
+            (splitter, storage),
+        ] {
+            link(&mut harness, from, to, item);
+        }
+    }
+    let gas = add(
+        &mut harness,
+        mining("gas_xiranite", "gas_pump_1"),
+        0.0,
+        460.0,
+    );
+    let tank = add(&mut harness, storage(), 360.0, 460.0);
+    link(&mut harness, gas, tank, "gas_xiranite");
+    // Four cards across need the inspector's room.
+    harness
+        .get_by_role_and_label(eframe::egui::accesskit::Role::Button, "Inspector")
+        .click();
+    harness.run();
+    fit_view(&mut harness);
+    snapshot_graph(&mut harness, "icons_logistics_cards");
 }
 
 // M6: editing, files and the round-up view.
@@ -3080,7 +3165,7 @@ fn a_tab_dragged_over_a_view_shows_where_it_lands_and_splits_there() {
     harness.snapshot("views_dropped");
 }
 
-// Recipes of every region, with region badges.
+// Recipes of every region, with badges on those the graph's region lacks.
 
 #[test]
 fn a_recipe_of_another_region_is_offered_with_its_badge_and_warns_on_its_card() {
@@ -3106,6 +3191,56 @@ fn a_recipe_of_another_region_is_offered_with_its_badge_and_warns_on_its_card() 
     editor(&mut harness).open_picker(Origin::Canvas, pos2(300.0, 300.0));
     harness.run();
     harness.snapshot("region_badges_picker");
+}
+
+#[test]
+fn a_recipe_the_graphs_region_has_carries_no_badge() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    // Iron Wire is Wuling's only, and so is this graph.
+    editor(&mut harness).new_graph("jinlong".into());
+    harness.run();
+    harness.get_by_label_contains("Iron Wire").click();
+    harness.run();
+    harness.get_by_label("Wuling only");
+    fit_view(&mut harness);
+    editor(&mut harness).open_picker(Origin::Canvas, pos2(300.0, 300.0));
+    harness.run();
+    harness.snapshot("region_badges_home");
+}
+
+// Long names between two icons on each side, and Valley IV's recipes among Wuling's.
+#[test]
+fn picker_rows_keep_names_clear_of_the_icons() {
+    let mut harness = harness(&fixture("../../data/v1.6.0.json"));
+    for (region, name) in [
+        ("jinlong", "picker_rows_in_wuling"),
+        ("tundra", "picker_rows_in_valley"),
+    ] {
+        editor(&mut harness).new_graph(region.into());
+        harness.run();
+        editor(&mut harness).open_picker(Origin::Canvas, pos2(700.0, 300.0));
+        harness.run();
+        harness.event(eframe::egui::Event::Text("Amethyst Bottle".to_owned()));
+        harness.run();
+        harness.snapshot(name);
+    }
+}
+
+#[test]
+fn every_text_field_is_as_tall_as_a_supply_field() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    settings_header(&harness).click();
+    harness.run();
+    // The inspector's field and a card's.
+    harness.get_by_label_contains("Iron Ingot").click();
+    harness.run();
+    let mut heights: Vec<f32> = harness
+        .get_all_by_role(eframe::egui::accesskit::Role::TextInput)
+        .map(|field| field.rect().height())
+        .collect();
+    heights.sort_by(f32::total_cmp);
+    // The search, a supply and the inspector's limit; a card is laid out at 200%.
+    assert_eq!(heights, [20.0, 20.0, 20.0, 40.0]);
 }
 
 // M11: the canvas on aic-node-graph (ADR 0011). What the pointer does on the canvas, driven with

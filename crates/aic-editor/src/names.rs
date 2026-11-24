@@ -2,7 +2,7 @@
 //! falling back to the ID when the data has no name.
 
 use aic_core::NodeKind;
-use aic_data::{Catalog, ItemId};
+use aic_data::{Catalog, ItemId, Recipe};
 
 use crate::i18n::Strings;
 
@@ -30,6 +30,18 @@ pub fn facility<'a>(catalog: &'a Catalog, id: &'a str) -> &'a str {
 
 pub fn region<'a>(catalog: &'a Catalog, id: &'a str) -> &'a str {
     catalog.region(id).map_or(id, |region| region.name.as_str())
+}
+
+/// "Wuling only": the regions a recipe is limited to, or `None` when every region has it.
+pub fn recipe_regions(catalog: &Catalog, strings: &Strings, recipe: &Recipe) -> Option<String> {
+    let everywhere = (catalog.regions().keys()).all(|region| recipe.available_in(region));
+    if everywhere {
+        return None;
+    }
+    let names: Vec<&str> = (recipe.regions.iter())
+        .map(|id| region(catalog, id.as_str()))
+        .collect();
+    Some(strings.format("recipe-regions", &[("regions", &names.join(", "))]))
 }
 
 /// The Fluent key naming a node's kind.

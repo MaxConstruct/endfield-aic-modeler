@@ -318,7 +318,12 @@ impl Editor {
                 ui.separator();
                 if let Some(kind) = self
                     .browser
-                    .ui(ui, self.session.catalog(), strings)
+                    .ui(
+                        ui,
+                        self.session.catalog(),
+                        strings,
+                        self.session.document().graph().region(),
+                    )
                     .and_then(|id| {
                         let region = self.session.document().graph().region();
                         recipe_node(self.session.catalog(), region, id)
@@ -442,7 +447,8 @@ impl Editor {
         let Some(picker) = &mut self.picker else {
             return;
         };
-        match picker.show(ctx, self.session.catalog(), strings) {
+        let region = self.session.document().graph().region();
+        match picker.show(ctx, self.session.catalog(), strings, region) {
             picker::Outcome::Open => {}
             picker::Outcome::Close => self.picker = None,
             picker::Outcome::Chosen(Choice::Workspace) => {

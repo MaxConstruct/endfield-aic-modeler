@@ -129,6 +129,16 @@ pub fn recipes<'a>(
         .collect()
 }
 
+/// The regions to mark a recipe with on a graph of `region`: the ones it is limited to, when
+/// `region` is not among them. A recipe the graph can use needs no mark, so this is empty.
+pub fn foreign_regions<'a>(region: &RegionId, recipe: &'a Recipe) -> &'a [RegionId] {
+    if recipe.available_in(region) {
+        &[]
+    } else {
+        &recipe.regions
+    }
+}
+
 /// The node a built-in choice adds. A source and a control port need a limit; they start at one
 /// belt (or pipe) of their item, for the player to change.
 pub fn builtin_kind(catalog: &Catalog, builtin: Builtin, item: Option<&ItemId>) -> NodeKind {
@@ -206,7 +216,7 @@ mod tests {
     #[test]
     fn canvas_lists_every_regions_visible_recipes_in_data_order() {
         let catalog = catalog();
-        // Every region's recipes: one only Wuling has is offered too, with its badge.
+        // Every region's recipes: one only Wuling has is offered too.
         assert_eq!(
             ids(recipes(&catalog, &Origin::Canvas, "", Matching::default())),
             [
@@ -312,6 +322,17 @@ mod tests {
             Some(NodeKind::Recipe { facility, .. }) => facility.to_string(),
             other => panic!("expected a recipe node, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn only_a_recipe_the_graphs_region_lacks_is_marked_with_its_regions() {
+        let catalog = catalog();
+        let marks = |region: &str, id: &str| {
+            foreign_regions(&region.into(), catalog.recipe(id).unwrap()).to_vec()
+        };
+        assert_eq!(marks("tundra", "iron_wire"), ["jinlong".into()]);
+        assert!(marks("jinlong", "iron_wire").is_empty());
+        assert!(marks("tundra", "iron_plate").is_empty());
     }
 
     #[test]

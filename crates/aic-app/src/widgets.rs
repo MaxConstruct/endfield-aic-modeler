@@ -9,6 +9,7 @@ use crate::icons::{self, Icon};
 use crate::settings::parse_amount;
 use aic_editor::format;
 use aic_editor::names;
+use aic_editor::picker::foreign_regions;
 
 /// Colors with a meaning across the app.
 pub use crate::theme::color as colors;
@@ -16,6 +17,15 @@ pub use crate::theme::color as colors;
 /// A limit as a [`LimitField`] shows it: up to four decimals, blank for none.
 pub fn limit_text(limit: Option<f64>) -> String {
     limit.map(format::editable).unwrap_or_default()
+}
+
+/// A one-line text field, as every field in the app starts: as tall as a button
+/// (`interact_size`), which the canvas scales with its text. Left to itself egui makes it as tall
+/// as its text and a margin the canvas doesn't scale, so a field on a card would come out shorter.
+pub fn text_field<'t>(ui: &Ui, text: &'t mut dyn egui::TextBuffer) -> egui::TextEdit<'t> {
+    egui::TextEdit::singleline(text)
+        .min_size(Vec2::new(0.0, ui.spacing().interact_size.y))
+        .vertical_align(egui::Align::Center)
 }
 
 /// A field for typing a limit. It shows `current` unless the player is typing in it, and returns
@@ -40,7 +50,7 @@ impl LimitField<'_> {
             self.current.clone_into(self.buffer);
         }
         let valid = parse_amount(self.buffer).is_ok();
-        let mut edit = egui::TextEdit::singleline(self.buffer)
+        let mut edit = text_field(ui, self.buffer)
             .id(self.id)
             .desired_width(self.width)
             .horizontal_align(egui::Align::Center)
@@ -73,6 +83,9 @@ pub fn icon_toggle(ui: &mut Ui, on: &mut bool, icon: &str, name: String) -> egui
 pub const SOURCE_IMAGE: &str = "source";
 /// The image of a sink node, under `assets/icons/nodes/` (the game's Depot Loader).
 pub const SINK_IMAGE: &str = "sink";
+/// What stands for a workspace on its card and in the node picker: a symbol egui's built-in
+/// fonts draw.
+pub const WORKSPACE_GLYPH: &str = "🏭";
 
 /// An image as an egui widget part, for buttons that show a picture next to their text.
 pub fn image_atom(
@@ -199,24 +212,17 @@ fn initials(name: &str) -> String {
         .collect()
 }
 
-/// Space inside a region badge around its name, and between two badges, at 100%.
-const BADGE_PADDING: Vec2 = Vec2::new(5.0, 1.0);
+/// The least space inside a region badge around its letter, and between two badges, at 100%.
+const BADGE_PADDING: Vec2 = Vec2::new(3.0, 1.0);
 const BADGE_GAP: f32 = 4.0;
 
-/// The regions a recipe is limited to, for its badges; none when it exists in every region.
-pub fn recipe_regions<'a>(catalog: &Catalog, recipe: &'a Recipe) -> &'a [RegionId] {
-    let everywhere = catalog
-        .regions()
-        .keys()
-        .all(|region| recipe.available_in(region));
-    if everywhere { &[] } else { &recipe.regions }
-}
-
-/// A recipe's region badges, laid out: each region's name in a small pill, `Wuling` or
-/// `Valley IV`, set before the recipe's name. `scale` is how big 100% is where they are drawn (the
-/// canvas lays out at `VIEW_SCALE`); the text size comes from the `Ui`'s small style.
+/// The badges of a recipe the graph's region lacks, laid out: a small square for each region that
+/// has it, with the first letter of its name, `W` or `V`. Empty when the graph's region has the
+/// recipe. The whole name is for hover text (`names::recipe_regions`). `scale` is how big 100% is
+/// where they are drawn (the canvas lays out at `VIEW_SCALE`); the text size comes from the `Ui`'s
+/// small style.
 pub struct RegionBadges {
-    names: Vec<(
+    letters: Vec<(
         Arc<egui::Galley>,
         &'static crate::theme::color::region::Tint,
     )>,
@@ -224,54 +230,61 @@ pub struct RegionBadges {
 }
 
 impl RegionBadges {
-    pub fn new(ui: &Ui, catalog: &Catalog, recipe: &Recipe, scale: f32) -> Self {
-        let font = egui::TextStyle::Small.resolve(ui.style());
+    pub fn new(
+        ui: &Ui,
+        catalog: &Catalog,
+        graph_region: &RegionId,
+        recipe: &Recipe,
+        scale: f32,
+    ) -> Self {
+        let font = FontId::new(
+            egui::TextStyle::Small.resolve(ui.style()).size,
+            crate::theme::semibold(),
+        );
         let tints = &colors::region::TINTS;
-        let names = recipe_regions(catalog, recipe)
+        let letters = foreign_regions(graph_region, recipe)
             .iter()
             .map(|region| {
                 let index = catalog.regions().get_index_of(region).unwrap_or(0);
                 let tint = &tints[index % tints.len()];
-                let text = egui::RichText::new(names::region(catalog, region.as_str()))
-                    .font(font.clone())
-                    .color(tint.text)
-                    .strong();
-                let galley = egui::WidgetText::from(text).into_galley(
-                    ui,
-                    Some(egui::TextWrapMode::Extend),
-                    f32::INFINITY,
-                    font.clone(),
-                );
+                let letter = names::region(catalog, region.as_str())
+                    .chars()
+                    .next()
+                    .map(String::from)
+                    .unwrap_or_default();
+                let galley = ui.painter().layout_no_wrap(letter, font.clone(), tint.text);
                 (galley, tint)
             })
             .collect();
-        Self { names, scale }
+        Self { letters, scale }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.names.is_empty()
+        self.letters.is_empty()
     }
 
-    fn pill_size(&self, name: &egui::Galley) -> Vec2 {
-        name.size() + 2.0 * BADGE_PADDING * self.scale
+    /// A square, wider only for a letter that needs it.
+    fn badge_size(&self, letter: &egui::Galley) -> Vec2 {
+        let size = letter.size() + 2.0 * BADGE_PADDING * self.scale;
+        Vec2::new(size.x.max(size.y), size.y)
     }
 
     /// The space all of them take, side by side.
     pub fn size(&self) -> Vec2 {
-        let gaps = self.names.len().saturating_sub(1) as f32 * BADGE_GAP * self.scale;
-        self.names
+        let gaps = self.letters.len().saturating_sub(1) as f32 * BADGE_GAP * self.scale;
+        self.letters
             .iter()
-            .fold(Vec2::new(gaps, 0.0), |size, (name, _)| {
-                let pill = self.pill_size(name);
-                Vec2::new(size.x + pill.x, size.y.max(pill.y))
+            .fold(Vec2::new(gaps, 0.0), |size, (letter, _)| {
+                let badge = self.badge_size(letter);
+                Vec2::new(size.x + badge.x, size.y.max(badge.y))
             })
     }
 
     /// Paints them left to right from `left_center`, centred on its height.
     pub fn paint(&self, painter: &Painter, left_center: Pos2) {
         let mut x = left_center.x;
-        for (name, tint) in &self.names {
-            let size = self.pill_size(name);
+        for (letter, tint) in &self.letters {
+            let size = self.badge_size(letter);
             let rect = Rect::from_min_size(Pos2::new(x, left_center.y - size.y / 2.0), size);
             painter.rect(
                 rect,
@@ -280,7 +293,11 @@ impl RegionBadges {
                 egui::Stroke::new(self.scale, tint.stroke),
                 egui::StrokeKind::Inside,
             );
-            painter.galley(rect.center() - name.size() / 2.0, name.clone(), tint.text);
+            painter.galley(
+                rect.center() - letter.size() / 2.0,
+                letter.clone(),
+                tint.text,
+            );
             x = rect.right() + BADGE_GAP * self.scale;
         }
     }
@@ -344,13 +361,5 @@ mod tests {
         assert_eq!(initials("Cuprium Ore"), "CO");
         assert_eq!(initials("Yazhen"), "Y");
         assert_eq!(initials("LC Valley Battery"), "LV");
-    }
-
-    #[test]
-    fn a_recipe_of_some_regions_names_them_and_one_of_every_region_none() {
-        let catalog = aic_editor::testing::fixture_catalog();
-        let regions = |id: &str| recipe_regions(&catalog, catalog.recipe(id).unwrap()).to_vec();
-        assert_eq!(regions("iron_wire"), ["jinlong".into()]);
-        assert!(regions("iron_plate").is_empty());
     }
 }

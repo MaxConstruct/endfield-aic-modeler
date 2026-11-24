@@ -258,7 +258,13 @@ fn apply(style: &mut Style) {
     spacing.icon_width_inner = style::spacing::ICON_WIDTH_INNER;
     spacing.icon_spacing = style::spacing::ICON_SPACING;
     spacing.combo_height = style::spacing::COMBO_HEIGHT;
-    spacing.scroll = egui::style::ScrollStyle::thin();
+    spacing.scroll = egui::style::ScrollStyle {
+        foreground_color: true,
+        dormant_handle_opacity: style::scroll::HANDLE,
+        active_handle_opacity: style::scroll::HANDLE_NEAR,
+        interact_handle_opacity: style::scroll::HANDLE_HELD,
+        ..egui::style::ScrollStyle::thin()
+    };
 
     style.visuals = visuals();
 }

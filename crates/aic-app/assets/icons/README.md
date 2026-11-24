@@ -7,7 +7,7 @@ One set for every data version, keyed by game ID (ADR 0012), built into the app 
 icons/
 ├─ items/<item id>.png
 ├─ facilities/<facility id>.png
-└─ nodes/source.png, sink.png   # built-in node kinds (the depot unloader and loader)
+└─ nodes/<name>.png             # built-in node kinds: source, sink, splitter, merger, storage, control port
 ```
 
 An item or facility with no file here is drawn as a coloured square with its initials. Icons that
@@ -33,6 +33,13 @@ renamed to our IDs (2026-11-09):
   `vaporizer_1` (the Gas Dispersing Unit) is used since data v1.6.0.
 - `nodes/source.png` and `sink.png`: jambochen's `unloader_1` (Depot Unloader) and `loader_1`
   (Depot Loader), used for source and sink nodes.
+- `nodes/splitter.png`, `merger.png` and `control_port.png` (the belt's Splitter, Converger and
+  Item Control Port), `splitter_pipe.png`, `merger_pipe.png` and `control_port_pipe.png` (the
+  pipe's), `storage.png` (Protocol Stash), `storage_liquid.png` (Fluid Tank) and `storage_gas.png`
+  (Gas Tank): added by hand on 2026-11-25 as 256 × 256 PNGs and scaled to 125 × 125, since the
+  sheet takes icons up to 128 pixels. A node's card and the node picker show the one for what the
+  node carries: the pipe's parts and the tanks for a liquid or a gas, the belt's for a solid or
+  while it carries nothing yet. A workspace has no picture: the picker shows the glyph of its card.
 - Items renamed: `fbottle_{copper,iron}_grass_{1,2}` →
   `{copper,iron}_bottle-liquid_plant_grass_{1,2}`.
 - Data v1.6.0 (M8, ADR 0014) calls those four items by the game's IDs again, so each is also here

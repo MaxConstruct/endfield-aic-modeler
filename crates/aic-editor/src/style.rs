@@ -177,6 +177,16 @@ pub mod spacing {
     pub const COMBO_HEIGHT: f32 = 320.0;
 }
 
+/// A scroll bar's handle: the text color, this opaque over its `INSET` track.
+pub mod scroll {
+    /// The pointer is elsewhere.
+    pub const HANDLE: f32 = 0.5;
+    /// The pointer is over what scrolls.
+    pub const HANDLE_NEAR: f32 = 0.65;
+    /// The pointer is on the bar or drags it.
+    pub const HANDLE_HELD: f32 = 0.85;
+}
+
 /// A drop shadow: where it falls, how soft it is, how dark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shadow {
@@ -267,6 +277,22 @@ mod tests {
             ] {
                 assert!(contrast(state, surface) >= 4.5, "{state:?} on {surface:?}");
             }
+        }
+    }
+
+    #[test]
+    fn a_scroll_handle_stands_out_from_its_track() {
+        let over = |top: u8, under: u8| {
+            (f32::from(under) + (f32::from(top) - f32::from(under)) * scroll::HANDLE) as u8
+        };
+        let (top, track) = (color::TEXT, color::INSET);
+        let handle = Rgba::rgb(
+            over(top.0, track.0),
+            over(top.1, track.1),
+            over(top.2, track.2),
+        );
+        for surface in [track, color::PANEL, color::RAISED] {
+            assert!(contrast(handle, surface) >= 3.0, "on {surface:?}");
         }
     }
 

@@ -152,7 +152,7 @@ impl Editor {
                 });
                 let text = edits.field(availability, &region, item);
                 let valid = parse_amount(text).is_ok();
-                let mut edit = egui::TextEdit::singleline(text)
+                let mut edit = widgets::text_field(ui, text)
                     .font(TextStyle::Monospace)
                     .horizontal_align(Align::Max);
                 if !valid {
