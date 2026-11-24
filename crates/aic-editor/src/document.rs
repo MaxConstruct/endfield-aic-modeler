@@ -561,7 +561,8 @@ mod tests {
         let before = doc.solution().port_flow.clone();
 
         // The same data with the smelter twice as fast: the kept section no longer holds.
-        let overlay = br#"{ "facility_speeds": { "smelter": 2 } }"#;
+        let overlay =
+            br#"{ "facilities": { "replace": [{ "id": "smelter", "speed": 2, "power_kw": 4 }] } }"#;
         let faster = Catalog::from_bytes_with_overlay(
             crate::testing::FIXTURE_DATA,
             Some(overlay),

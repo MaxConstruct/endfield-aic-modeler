@@ -29,24 +29,24 @@ fn invalid_path(error: &LoadError) -> &str {
 
 #[test]
 fn wrong_type_names_the_json_path() {
-    let data = data_with(|v| v["recipes"][2]["time"] = json!("two"));
+    let data = data_with(|v| v["recipes"][2]["time_s"] = json!("two"));
     let error = error_for(&data);
     let LoadError::Json { file, path, .. } = &error else {
         panic!("expected a Json error, got {error:?}");
     };
     assert_eq!(file.to_str(), Some("data.json"));
-    assert_eq!(path, "recipes[2].time");
+    assert_eq!(path, "recipes[2].time_s");
     assert!(
         error
             .to_string()
-            .starts_with("data.json: at `recipes[2].time`: ")
+            .starts_with("data.json: at `recipes[2].time_s`: ")
     );
 }
 
 #[test]
 fn malformed_json_is_an_error() {
     assert!(matches!(
-        error_for(b"{ \"items\": ["),
+        error_for(b"{ \"format\": 1, \"items\": ["),
         LoadError::Json { .. }
     ));
 }
@@ -67,9 +67,9 @@ fn bad_language_file_names_that_file() {
 
 #[test]
 fn recipe_with_unknown_facility_is_refused() {
-    let data = data_with(|v| v["recipes"][5]["producers"][1] = json!("mix_pool_9"));
+    let data = data_with(|v| v["recipes"][5]["facilities"][1] = json!("mix_pool_9"));
     let error = error_for(&data);
-    assert_eq!(invalid_path(&error), "recipes[5].producers[1]");
+    assert_eq!(invalid_path(&error), "recipes[5].facilities[1]");
     assert!(error.to_string().contains("unknown facility `mix_pool_9`"));
 }
 
@@ -84,20 +84,20 @@ fn recipe_with_unknown_item_is_refused() {
 
 #[test]
 fn recipe_without_facility_is_refused() {
-    let data = data_with(|v| v["recipes"][0]["producers"] = json!([]));
-    assert_eq!(invalid_path(&error_for(&data)), "recipes[0].producers");
+    let data = data_with(|v| v["recipes"][0]["facilities"] = json!([]));
+    assert_eq!(invalid_path(&error_for(&data)), "recipes[0].facilities");
 }
 
 #[test]
 fn recipe_with_zero_time_is_refused() {
-    let data = data_with(|v| v["recipes"][1]["time"] = json!(0));
-    assert_eq!(invalid_path(&error_for(&data)), "recipes[1].time");
+    let data = data_with(|v| v["recipes"][1]["time_s"] = json!(0));
+    assert_eq!(invalid_path(&error_for(&data)), "recipes[1].time_s");
 }
 
 #[test]
 fn recipe_with_unknown_region_is_refused() {
-    let data = data_with(|v| v["recipes"][0]["locations"] = json!(["moon"]));
-    assert_eq!(invalid_path(&error_for(&data)), "recipes[0].locations[0]");
+    let data = data_with(|v| v["recipes"][0]["regions"] = json!(["moon"]));
+    assert_eq!(invalid_path(&error_for(&data)), "recipes[0].regions[0]");
 }
 
 #[test]
@@ -107,22 +107,122 @@ fn duplicate_recipe_id_is_refused() {
 }
 
 #[test]
-fn bad_icon_position_is_refused() {
-    let data = data_with(|v| v["icons"][1]["position"] = json!("left top"));
-    assert_eq!(invalid_path(&error_for(&data)), "icons[1].position");
+fn belt_and_pipe_capacities_must_be_positive() {
+    let data = data_with(|v| v["belt_per_min"] = json!(0));
+    assert_eq!(invalid_path(&error_for(&data)), "belt_per_min");
+    let data = data_with(|v| v["pipe_per_min"] = json!(-120));
+    assert_eq!(invalid_path(&error_for(&data)), "pipe_per_min");
 }
 
 #[test]
-fn missing_belt_is_refused() {
+fn a_file_of_another_format_names_its_number() {
+    let data = data_with(|v| v["format"] = json!(2));
+    let error = error_for(&data);
+    assert_eq!(invalid_path(&error), "format");
+    assert!(error.to_string().contains("format 2"), "{error}");
+    // Even when the rest of the file is in a shape this build doesn't know.
+    let error = error_for(br#"{ "format": 7, "spaceships": [] }"#);
+    assert!(error.to_string().contains("format 7"), "{error}");
+}
+
+#[test]
+fn a_file_without_a_format_is_refused() {
     let data = data_with(|v| {
-        v["items"][0].as_object_mut().unwrap().remove("belt");
-        v["defaults"].as_object_mut().unwrap().remove("maxBelt");
+        v.as_object_mut().unwrap().remove("format");
     });
-    assert_eq!(invalid_path(&error_for(&data)), "items");
+    assert_eq!(invalid_path(&error_for(&data)), "format");
 }
 
 #[test]
-fn defaults_naming_a_non_belt_is_refused() {
-    let data = data_with(|v| v["defaults"]["maxBelt"] = json!("pipe"));
-    assert_eq!(invalid_path(&error_for(&data)), "defaults.maxBelt");
+fn unknown_keys_are_refused() {
+    let data = data_with(|v| v["recipes"][0]["producers"] = json!(["furnance_1"]));
+    let LoadError::Json { path, .. } = error_for(&data) else {
+        panic!("expected a Json error");
+    };
+    assert_eq!(path, "recipes[0].producers");
+}
+
+#[test]
+fn a_trade_takes_one_item_and_gives_something() {
+    let data = data_with(|v| v["recipes"][6]["in"]["copper_ore"] = json!(1));
+    assert_eq!(invalid_path(&error_for(&data)), "recipes[6].kind");
+    let data = data_with(|v| v["recipes"][6]["out"] = json!({}));
+    assert_eq!(invalid_path(&error_for(&data)), "recipes[6].kind");
+}
+
+#[test]
+fn an_environment_must_be_an_item() {
+    let data = data_with(|v| v["recipes"][0]["environment"] = json!("gas_nope"));
+    let error = error_for(&data);
+    assert_eq!(invalid_path(&error), "recipes[0].environment");
+    assert!(error.to_string().contains("unknown item `gas_nope`"));
+}
+
+#[test]
+fn a_bad_activation_input_is_refused() {
+    let cases = [
+        (
+            json!({ "item": "nope", "per_min": 6 }),
+            "facilities[0].activation.item",
+        ),
+        (
+            json!({ "item": "liquid_water", "per_min": 0 }),
+            "facilities[0].activation.per_min",
+        ),
+        (
+            json!({ "item": "liquid_water", "per_min": -6 }),
+            "facilities[0].activation.per_min",
+        ),
+    ];
+    for (activation, expected) in cases {
+        let data = data_with(|v| v["facilities"][0]["activation"] = activation.clone());
+        assert_eq!(invalid_path(&error_for(&data)), expected, "{activation}");
+    }
+}
+
+#[test]
+fn facilities_that_share_a_recipe_must_agree_on_its_activation_input() {
+    // `liquid_sewage-mix` runs on both mixing pools; only one of them has an activation input.
+    let data = data_with(|v| {
+        v["facilities"][5]["activation"] = json!({ "item": "liquid_water", "per_min": 6 });
+    });
+    let error = error_for(&data);
+    assert_eq!(invalid_path(&error), "recipes[5].facilities");
+    assert!(
+        error.to_string().contains("`mix_pool_1` and `mix_pool_2`"),
+        "{error}"
+    );
+    // The same activation at different speeds doesn't fold into one quantity per craft either.
+    let data = data_with(|v| {
+        let water = json!({ "item": "liquid_water", "per_min": 6 });
+        v["facilities"][5]["activation"] = water.clone();
+        v["facilities"][6]["activation"] = water;
+    });
+    assert_eq!(invalid_path(&error_for(&data)), "recipes[5].facilities");
+}
+
+#[test]
+fn an_alias_goes_from_an_id_that_is_gone_to_one_that_exists() {
+    let cases = [
+        (
+            json!({ "items": { "old_ore": "nope" } }),
+            "aliases.items.old_ore",
+        ),
+        (
+            json!({ "items": { "copper_ore": "copper_nugget" } }),
+            "aliases.items.copper_ore",
+        ),
+        (
+            json!({ "recipes": { "old": "nope" } }),
+            "aliases.recipes.old",
+        ),
+        (
+            json!({ "recipes": { "liquid_water": "copper_nugget" } }),
+            "aliases.recipes.liquid_water",
+        ),
+    ];
+    for (aliases, expected) in cases {
+        let data = data_with(|v| v["aliases"] = aliases.clone());
+        assert_eq!(invalid_path(&error_for(&data)), expected, "{aliases}");
+    }
 }

@@ -3,7 +3,7 @@
 use std::fmt;
 
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};
 
@@ -23,14 +23,17 @@ pub struct Catalog {
     pub(crate) categories: IndexMap<CategoryId, Category>,
     pub(crate) belt_per_min: f64,
     pub(crate) pipe_per_min: f64,
-    pub(crate) icons: IndexMap<String, Icon>,
+    /// Old item IDs to this version's, from the data file's `aliases`.
+    pub(crate) item_aliases: IndexMap<String, ItemId>,
+    /// Old recipe IDs to this version's.
+    pub(crate) recipe_aliases: IndexMap<String, RecipeId>,
     pub(crate) version: String,
     #[serde(skip)]
     pub(crate) warnings: Vec<LoadWarning>,
 }
 
 impl Catalog {
-    /// Every item, facilities included, in data file order.
+    /// Every item, in data file order. Facilities are not items (ADR 0014).
     pub fn items(&self) -> &IndexMap<ItemId, Item> {
         &self.items
     }
@@ -64,7 +67,8 @@ impl Catalog {
     }
 
     /// Raw resources of `region`: what its mining recipes extract, on a facility the region has, in
-    /// data order.
+    /// data order. A mining recipe may consume something too (a rig that needs water); only its
+    /// outputs are raw resources.
     pub fn raw_resources(&self, region: &RegionId) -> Vec<&ItemId> {
         let mut raw: Vec<&ItemId> = Vec::new();
         let minable = self.recipes.values().filter(|recipe| {
@@ -84,9 +88,8 @@ impl Catalog {
         raw
     }
 
-    /// The image that stands for a recipe: its own icon, else its first output, else its first
-    /// input, else its first facility; the first of those that has an image. The data's recipe
-    /// icons are mostly generated IDs with no image, so this usually lands on the main output.
+    /// The image that stands for a recipe: its first output, else its first input, else its first
+    /// facility; the first of those that has an image.
     ///
     /// The catalog holds no images: `has_image` says which the app has (ADR 0012).
     pub fn recipe_image(
@@ -95,8 +98,7 @@ impl Catalog {
         has_image: impl Fn(ImageKind, &str) -> bool,
     ) -> Option<(ImageKind, &str)> {
         let recipe = self.recipe(id)?;
-        let items = std::iter::once(recipe.icon.as_str())
-            .chain(recipe.outputs.iter().map(|(item, _)| item.as_str()))
+        let items = (recipe.outputs.iter().map(|(item, _)| item.as_str()))
             .chain(recipe.inputs.iter().map(|(item, _)| item.as_str()))
             .map(|id| (ImageKind::Item, id));
         let facility = recipe
@@ -122,10 +124,15 @@ impl Catalog {
         self.pipe_per_min
     }
 
-    /// The data's entry for an icon, keyed by the `icon` of an item or recipe: its colour, and
-    /// where factoriolab's sprite sheet had it (which the app doesn't read).
-    pub fn icon(&self, id: &str) -> Option<&Icon> {
-        self.icons.get(id)
+    /// The recipe an older data version called `old_id`, if this version's data names one. Only
+    /// IDs this version doesn't have are aliases.
+    pub fn recipe_alias(&self, old_id: &str) -> Option<&RecipeId> {
+        self.recipe_aliases.get(old_id)
+    }
+
+    /// The item an older data version called `old_id`, if this version's data names one.
+    pub fn item_alias(&self, old_id: &str) -> Option<&ItemId> {
+        self.item_aliases.get(old_id)
     }
 
     /// The data version: the file name without `.json` when loaded through [`crate::load`] or a
@@ -148,14 +155,34 @@ impl Catalog {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Item {
     pub id: ItemId,
-    /// Display name in the names table's language, falling back to the Chinese name, then the ID.
+    /// Display name in the names table's language, falling back to the ID.
     pub name: String,
-    pub name_zh: String,
-    pub category: CategoryId,
-    /// Key into `Catalog::icon`.
-    pub icon: String,
-    /// Moves through pipes rather than on belts.
-    pub is_fluid: bool,
+    pub phase: Phase,
+    /// `#rrggbb`, used to tint port dots and the initials of an item without an icon.
+    pub color: Option<String>,
+}
+
+impl Item {
+    /// Moves through pipes rather than on belts: a liquid or a gas.
+    pub fn is_fluid(&self) -> bool {
+        self.phase != Phase::Solid
+    }
+}
+
+/// Whether an item is carried on belts (solid) or through pipes (liquid or gas).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    #[default]
+    Solid,
+    Liquid,
+    Gas,
+}
+
+impl Phase {
+    pub fn is_solid(&self) -> bool {
+        *self == Self::Solid
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -182,8 +209,8 @@ impl Facility {
 /// An input a facility needs at a fixed rate for each facility that is running, whatever its
 /// throughput: a unit at half load still needs all of it.
 ///
-/// Only the loaders in this crate make one, after checking that the item exists, the rate is
-/// positive and every recipe of the facility takes at least that much of the item.
+/// Only the loaders in this crate make one, after checking that the item exists and the rate is
+/// positive. The loader adds it to every recipe of the facility, so each takes at least that much.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ActivationInput {
     item: ItemId,
@@ -222,10 +249,11 @@ pub struct Recipe {
     pub id: RecipeId,
     pub name: String,
     pub category: CategoryId,
-    pub icon: String,
     /// Seconds per craft at speed 1. Always positive.
     pub time_s: f64,
-    /// Quantity per craft, in data file order.
+    /// Quantity per craft, in data file order: the totals for one facility running flat out. The
+    /// facility's activation input, which the data file lists apart, is folded in (to its entry
+    /// if the recipe takes the item anyway, else last).
     pub inputs: Vec<(ItemId, f64)>,
     /// Quantity per craft, in data file order. The first is the main product; the rest are byproducts.
     pub outputs: Vec<(ItemId, f64)>,
@@ -233,7 +261,8 @@ pub struct Recipe {
     pub facilities: Vec<FacilityId>,
     /// Replaces the facility's power in kW. Negative means generation.
     pub power_override_kw: Option<f64>,
-    /// Extracts a resource, with no inputs.
+    /// Extracts a raw resource. Its outputs are raw resources; it may take an input too, such as
+    /// the water a rig needs.
     pub is_mining: bool,
     /// Left out of the recipe browser: outpost trades and cross-region transfers.
     pub hidden: bool,
@@ -241,6 +270,10 @@ pub struct Recipe {
     pub is_trade: bool,
     /// Regions the recipe exists in. Empty means every region.
     pub regions: Vec<RegionId>,
+    /// The gas whose environment the recipe needs around its facility, if any. Carried in the
+    /// data only for now: neither the solver nor the UI looks at it yet (PLAN.md, Gas
+    /// environments).
+    pub environment: Option<ItemId>,
 }
 
 impl Recipe {
@@ -322,22 +355,6 @@ pub struct Category {
     pub name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Icon {
-    pub rect: IconRect,
-    /// Average color as `#rrggbb`, used to tint port dots.
-    pub color: Option<String>,
-}
-
-/// A pixel rectangle in factoriolab's `icons.webp`, which the app doesn't read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct IconRect {
-    pub x: u32,
-    pub y: u32,
-    pub w: u32,
-    pub h: u32,
-}
-
 /// What kind of thing a name belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NameKind {
@@ -350,7 +367,7 @@ pub enum NameKind {
 /// A problem found while loading that doesn't stop the catalog from being used.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadWarning {
-    /// The names table has no name for this ID. The Chinese name, or the ID, is shown instead.
+    /// The names table has no name for this ID. The ID is shown instead.
     MissingName { kind: NameKind, id: String },
     /// The version's file name and the `version` it declares disagree. The file name wins.
     VersionMismatch { name: String, declared: String },

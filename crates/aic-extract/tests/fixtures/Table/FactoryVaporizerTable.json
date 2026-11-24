@@ -1,0 +1,13 @@
+{
+ "vaporizer_1": {
+  "id": "vaporizer_1",
+  "groups": [
+   {
+    "consumeItem": "item_gas_inert",
+    "consumeRate": 6,
+    "consumeRateUpperLimit": 30,
+    "genEnv": 1
+   }
+  ]
+ }
+}

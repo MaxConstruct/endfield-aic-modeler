@@ -8,23 +8,23 @@
 //! [`find_data_dir`], [`list_versions`] and [`load`] find and read a `data/` folder. A [`Bundle`]
 //! reads the same files from memory, for data built into the program.
 //!
-//! All rates are items per minute. Only the private `raw` module knows the factoriolab file format,
-//! which the data and the names tables both use.
+//! All rates are items per minute. The data file format is defined in [`file`] and nowhere else
+//! (ADR 0014); `aic-extract` writes it through the same types.
 
 mod bundle;
 mod catalog;
 #[cfg(not(target_arch = "wasm32"))]
 mod discover;
 mod error;
+pub mod file;
 mod ids;
 mod parse;
-mod raw;
 mod version;
 
 pub use bundle::Bundle;
 pub use catalog::{
-    ActivationInput, Catalog, Category, Facility, Icon, IconRect, ImageKind, InputRate, Item,
-    LoadWarning, NameKind, Recipe, Region,
+    ActivationInput, Catalog, Category, Facility, ImageKind, InputRate, Item, LoadWarning,
+    NameKind, Phase, Recipe, Region,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use discover::{DATA_DIR_ENV, DataDirSearch, find_data_dir, list_versions, load};

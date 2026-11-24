@@ -579,11 +579,50 @@ impl Graph {
         }
     }
 
-    /// Matches recipe nodes against another data version: a recipe or facility it lacks makes a
-    /// [`NodeKind::MissingRecipe`], and a missing recipe it has becomes a recipe node again. Node
-    /// IDs stay the same.
+    /// Matches the graph against another data version. An ID the data doesn't have but names an
+    /// alias for (an older version's ID for one of its recipes or items) becomes the ID it
+    /// stands for, wherever the graph holds it: recipe nodes, outpost orders, the items of
+    /// sources, sinks, logistics nodes and workspace ports, and links. Then a recipe or facility
+    /// the data lacks makes a [`NodeKind::MissingRecipe`], and a missing recipe it has becomes a
+    /// recipe node again. Node IDs stay the same.
     pub fn rebind(&mut self, catalog: &Catalog) {
+        let follow_item = |id: &mut ItemId| {
+            if catalog.item(id.as_str()).is_none()
+                && let Some(new) = catalog.item_alias(id.as_str())
+            {
+                *id = new.clone();
+            }
+        };
+        let follow_recipe = |id: &mut RecipeId| {
+            if catalog.recipe(id.as_str()).is_none()
+                && let Some(new) = catalog.recipe_alias(id.as_str())
+            {
+                *id = new.clone();
+            }
+        };
+        for link in self.links.values_mut() {
+            follow_item(&mut link.item);
+        }
         for node in self.nodes.values_mut() {
+            match &mut node.kind {
+                NodeKind::Recipe { recipe, .. } | NodeKind::MissingRecipe { recipe, .. } => {
+                    follow_recipe(recipe);
+                }
+                NodeKind::OutpostOrder { recipe, item, .. } => {
+                    follow_recipe(recipe);
+                    follow_item(item);
+                }
+                NodeKind::Source { item, .. } | NodeKind::Sink { item, .. } => follow_item(item),
+                NodeKind::Splitter { item }
+                | NodeKind::Merger { item }
+                | NodeKind::Storage { item }
+                | NodeKind::ControlPort { item, .. }
+                | NodeKind::WorkspacePort { item, .. } => {
+                    if let Some(item) = item {
+                        follow_item(item);
+                    }
+                }
+            }
             let (recipe, facility, limit) = match &node.kind {
                 NodeKind::Recipe {
                     recipe,
@@ -670,7 +709,7 @@ impl Graph {
         match (from_item, to_item) {
             (Some(a), Some(b)) if a == b => Ok(a),
             (Some(a), Some(b)) => {
-                let fluid = |id: &ItemId| catalog.item(id.as_str()).is_some_and(|i| i.is_fluid);
+                let fluid = |id: &ItemId| catalog.item(id.as_str()).is_some_and(|i| i.is_fluid());
                 if fluid(&a) == fluid(&b) {
                     Err(LinkError::ItemMismatch { from: a, to: b })
                 } else {

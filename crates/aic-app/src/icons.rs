@@ -148,10 +148,14 @@ mod tests {
     }
 
     #[test]
-    fn icons_no_data_version_uses_are_left_out() {
-        // A jambochen-only item, and a facility no data has (assets/icons/README.md).
-        assert!(!has(ImageKind::Item, "fbottle_copperenr_acid"));
-        assert!(!has(ImageKind::Facility, "vaporizer_1"));
+    fn icons_only_a_newer_data_version_uses_are_built_in_too() {
+        // Unused while v1.5.3 was the only version; v1.6.0 has the item and the facility
+        // (assets/icons/README.md).
+        assert!(has(ImageKind::Item, "fbottle_copperenr_acid"));
+        assert!(has(ImageKind::Facility, "vaporizer_1"));
+        // A copy under the game's ID of an item v1.5.3 named otherwise.
+        assert!(has(ImageKind::Item, "fbottle_iron_grass_1"));
+        assert!(has(ImageKind::Item, "iron_bottle-liquid_plant_grass_1"));
     }
 
     #[test]

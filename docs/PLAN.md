@@ -16,6 +16,7 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 - [0010](adr/0010-one-frontend-editor-crate-stays.md): one UI (egui) over a GUI-free editor crate; supersedes [0009](adr/0009-two-frontends-one-editor-crate.md).
 - [0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md): the canvas is drawn by `aic-node-graph`, our own copy of egui_graph, in place of egui-snarl (M11).
 - [0013](adr/0013-activation-inputs-run-whole-facilities.md): a facility's activation input is needed in full by every running facility; where links feed it, pass 1 settles the running facilities as whole numbers with a search capped at 200 nodes.
+- [0014](adr/0014-our-own-data-format-extracted-from-the-game.md): a data version is our own format, written by `aic-extract` from the game's tables, with aliases from an older version's IDs.
 
 Tech:
 
@@ -30,9 +31,11 @@ Tech:
 - Solver: linear programming via `good_lp` (pure-Rust `microlp` backend by default); pass 1 of a
   section with a link-fed activation input is mixed-integer, solved by microlp's branch and bound
   with a node limit (ADR 0013)
-- Data: copied by hand into `data/<version>/`. The first set comes from
-  [endfield-calc/factoriolab](https://github.com/endfield-calc/factoriolab) `src/data/aef/`, but the app
-  doesn't depend on that repo.
+- Data: one file per version, `data/<version>.json`, in our own format (ADR 0014). `v1.6.0` and
+  later are written by `aic-extract` from the tables of the game client, which the user exports and
+  copies in by hand. The first set, `v1.5.3`, came from
+  [endfield-calc/factoriolab](https://github.com/endfield-calc/factoriolab) `src/data/aef/` and was
+  converted once; the app depends on neither.
 
 ---
 
@@ -81,13 +84,14 @@ Tech:
 2. **Internal IDs are game IDs** (`copper_nugget`, `furnance_1`, `mix_pool_1`, …), never display names.
    Display names come from the i18n table at render time.
 3. **All rates are items per minute** inside the app. Convert once, in the data layer.
-4. **Data loading goes through our own schema.** `data/<version>.json` uses the factoriolab
-   format for now, but only `aic-data/src/raw.rs` knows that. Everything else uses `Catalog`.
+4. **Data loading goes through our own schema.** `data/<version>.json` is our own format, defined
+   only in `aic-data/src/file.rs` (ADR 0014); `aic-extract` writes it through those types.
+   Everything else uses `Catalog`.
 5. **Data is copied in by hand, not fetched.** No submodules, no clone scripts, no third-party network
    access at build or run time. (The web build's files come from its own site; that is not a
    third-party fetch.)
 6. **Use the glossary's terms in code.** `Facility`, not `Machine`. `Link`, not `Edge`. `Region`, not
-   `Location`. Only `raw.rs` uses factoriolab's names (`machine`, `locations`, `producers`).
+   `Location`. Only `aic-node-graph`, a general widget, keeps egui_graph's (edge, socket).
 7. **Every user-facing UI string goes through Fluent.** No string literals in widgets.
 8. Every milestone ends with `cargo test --workspace` and `cargo clippy --workspace -- -D warnings`
    passing.
@@ -102,9 +106,9 @@ Since M13 (ADR 0012) a data version is one file, and the names and icons are the
 
 ```
 data/
-├─ README.md                  # layout, and the license disclaimer for game data
-├─ <version>.json             # e.g. v1.5.3.json: items, facilities, recipes, icon colours, regions
-└─ <version>_overlay.json     # optional (M7): our own patches on top of <version>.json
+├─ README.md                  # layout, the format's reference, sources, the license disclaimer
+├─ <version>.json             # e.g. v1.6.0.json: items, facilities, recipes, regions (ADR 0014)
+└─ <version>_overlay.json     # optional (M7): our own changes on top of <version>.json
 crates/aic-editor/i18n/names/
 └─ <lang>.json                # game names keyed by game ID, one table for every version
 crates/aic-app/assets/icons/
@@ -114,14 +118,13 @@ crates/aic-app/assets/icons/
 └─ nodes/source.png, sink.png # built-in node kinds (the depot unloader and loader)
 ```
 
-- The repo has the data at `data/v1.5.3.json`. M0 moved it to `data/v1.5.3/` from `src/data/1.5.3/`,
-  and M13 to its own file. The icons came from
+- The repo has `data/v1.5.3.json` and `data/v1.6.0.json`. M0 moved v1.5.3 to `data/v1.5.3/` from
+  `src/data/1.5.3/`, M13 to its own file, and M8 converted it to our format. The icons came from
   [jambochen/endfield-calc](https://github.com/jambochen/endfield-calc), renamed to our IDs; see
   `crates/aic-app/assets/icons/README.md`.
-- Max copies these files in by hand. Initial source: `endfield-calc/factoriolab`, `src/data/aef/`
-  (`data.json`, `i18n/en.json`). In that repo, ignore `data-dsp.json`, `data-sfy.json`,
-  `data-spa.json` and `defaults-spa.json`. Those are Dyson Sphere Program / Satisfactory / Factorio test
-  fixtures from upstream, not Endfield. Its `icons.webp` sprite sheet is not used.
+- Max copies these files in by hand. Since M8 a version is written by `aic-extract` from the game
+  client's tables, exported by the user (`data/README.md` says how, and what it assumes). The
+  initial source was `endfield-calc/factoriolab`, `src/data/aef/` (`data.json`, `i18n/en.json`).
 - **Version selection:** the app takes every `*.json` in `data/` that is not a `*_overlay.json` as a
   version, picks the highest by default (semver-ish parsing on the `vX.Y.Z` name, falling back to
   string order), and lets you switch in Settings. The file's name is the version string. If it doesn't
@@ -135,7 +138,29 @@ crates/aic-app/assets/icons/
 - **Saved graphs record the data version they were made with.** On load, if that version isn't the
   active one, show a banner and still load by ID (see M2).
 
+### Facts about the game's tables (v1.6.0, verified 2026-11-25)
+
+The extractor's sources, each a JSON object keyed by ID, with text as an ID into
+`I18nTextTable_<LANG>.json` (M8 lists them in full):
+
+- Crafts: `FactoryMachineCraftTable` (342 rows; `time = progressRound × msPerRound` of its
+  formula group), on 18 buildings. The same craft on both mixing pools is two rows; the data
+  merges them into one recipe with two facilities (11 such pairs).
+- Items: `FactoryItemTable` (`phaseType` 1 solid, 2 liquid, 4 gas; `showInHubDomainIds`, which
+  gives a recipe's regions), `ItemTable` (name, `showingType`, which gives its category).
+- Buildings: `FactoryBuildingTable` (power, regions), `FactoryBuildingItemTable` (the item that
+  places each, which gives our facility IDs), `FactoryTransmuterTable` (activation inputs:
+  6/min each), `FactoryVaporizerTable` (the Gas Dispersing Unit's four gases), the miner, pump,
+  power station, fluid-consume and sewage tables, `SettlementBasicDataTable` (outpost prices),
+  `DomainDataTable` (regions and their coupons), `FactoryGridBeltTable` and
+  `FactoryLiquidPipeTable` (one item per 2000 ms on a belt: **30/min**; one unit per 500 ms in a
+  pipe: **120/min**).
+- All four mining rigs and the gas extractor give 1 per 3 s; pumps 1 per s.
+
 ### Facts about the first data set (factoriolab `aef`, verified 2026-11-08)
+
+History: this is the data v1.5.3 came from. M8 converted it to our own format (ADR 0014) and
+dropped factoriolab's format from the app; what follows describes the file as it was copied.
 
 `data.json` (now `data/v1.5.3.json`) keys:
 
@@ -148,9 +173,8 @@ crates/aic-app/assets/icons/
 `i18n/en.json` (now `crates/aic-editor/i18n/names/en.json`) has keys `name`, `version`, `categories`,
 `items` (161), `recipes` (257) and `locations`, each a map from ID to English name.
 
-This data set is **v1.5.3**, and that repo's last commit was 2026-09-07. The game is already at v1.6, so
-expect a few missing or changed recipes. A `data/v1.6.json`, from another source, or an overlay, is the
-fix.
+This data set is **v1.5.3**, and that repo's last commit was 2026-09-07. The game was already at
+v1.6; M8 added `data/v1.6.0.json` from the game's own tables.
 
 Shape:
 
@@ -181,6 +205,7 @@ Shape:
   `aic-core`, with app-drawn icons, no facility, no recipe and no power.
 - To check: `miner_2` and `miner_3` both have `speed: 1` and the flag `totalRecipe`. Check in-game whether
   the higher-tier miner is faster, and add a per-facility speed override in the overlay if so.
+  (Answered by the game's tables in M8: every rig gives 1 per 3 s.)
 
 Rate formula (per facility, per minute): `qty * 60 / time * facility.speed`.
 
@@ -200,19 +225,20 @@ endfield-aic-modeler/
 │  └─ ref/                    # reference screenshots used by golden tests
 ├─ data/
 │  ├─ README.md
-│  ├─ v1.5.3.json             # a data version (ADR 0012); its names and icons are in the crates
-│  └─ v1.5.3_overlay.json     # its overlay: the transmuting units' activation inputs (ADR 0013)
+│  ├─ v1.5.3.json             # a data version (ADR 0012, 0014); its names and icons are in the crates
+│  └─ v1.6.0.json             # the newest, written by aic-extract from the game's tables
 └─ crates/
-   ├─ aic-data/               # parse + normalize -> Catalog; native discovery. deps: serde, serde_json, thiserror, indexmap
+   ├─ aic-data/               # the data file format (file.rs) and its loader -> Catalog; native discovery. deps: serde, serde_json, serde_path_to_error, thiserror, indexmap
    ├─ aic-core/               # Graph model, validation, sections, solver. deps: aic-data, good_lp, serde, slotmap
    ├─ aic-editor/             # App logic, no GUI dependency: document, session, selection, commands, files, Fluent strings and the game names (i18n/), style tokens, built-in data (ADR 0010, 0012)
    ├─ aic-node-graph/         # The node canvas widget, our copy of egui_graph 0.19.1 (ADR 0011). deps: egui, siphasher
    ├─ aic-app/                # eframe UI and the icons (assets/icons/). deps: aic-editor, aic-node-graph, eframe, egui-scale, egui_dock, rfd
-   └─ aic-extract/            # LATER (M8): CLI that converts other sources into data/<version>.json
+   └─ aic-extract/            # CLI: the game's exported tables -> data/<version>.json and English names (M8, ADR 0014). deps: aic-data, serde, serde_json, indexmap, thiserror
 ```
 
-`aic-data` should also expose a writer for its normalized format (`Catalog` → JSON). The extractor CLI
-will need it, and it makes the internal format easy to inspect.
+`aic-data` exposes the data file format as public serde types with a writer
+(`aic_data::file::DataFile::to_json`), which `aic-extract` writes through, and `Catalog::to_json`
+dumps the normalized catalog for inspection.
 
 Crate versions (crates.io, checked 2026-11-08):
 
@@ -635,8 +661,9 @@ Done, except where noted.
   "<item id>", "per_min": <rate> } } }`, with items and recipes written as in `data.json`.
   `facility_activation` (ADR 0013) names a facility's activation input: the facility must exist, the
   item too, the rate must be positive, and every recipe of the facility must take at least that much
-  of the item at one facility; otherwise it is a load error. `data/v1.5.3_overlay.json` declares the
-  two transmuting units'.
+  of the item at one facility; otherwise it is a load error. `data/v1.5.3_overlay.json` declared the
+  two transmuting units'. (M8 replaced this format: an overlay now has `items`, `facilities` and
+  `recipes` in the data file's own entries, and activation inputs are in the data file; ADR 0014.)
   Adding an ID that exists, or replacing or removing one that doesn't, is an error that names
   `overlay.json` and the path; unknown keys are errors too. `Catalog::from_bytes_with_overlay` for the web.
 - Settings (renamed from Raw resources): data version and game-name language (from `i18n/*.json`), kept in
@@ -743,14 +770,84 @@ Done, except where noted.
        `codegen-units = 1` for `scripts/package-*`. Not named `dist`: that is `target/dist/`, where
        the packaging scripts already write.
 
-### M8: `aic-extract` CLI
-- `aic-extract <source-kind> <input> --out data/<version>.json` writes the data version (factoriolab
-  format, for now), adds the names it brings to `crates/aic-editor/i18n/names/<lang>.json`, and notes
-  its source in `data/README.md` (ADR 0012).
-- Source kinds to consider: factoriolab `aef` folder (a copy and check, useful as the reference
-  implementation), warfarin.wiki facility pages (zh, already has v1.6), and endfield.wiki.gg (English).
-- `aic-extract diff data/v1.5.3.json data/v1.6.json` lists added, removed and changed recipes.
-- Validate output by loading it with `aic-data` and running the same consistency checks as the M1 tests.
+### M8: Our own data format and `aic-extract`
+Done (2026-11-25, [ADR 0014](adr/0014-our-own-data-format-extracted-from-the-game.md)). The data
+is in our own format, read by one loader, and `v1.6.0` comes from the game client's own tables.
+
+- **The format** (`aic_data::file`, reference in `data/README.md`): `format` 1, belt and pipe per
+  minute, regions, categories, items (phase, colour), facilities (speed, power, regions, activation
+  input), recipes (time, inputs and outputs in order, facilities, power override, `kind` mining or
+  trade, hidden, regions, gas environment) and aliases. Unknown keys and any other `format` are load
+  errors. Public serde types with `DataFile::to_json`, so `aic-extract` writes the format through
+  `aic-data`'s own types; `raw.rs` and factoriolab's format are gone.
+- **Activation inputs** are listed apart from the recipe in the file, as the game does, and the
+  loader adds them to every recipe of the facility, so `Catalog` and `aic-core` are as ADR 0013 has
+  them. Facilities of one recipe that disagree on one are a load error.
+- **`Catalog`**: `items()` no longer holds facilities; `Item` has `phase` (`is_fluid()` is a
+  method) and `color`, and lost `name_zh`, `category` and `icon`; `Catalog::icon` and the sprite
+  rectangles are gone; `Recipe` lost `icon` and has `environment`; `recipe_image` is first output,
+  else first input, else first facility. `recipe_alias` and `item_alias` give an older version's IDs'
+  counterparts; an alias's target must exist and its source must not. A missing name falls back to
+  the ID (no more Chinese names).
+- **Overlay**: `items`, `facilities` and `recipes`, each `add` / `replace` / `remove`.
+  `facility_speeds` and `facility_activation` are gone, and with them `data/v1.5.3_overlay.json`.
+- **v1.5.3 converted** once by a throwaway script, with the activation inputs taken out of the
+  transmuting units' recipes and put on the facilities. Checked against a dump of the catalog before
+  the change: every item (but `belt` and `pipe`, which no recipe used), facility and recipe, in the
+  same order, with the same numbers, flags, regions, names and colours.
+- **`aic-extract`** (`crates/aic-extract`, a library and a thin `main.rs`; deps `aic-data`, serde,
+  serde_json, indexmap, thiserror): `aic-extract <Table folder> --version v1.6.0 [--previous
+  data/v1.5.3.json] [--data-dir data] [--names …/en.json] [--lang EN]`. It writes the version,
+  adds the English names the table lacks to `en.json` (changing none but a facility's, which takes
+  the game's name for its building, and a filling's or emptying's, below; keeping the table's key
+  order and line endings), checks that the result loads, and prints a report. What it reads and how:
+  - recipe IDs are the game's craft IDs; items the game's ID without `item_`; facilities the ID of
+    the item that places them without `item_port_` (two buildings without one keep the app's
+    `liquid_clean_gate` and `liquid_recycle_gate`); regions `domain_1` → `tundra`, `domain_2` →
+    `jinlong`;
+  - the same craft, mining output or sink on several buildings is one recipe on several facilities;
+  - a craft that fills a container with a fluid, and the craft that empties it again, are named
+    `Packaged <fluid> (<container>)` and `Unpackage <fluid> (<container>)` (150 of v1.6.0's
+    recipes): the game calls every emptying of an Amethyst Bottle "Amethyst Bottle Production"
+    and every filling with water "Clean Water (Bottled)";
+  - other recipes the game gives one name ("Carbon Powder Production" is six) take, in
+    brackets, the first input the others of that name don't all take, or, with the same items,
+    the gas whose environment they need; one that has neither keeps the plain name (40 of
+    v1.6.0's recipes renamed, none left sharing a name; any that are go in the report);
+  - recipe order: with `--previous`, a recipe that version had (by ID or alias) goes where it
+    was; a new one goes right after the last recipe that makes the same main product (or, making
+    nothing, takes it), else after them all in the game's order (building, then `sortId`). So
+    v1.6.0 keeps v1.5.3's order, which follows each raw resource through what is made of it.
+    Fillings, then emptyings, then trades always come last. Without `--previous`: mining, crafts
+    by building, the other buildings, then those;
+  - mining from the rigs, the gas extractor and pumps (natural liquids only), power from the
+    Thermal Bank's fuels, the Water Treatment Unit, the sewage inlet and outlet (5 s per 30, from
+    the plant's three inlets), the Gas Dispersing Unit (6/min of each of its gases), outpost trades
+    at each outpost's highest level (the larger price where two disagree; none did);
+  - a recipe's regions are what its items share; its category the showing type of its first output
+    (`type_<n>`, named from `ItemShowingTypeTable`), `gen-power` and `settlement`;
+  - where the game calls items the same (a filled bottle is called as its empty bottle), one made by
+    filling a container of that name is called `<container>(<contents>)`;
+  - aliases from `--previous`: seven item IDs the old data made up, and each old recipe whose ID is
+    gone to the one new recipe on its facilities with the same items at the same rates.
+  Tests on hand-written tables in `crates/aic-extract/tests/fixtures/`.
+- **`data/v1.6.0.json`**: 247 items, 32 facilities, 387 recipes, 7 item aliases and 155 recipe
+  aliases. Every v1.5.3 recipe that v1.6.0 has, by ID (42) or alias (155), runs at the same rates per
+  minute on each of its facilities, activation inputs included (an `#[ignore]`d test in
+  `aic-data/tests/real_data.rs`); trades compare coupons per item, since a trade is untimed (2 s
+  now, 2 or 10 s in v1.5.3). Left behind: the 59 cross-region transfers, which the app hides, and
+  `__miner_water`, the old data's own water rig. It is the newest version, so the app's default.
+- **`Graph::rebind` follows aliases** for recipe nodes, outpost orders and every item a graph
+  holds (sources, sinks, logistics nodes, workspace ports, links), and `Graph::from_json` rebinds,
+  so a graph saved on v1.5.3 opens on v1.6.0. Switching back finds the new IDs missing: aliases go
+  one way.
+- **A new recipe node starts on the first facility its graph's region has** (`picker::recipe_node`
+  takes the region), else on the recipe's first. Originium Ore now lists the Portable Originium Rig
+  first, which only Valley IV has, so a Wuling graph would have started on it with a region warning.
+- Icons: the four bottle items v1.5.3 named otherwise are copied under the game's IDs; v1.6.0's other
+  new items use jambochen's icons that were unused, or none (35, and the coupons).
+- Left for later: a diff between two versions (`aic-extract diff`), other languages' names, and the
+  gas environment itself (M14).
 
 ### M9: Web build
 Done.
@@ -1756,6 +1853,45 @@ Looked at and left out:
 - **Loading the icons after the editor opens**, or each on first use: decided against, above.
 - **Names in Fluent**: the game's names stay in the format they come in.
 
+### M14: Gas environments
+Planned 2026-11-25; not started. Needs an ADR and the glossary term (**Gas environment**, added in
+M8) before code.
+
+What the game does (v1.6.0 tables):
+
+- The Gas Dispersing Unit (`vaporizer_1`) takes 6 a minute of one of four gases, Inergen
+  (`gas_inert`), Aquagen (`gas_water`), Acridgen (`gas_acid`) or Xiragen (`gas_xiranite`), and sets
+  that gas's environment around itself (`FactoryVaporizerTable`: `genEnv` 1 to 4,
+  `rangeExtend` 5 × 5 × 5). Taking `consumeRate` as per minute is M8's assumption.
+- Recipes that need an environment (`gasEnv` of the craft), with their gas:
+  - `gas_reactor_activity_copper_poly_gas_1`, Proto Xiran-Cuprium Gas Production (Gas Reactor
+    Globe): Inergen;
+  - `gas_reactor_gas_copper_enr2_1`, Pyrrolite Gas Production (Gas Reactor Globe): Acridgen;
+  - `liquid_purifier_gas_xiranite_enr_2`, Heavy Xiragen Purification (Purification Unit): Inergen;
+  - `liquid_purifier_gas_copper_enr_2`, Hetonite Gas Purification (Purification Unit): Inergen;
+  - `xiranite_oven_xiranite_powder_2`, Xiranite Production (Forge of the Sky): Inergen.
+  The two purifier recipes also exist without an environment, where they take 2 Filter Cores a
+  craft in place of 1.
+- The facility modes the game flags as environment modes (`FactoryMachineCrafterTable`,
+  `isEnvMode`): the Gas Reactor Globe's gas mode, the Purification Unit's gas mode and the Forge of
+  the Sky's gas & fluid mode.
+
+What M8 already put in the data: `Recipe::environment` (the gas's item ID, from the file's
+`environment`), and the unit's four recipes, `vaporizer_1-<gas>`, each 6 of its gas over 60 s and
+nothing out. The solver and the UI ignore `environment` today: those five recipes run as if the
+environment were there.
+
+Open questions:
+
+- An environment is not a flow. The recipe doesn't consume it, and one unit serves every facility
+  in its range, which is spatial (ADR 0002 keeps layout out). So it can't be a port or a link.
+- Candidates: a badge on the card naming the gas a recipe needs, and a warning when a graph has such
+  a recipe and no dispersing unit of that gas anywhere in it (the solver's warnings, as for regions).
+  The unit's 6/min would be an input every running unit needs in full, whatever it serves: an
+  activation input of whole units (ADR 0013's machinery) of which nothing scales.
+- Whether a graph should say how many units it needs (it can't know the layout), or leave the count
+  to the player.
+
 ---
 
 ## 7. Suggested Claude Code session order
@@ -1772,5 +1908,8 @@ Keep each milestone as its own commit or branch, so a bad UI experiment is easy 
 
 ## 8. Open questions to settle while building
 
-- Exact belt and pipe throughput in-game (30 and 120 per minute assumed from the data).
-- Whether higher-tier miners are faster (the data says both have speed 1).
+Both questions here were answered by the game's tables in M8:
+
+- Belt and pipe throughput: 30 and 120 per minute (`FactoryGridBeltTable`: one item per 2000 ms;
+  `FactoryLiquidPipeTable`: one unit per 500 ms).
+- Higher-tier miners are not faster: all four mining rigs give 1 per 3 s (`FactoryMinerTable`).

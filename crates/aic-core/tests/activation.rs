@@ -24,17 +24,19 @@ const XIRANITE: &str = "xiranite_powder";
 fn catalog() -> Catalog {
     TestCatalog::new()
         .facility_with(UNIT, 1.0, 50.0, &[JINLONG])
-        // 5 Heavy Xiragen + 1 Xiragen → 2 Heavy Xiranite per 10 s: 30 + 6 → 12 per minute. All
-        // 6 Xiragen is the activation input; none of it scales.
+        // 5 Heavy Xiragen (+ 1 Xiragen of activation) → 2 Heavy Xiranite per 10 s: 30 + 6 → 12
+        // per minute. All 6 Xiragen is the activation input; none of it scales.
         .recipe(
             ENR_POWDER,
             UNIT,
             10.0,
-            &[(HEAVY_XIRAGEN, 5.0), (XIRAGEN, 1.0)],
+            &[(HEAVY_XIRAGEN, 5.0)],
             &[(HEAVY_XIRANITE, 2.0)],
         )
-        // 1.2 Xiragen → 1 Xiranite per 2 s: 36 → 30 per minute. 30 Xiragen scales, 6 doesn't.
-        .recipe(POWDER, UNIT, 2.0, &[(XIRAGEN, 1.2)], &[(XIRANITE, 1.0)])
+        // 1 Xiragen (+ 0.2 of activation) → 1 Xiranite per 2 s: 36 → 30 per minute. 30 Xiragen
+        // scales, 6 doesn't.
+        .recipe(POWDER, UNIT, 2.0, &[(XIRAGEN, 1.0)], &[(XIRANITE, 1.0)])
+        // On top of the inputs above, as in the data file (ADR 0014).
         .activation(UNIT, XIRAGEN, 6.0)
         .build()
 }

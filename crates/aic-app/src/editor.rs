@@ -319,7 +319,10 @@ impl Editor {
                 if let Some(kind) = self
                     .browser
                     .ui(ui, self.session.catalog(), strings)
-                    .and_then(|id| recipe_node(self.session.catalog(), id))
+                    .and_then(|id| {
+                        let region = self.session.document().graph().region();
+                        recipe_node(self.session.catalog(), region, id)
+                    })
                 {
                     let at = to_pos(self.canvas.center());
                     let node = self.session.add_node(kind, at, self.view.level());

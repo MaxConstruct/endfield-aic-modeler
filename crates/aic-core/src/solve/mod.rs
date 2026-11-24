@@ -453,7 +453,7 @@ fn count_belts(catalog: &Catalog, graph: &Graph, solution: &mut Solution) {
         };
         let fluid = catalog
             .item(link.item.as_str())
-            .is_some_and(|item| item.is_fluid);
+            .is_some_and(|item| item.is_fluid());
         let capacity = if fluid {
             catalog.pipe_per_min()
         } else {

@@ -1,0 +1,10 @@
+{
+ "pump_1": {
+  "id": "pump_1",
+  "enableLiquidIds": [
+   "item_liquid_water",
+   "item_liquid_plant_grass_1"
+  ],
+  "msPerRound": 1000
+ }
+}

@@ -80,7 +80,7 @@ pub fn warning_text(
             let fluid = link_item
                 .as_ref()
                 .and_then(|id| catalog.item(id.as_str()))
-                .is_some_and(|i| i.is_fluid);
+                .is_some_and(|i| i.is_fluid());
             let name = link_item.as_ref().map(item).unwrap_or_default();
             let key = if fluid {
                 "warning-pipe-over"

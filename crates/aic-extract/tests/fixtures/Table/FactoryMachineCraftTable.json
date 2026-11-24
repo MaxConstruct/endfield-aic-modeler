@@ -1,0 +1,354 @@
+{
+  "furnance_copper_nugget_1": {
+    "machineId": "furnance_1",
+    "formulaGroupId": "group_furnance",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_copper_ore",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_copper_nugget",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "progressRound": 2,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 50,
+      "text": ""
+    },
+    "sortId": 2,
+    "signal": 0
+  },
+  "pool_sewage_1": {
+    "machineId": "mix_pool_1",
+    "formulaGroupId": "group_pool",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_copper_nugget",
+            "count": 1
+          },
+          {
+            "id": "item_liquid_water",
+            "count": 2
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_liquid_sewage",
+            "count": 2
+          }
+        ]
+      }
+    ],
+    "progressRound": 3,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 51,
+      "text": ""
+    },
+    "sortId": 1,
+    "signal": 0
+  },
+  "pool_sewage_2": {
+    "machineId": "mix_pool_2",
+    "formulaGroupId": "group_pool",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_copper_nugget",
+            "count": 1
+          },
+          {
+            "id": "item_liquid_water",
+            "count": 2
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_liquid_sewage",
+            "count": 2
+          }
+        ]
+      }
+    ],
+    "progressRound": 3,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 52,
+      "text": ""
+    },
+    "sortId": 1,
+    "signal": 0
+  },
+  "liquid_transmuter_2_xiranite_powder_1": {
+    "machineId": "transmuter_2",
+    "formulaGroupId": "group_transmuter",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_gas_xiranite",
+            "count": 5
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_xiranite_powder",
+            "count": 2
+          }
+        ]
+      }
+    ],
+    "progressRound": 10,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 53,
+      "text": ""
+    },
+    "sortId": 1,
+    "signal": 0
+  },
+  "filling_bottled_iron_water": {
+    "machineId": "furnance_1",
+    "formulaGroupId": "group_furnance",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_iron_bottle",
+            "count": 1
+          },
+          {
+            "id": "item_liquid_water",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_fbottle_iron_water",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "progressRound": 2,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 55,
+      "text": ""
+    },
+    "sortId": 3,
+    "signal": 0
+  },
+  "xiranite_oven_xiranite_powder_2": {
+    "machineId": "xiranite_oven_1",
+    "formulaGroupId": "group_oven",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_copper_nugget",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "group": [
+          {
+            "id": "item_liquid_water",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_xiranite_powder",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "progressRound": 4,
+    "gasEnv": 1,
+    "formulaDesc": {
+      "id": 54,
+      "text": ""
+    },
+    "sortId": 1,
+    "signal": 0
+  },
+  "dismantler_iron_water_1": {
+    "machineId": "furnance_1",
+    "formulaGroupId": "group_furnance",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_fbottle_iron_water",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_iron_bottle",
+            "count": 1
+          },
+          {
+            "id": "item_liquid_water",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "progressRound": 2,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 56,
+      "text": ""
+    },
+    "sortId": 4,
+    "signal": 0
+  },
+  "xiranite_oven_copper_nugget_1": {
+    "machineId": "xiranite_oven_1",
+    "formulaGroupId": "group_oven",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_xiranite_powder",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_copper_nugget",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "progressRound": 1,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 57,
+      "text": ""
+    },
+    "sortId": 2,
+    "signal": 0
+  },
+  "xiranite_oven_heavy_1": {
+    "machineId": "xiranite_oven_1",
+    "formulaGroupId": "group_oven",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_gas_xiranite",
+            "count": 2
+          },
+          {
+            "id": "item_copper_nugget",
+            "count": 2
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_liquid_xiranite_poly",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "progressRound": 1,
+    "gasEnv": 0,
+    "formulaDesc": {
+      "id": 63,
+      "text": ""
+    },
+    "sortId": 5,
+    "signal": 0
+  },
+  "xiranite_oven_heavy_2": {
+    "machineId": "xiranite_oven_1",
+    "formulaGroupId": "group_oven",
+    "ingredients": [
+      {
+        "group": [
+          {
+            "id": "item_gas_xiranite",
+            "count": 2
+          },
+          {
+            "id": "item_copper_nugget",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "outcomes": [
+      {
+        "group": [
+          {
+            "id": "item_liquid_xiranite_poly",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "progressRound": 1,
+    "gasEnv": 1,
+    "formulaDesc": {
+      "id": 63,
+      "text": ""
+    },
+    "sortId": 6,
+    "signal": 0
+  }
+}

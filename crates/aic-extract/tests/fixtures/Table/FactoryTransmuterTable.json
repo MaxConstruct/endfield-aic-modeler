@@ -1,0 +1,9 @@
+{
+ "transmuter_2": {
+  "id": "transmuter_2",
+  "consumeItem": "item_gas_xiranite",
+  "consumeRate": 6,
+  "consumeRateUpperLimit": 30,
+  "consumeBindings": 2
+ }
+}

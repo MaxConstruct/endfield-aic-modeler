@@ -534,3 +534,122 @@ fn a_graph_with_nodes_changes_region_and_warns_about_what_the_new_one_lacks() {
         }]
     );
 }
+
+/// A catalog whose recipes and items an older one called otherwise, and that older one.
+fn renamed_catalogs() -> (Catalog, Catalog) {
+    let old = TestCatalog::new()
+        .facility("furnace", 5.0)
+        .facility("outpost", 0.0)
+        .recipe("ingot", "furnace", 2.0, &[("ore", 1.0)], &[("ingot", 1.0)])
+        .recipe("gone", "furnace", 2.0, &[("ingot", 1.0)], &[("plate", 1.0)])
+        .outpost_order("coupon-ingot", "outpost", "ingot", "coupon", 3.0)
+        .build();
+    let new = TestCatalog::new()
+        .facility("furnace", 5.0)
+        .facility("outpost", 0.0)
+        .recipe(
+            "furnance_ingot_1",
+            "furnace",
+            2.0,
+            &[("ore", 1.0)],
+            &[("iron_ingot", 1.0)],
+        )
+        .outpost_order("coupon-iron_ingot", "outpost", "iron_ingot", "coupon", 3.0)
+        .item_alias("ingot", "iron_ingot")
+        .recipe_alias("ingot", "furnance_ingot_1")
+        .recipe_alias("coupon-ingot", "coupon-iron_ingot")
+        .build();
+    (old, new)
+}
+
+/// ore source → ingot → splitter → outpost order, and an ingot sink inside a workspace, through
+/// one of its ports; built against `catalog`.
+fn renamed_graph(catalog: &Catalog) -> (Graph, [aic_core::NodeId; 6]) {
+    let mut g = Graph::new(region(TUNDRA));
+    let source = add(
+        &mut g,
+        NodeKind::Source {
+            item: item("ore"),
+            limit: 60.0,
+        },
+    );
+    let ingot = add_recipe(&mut g, catalog, "ingot", None);
+    let splitter = add(&mut g, NodeKind::Splitter { item: None });
+    let order = add(
+        &mut g,
+        NodeKind::outpost_order(catalog, &"coupon-ingot".into()).unwrap(),
+    );
+    let gone = add_recipe(&mut g, catalog, "gone", None);
+    let port = add(
+        &mut g,
+        NodeKind::WorkspacePort {
+            side: Side::Output,
+            item: None,
+        },
+    );
+    link(&mut g, catalog, source, ingot, "ore");
+    link(&mut g, catalog, ingot, splitter, "ingot");
+    g.connect(catalog, PortRef::any(splitter), PortRef::any(order))
+        .unwrap();
+    g.connect(catalog, PortRef::any(splitter), PortRef::any(port))
+        .unwrap();
+    (g, [source, ingot, splitter, order, gone, port])
+}
+
+#[test]
+fn rebinding_follows_the_new_datas_aliases_for_recipes_and_items() {
+    let (old, new) = renamed_catalogs();
+    let (mut g, [_, ingot, splitter, order, gone, port]) = renamed_graph(&old);
+
+    g.rebind(&new);
+    assert_eq!(
+        g.node(ingot).unwrap().kind,
+        NodeKind::Recipe {
+            recipe: "furnance_ingot_1".into(),
+            facility: "furnace".into(),
+            limit: None,
+        }
+    );
+    assert_eq!(
+        g.node(order).unwrap().kind,
+        NodeKind::OutpostOrder {
+            recipe: "coupon-iron_ingot".into(),
+            item: item("iron_ingot"),
+            limit: None,
+        }
+    );
+    assert_eq!(
+        g.node(splitter).unwrap().kind.item(),
+        Some(&item("iron_ingot"))
+    );
+    assert_eq!(g.node(port).unwrap().kind.item(), Some(&item("iron_ingot")));
+    assert!(g.links().values().all(|l| l.item != item("ingot")));
+    // An ID with no alias is missing, as before.
+    assert!(matches!(
+        g.node(gone).unwrap().kind,
+        NodeKind::MissingRecipe { .. }
+    ));
+    let issues: Vec<_> = (g.validate(&new).into_iter())
+        .filter(|issue| !matches!(issue, Issue::MissingRecipe { .. }))
+        .collect();
+    assert!(issues.is_empty(), "{issues:?}");
+    let solution = aic_core::solve(&new, &g);
+    // 60 ore a minute runs two furnaces.
+    let count = solution.facility_count[&ingot].expect("determined");
+    assert!((count - 2.0).abs() < 1e-6, "{count}");
+}
+
+#[test]
+fn a_saved_graph_opens_through_the_aliases() {
+    let (old, new) = renamed_catalogs();
+    let (g, _) = renamed_graph(&old);
+    let LoadedGraph { graph, .. } = Graph::from_json(&new, &g.to_json("old")).unwrap();
+    let recipes: Vec<&str> = (graph.nodes().values())
+        .filter_map(|node| match &node.kind {
+            NodeKind::Recipe { recipe, .. } => Some(recipe.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(recipes, ["furnance_ingot_1"]);
+    assert!(graph.links().values().all(|l| l.item != item("ingot")));
+}

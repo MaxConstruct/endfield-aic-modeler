@@ -1,11 +1,13 @@
 {
-  "version": { "arknights-endfield": "v1.8.0" },
-  "icons": [],
-  "categories": [],
-  "locations": [{ "id": "tundra", "name": "四号谷地", "icon": "tundra" }],
-  "items": [
-    { "id": "belt", "name": "传送带", "belt": { "speed": 0.5 }, "category": "belt-and-pipe", "row": 999, "icon": "belt" },
-    { "id": "pipe", "name": "管道", "pipe": { "speed": 2 }, "category": "belt-and-pipe", "row": 999, "icon": "pipe" }
+  "format": 1,
+  "version": "v1.8.0",
+  "belt_per_min": 30,
+  "pipe_per_min": 120,
+  "regions": [
+    "tundra"
   ],
+  "categories": [],
+  "items": [],
+  "facilities": [],
   "recipes": []
 }

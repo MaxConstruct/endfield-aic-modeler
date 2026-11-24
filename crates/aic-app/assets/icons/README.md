@@ -29,13 +29,20 @@ renamed to our IDs (2026-11-09):
   `liquid_recycle_gate_1` → `liquid_recycle_gate`, `power_station_1` → `power_sta_1`,
   `seedcollector_1` → `seedcol_1`, `tools_assebling_mc_1` → `tools_asm_mc_1`, `transmuter_1` →
   `phase_trans_1`, `transmuter_2` → `phase_trans_2` (the order of the two transmuting units is
-  assumed, not checked). `vaporizer_1` matches no facility and is unused.
+  the game's: `FactoryBuildingItemTable` places `transmuter_1` with `item_port_phase_trans_1`).
+  `vaporizer_1` (the Gas Dispersing Unit) is used since data v1.6.0.
 - `nodes/source.png` and `sink.png`: jambochen's `unloader_1` (Depot Unloader) and `loader_1`
   (Depot Loader), used for source and sink nodes.
 - Items renamed: `fbottle_{copper,iron}_grass_{1,2}` →
   `{copper,iron}_bottle-liquid_plant_grass_{1,2}`.
-- No icon yet: the mining rigs (`miner_2`, `miner_3`, `miner_4`, `__miner_pump_1`), outposts,
-  `__domain_transfer`, coupons, `belt`, `pipe`. The app draws initials for those.
+- Data v1.6.0 (M8, ADR 0014) calls those four items by the game's IDs again, so each is also here
+  under `fbottle_{copper,iron}_grass_{1,2}.png`, a copy (2026-11-25): v1.5.3 still uses the old IDs.
+  Its other new items (bottle and canister variants, `plant_sp_*`, …) use the jambochen-only icons
+  that were unused before.
+- No icon yet: the mining rigs (`miner_1` to `miner_4`, `__miner_pump_1`), outposts,
+  `__domain_transfer`, coupons (`tundra_coupon`, `domain_tundra_coupon`, …), and 35 more items new
+  in data v1.6.0 (crops and their seeds, ingredients, ranch and inn goods). The app draws initials
+  for those.
 
 ## License
 

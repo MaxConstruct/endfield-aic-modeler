@@ -178,8 +178,8 @@ pub fn item_icon(ui: &mut Ui, catalog: &Catalog, item: &str, size: f32) -> egui:
 /// The item's icon color from the data, or a stable color derived from its ID.
 fn item_color(catalog: &Catalog, item: &str) -> Color32 {
     catalog
-        .icon(item)
-        .and_then(|icon| icon.color.as_deref())
+        .item(item)
+        .and_then(|item| item.color.as_deref())
         .and_then(|hex| Color32::from_hex(hex).ok())
         .unwrap_or_else(|| {
             let hash = item.bytes().fold(2_166_136_261_u32, |h, b| {

@@ -1,0 +1,8 @@
+{
+ "grid_belt_01": {
+  "id": "grid_belt_01",
+  "beltData": {
+   "msPerRound": 2000
+  }
+ }
+}

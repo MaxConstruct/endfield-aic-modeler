@@ -48,11 +48,12 @@ mod tests {
         assert!(versions.iter().any(|v| v.name == "v1.5.3"));
     }
 
-    /// The overlay beside a version is built in with it, on the desktop and the web alike.
+    /// v1.5.3 stays built in beside the newer versions, with the transmuting units' activation
+    /// inputs that its file now holds (ADR 0014).
     #[test]
-    fn the_built_in_v1_5_3_has_its_overlay() {
+    fn the_built_in_v1_5_3_has_its_activation_inputs() {
         let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
-        if !data.join("v1.5.3_overlay.json").is_file() {
+        if !data.join("v1.5.3.json").is_file() {
             return;
         }
         let names = super::names("en").expect("English names are built in");
@@ -60,6 +61,16 @@ mod tests {
         let unit = catalog.facility("phase_trans_2").expect("facility exists");
         let activation = unit.activation.as_ref().expect("has an activation input");
         assert_eq!(activation.item().as_str(), "gas_xiranite");
+    }
+
+    /// The newest built-in version is the game's v1.6.0, extracted from its tables.
+    #[test]
+    fn the_newest_built_in_version_is_v1_6_0() {
+        let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
+        if !data.join("v1.6.0.json").is_file() {
+            return;
+        }
+        assert_eq!(super::bundle().versions()[0].name, "v1.6.0");
     }
 
     #[test]

@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "version": "v0.9.0",
+  "belt_per_min": 30,
+  "pipe_per_min": 120,
+  "regions": ["tundra", "jinlong"],
+  "categories": ["material", "settlement"],
+  "items": [
+    { "id": "copper_ore", "color": "#aa5533" },
+    { "id": "copper_nugget", "color": "#c87533" },
+    { "id": "liquid_sewage", "phase": "liquid" },
+    { "id": "iron_cmpt" },
+    { "id": "tundra_coupon" }
+  ],
+  "facilities": [
+    { "id": "furnance_1", "power_kw": 5 },
+    { "id": "liquid_clean_gate", "regions": ["jinlong"] },
+    { "id": "settlement-tundra_coupon", "regions": ["tundra"] }
+  ],
+  "recipes": [
+    { "id": "sewage-treat", "category": "material", "time_s": 1,
+      "in": { "liquid_sewage": 2 }, "facilities": ["liquid_clean_gate"] },
+    { "id": "copper_nugget", "category": "material", "time_s": 2,
+      "in": { "copper_ore": 1 }, "out": { "copper_nugget": 1 }, "facilities": ["furnance_1"] },
+    { "id": "slow_nugget", "category": "material", "time_s": 4,
+      "in": { "copper_ore": 1 }, "out": { "copper_nugget": 1 }, "facilities": ["furnance_1"] },
+    { "id": "tundra_coupon-iron_cmpt", "category": "settlement", "time_s": 10, "kind": "trade",
+      "in": { "iron_cmpt": 1 }, "out": { "tundra_coupon": 3 }, "facilities": ["settlement-tundra_coupon"] }
+  ]
+}

@@ -1,0 +1,187 @@
+{
+ "battle_cannon_1": {
+  "name": {
+   "id": 29,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 10,
+  "placeDomains": [],
+  "recommendDomains": [],
+  "type": 6
+ },
+ "furnance_1": {
+  "name": {
+   "id": 30,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 5,
+  "placeDomains": [],
+  "recommendDomains": [],
+  "type": 6
+ },
+ "gas_pump_1": {
+  "name": {
+   "id": 38,
+   "text": ""
+  },
+  "needPower": false,
+  "powerConsume": 0,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "liquid_clean_gate_1": {
+  "name": {
+   "id": 42,
+   "text": ""
+  },
+  "needPower": false,
+  "powerConsume": 0,
+  "placeDomains": [],
+  "recommendDomains": [],
+  "type": 6
+ },
+ "liquid_cleaner_1": {
+  "name": {
+   "id": 41,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 50,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "liquid_recycle_gate_1": {
+  "name": {
+   "id": 43,
+   "text": ""
+  },
+  "needPower": false,
+  "powerConsume": 0,
+  "placeDomains": [],
+  "recommendDomains": [],
+  "type": 6
+ },
+ "miner_2": {
+  "name": {
+   "id": 37,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 5,
+  "placeDomains": [],
+  "recommendDomains": [],
+  "type": 6
+ },
+ "miner_4": {
+  "name": {
+   "id": 36,
+   "text": ""
+  },
+  "needPower": false,
+  "powerConsume": 0,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "mix_pool_1": {
+  "name": {
+   "id": 31,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 50,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "mix_pool_2": {
+  "name": {
+   "id": 32,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 100,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "power_station_1": {
+  "name": {
+   "id": 40,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 0,
+  "placeDomains": [],
+  "recommendDomains": [],
+  "type": 6
+ },
+ "pump_1": {
+  "name": {
+   "id": 39,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 10,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "transmuter_2": {
+  "name": {
+   "id": 33,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 50,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "vaporizer_1": {
+  "name": {
+   "id": 35,
+   "text": ""
+  },
+  "needPower": false,
+  "powerConsume": 0,
+  "placeDomains": [],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "xiranite_oven_1": {
+  "name": {
+   "id": 34,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 50,
+  "placeDomains": [
+   "domain_2"
+  ],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ }
+}

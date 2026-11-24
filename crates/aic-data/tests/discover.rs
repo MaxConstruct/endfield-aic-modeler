@@ -76,7 +76,7 @@ fn the_overlay_beside_a_version_is_merged_into_it() {
     assert_eq!(catalog.item("copper_ore").unwrap().name, "Cuprium Ore");
     // And no other version takes it.
     let other = load(&fixtures().join("v1.10.0.json"), english()).unwrap();
-    assert_eq!(other.items().len(), 21);
+    assert_eq!(other.items().len(), 9);
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn json_errors_name_the_real_file() {
         panic!("expected a Json error, got {error:?}");
     };
     assert_eq!(*named, file);
-    assert_eq!(path, "recipes[0].time");
+    assert_eq!(path, "recipes[0].time_s");
 }
 
 #[test]

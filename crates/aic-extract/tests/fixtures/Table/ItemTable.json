@@ -1,0 +1,137 @@
+{
+ "item_copper_ore": {
+  "id": "item_copper_ore",
+  "name": {
+   "id": 10,
+   "text": ""
+  },
+  "showingType": 1,
+  "rarity": 1
+ },
+ "item_copper_nugget": {
+  "id": "item_copper_nugget",
+  "name": {
+   "id": 11,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_liquid_water": {
+  "id": "item_liquid_water",
+  "name": {
+   "id": 12,
+   "text": ""
+  },
+  "showingType": 1,
+  "rarity": 1
+ },
+ "item_liquid_sewage": {
+  "id": "item_liquid_sewage",
+  "name": {
+   "id": 13,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_gas_inert": {
+  "id": "item_gas_inert",
+  "name": {
+   "id": 14,
+   "text": ""
+  },
+  "showingType": 1,
+  "rarity": 1
+ },
+ "item_gas_xiranite": {
+  "id": "item_gas_xiranite",
+  "name": {
+   "id": 15,
+   "text": ""
+  },
+  "showingType": 1,
+  "rarity": 1
+ },
+ "item_xiranite_powder": {
+  "id": "item_xiranite_powder",
+  "name": {
+   "id": 16,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_liquid_plant_grass_1": {
+  "id": "item_liquid_plant_grass_1",
+  "name": {
+   "id": 17,
+   "text": ""
+  },
+  "showingType": 2,
+  "rarity": 1
+ },
+ "item_proc_battery_1": {
+  "id": "item_proc_battery_1",
+  "name": {
+   "id": 18,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_domain_tundra_coupon": {
+  "id": "item_domain_tundra_coupon",
+  "name": {
+   "id": 19,
+   "text": ""
+  },
+  "showingType": 0,
+  "rarity": 1
+ },
+ "item_liquid_xiranite_poly": {
+  "id": "item_liquid_xiranite_poly",
+  "name": {
+   "id": 20,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_iron_cmpt": {
+  "id": "item_iron_cmpt",
+  "name": {
+   "id": 21,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_domain_jinlong_coupon": {
+  "id": "item_domain_jinlong_coupon",
+  "name": {
+   "id": 22,
+   "text": ""
+  },
+  "showingType": 0,
+  "rarity": 1
+ },
+ "item_iron_bottle": {
+  "id": "item_iron_bottle",
+  "name": {
+   "id": 23,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_fbottle_iron_water": {
+  "id": "item_fbottle_iron_water",
+  "name": {
+   "id": 23,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ }
+}

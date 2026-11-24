@@ -253,8 +253,6 @@ fn used_ids(data: &Path) -> Used {
         };
         used.items
             .extend(catalog.items().keys().map(|id| id.to_string()));
-        used.items
-            .extend(catalog.recipes().values().map(|recipe| recipe.icon.clone()));
         used.facilities
             .extend(catalog.facilities().keys().map(|id| id.to_string()));
     }

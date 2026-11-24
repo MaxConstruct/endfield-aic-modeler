@@ -1,6 +1,0 @@
-{
-  "facility_activation": {
-    "phase_trans_2": { "item": "gas_xiranite", "per_min": 6 },
-    "phase_trans_1": { "item": "liquid_xiranite", "per_min": 6 }
-  }
-}

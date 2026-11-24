@@ -1,1 +1,1 @@
-{ "items": [], "recipes": [{ "id": "x", "time": "slow" }] }
+{ "format": 1, "belt_per_min": 30, "pipe_per_min": 120, "recipes": [{ "id": "x", "time_s": "slow" }] }

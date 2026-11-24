@@ -1,0 +1,8 @@
+{
+ "log_pipe_01": {
+  "id": "log_pipe_01",
+  "pipeData": {
+   "msPerRound": 500
+  }
+ }
+}

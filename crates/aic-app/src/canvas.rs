@@ -1030,7 +1030,7 @@ impl Read<'_> {
     fn label(&self, id: LinkId) -> Option<LinkLabel> {
         let link = self.graph.link(id)?;
         let flow = self.solution.link_flow.get(&id).copied().flatten()?;
-        let fluid = (self.catalog.item(link.item.as_str())).is_some_and(|item| item.is_fluid);
+        let fluid = (self.catalog.item(link.item.as_str())).is_some_and(|item| item.is_fluid());
         let belts = self.solution.link_belts.get(&id).copied().flatten();
         let key = if fluid {
             "link-label-fluid"

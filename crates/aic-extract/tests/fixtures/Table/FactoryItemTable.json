@@ -1,0 +1,109 @@
+{
+ "item_copper_ore": {
+  "id": "item_copper_ore",
+  "phaseType": 1,
+  "showInHubDomainIds": [
+   "domain_1",
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_copper_nugget": {
+  "id": "item_copper_nugget",
+  "phaseType": 1,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_liquid_water": {
+  "id": "item_liquid_water",
+  "phaseType": 2,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_liquid_sewage": {
+  "id": "item_liquid_sewage",
+  "phaseType": 2,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_gas_inert": {
+  "id": "item_gas_inert",
+  "phaseType": 4,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_gas_xiranite": {
+  "id": "item_gas_xiranite",
+  "phaseType": 4,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_xiranite_powder": {
+  "id": "item_xiranite_powder",
+  "phaseType": 1,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_liquid_plant_grass_1": {
+  "id": "item_liquid_plant_grass_1",
+  "phaseType": 2,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_proc_battery_1": {
+  "id": "item_proc_battery_1",
+  "phaseType": 1,
+  "showInHubDomainIds": [
+   "domain_1",
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_liquid_xiranite_poly": {
+  "id": "item_liquid_xiranite_poly",
+  "phaseType": 2,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_iron_cmpt": {
+  "id": "item_iron_cmpt",
+  "phaseType": 1,
+  "showInHubDomainIds": [
+   "domain_1"
+  ],
+  "value": 1
+ },
+ "item_iron_bottle": {
+  "id": "item_iron_bottle",
+  "phaseType": 1,
+  "showInHubDomainIds": [
+   "domain_1",
+   "domain_2"
+  ],
+  "value": 1
+ },
+ "item_fbottle_iron_water": {
+  "id": "item_fbottle_iron_water",
+  "phaseType": 1,
+  "showInHubDomainIds": [
+   "domain_2"
+  ],
+  "value": 1
+ }
+}

@@ -1,29 +1,21 @@
-//! Turns factoriolab bytes into a checked `Catalog`.
+//! Turns a data file, its overlay and a names table into a checked `Catalog`.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
-use serde::de::DeserializeOwned;
+use serde::Deserialize;
 
 use crate::catalog::{
-    ActivationInput, Catalog, Category, Facility, Icon, IconRect, Item, LoadWarning, NameKind,
-    Recipe, Region, SAME_RATE,
+    ActivationInput, Catalog, Category, Facility, Item, LoadWarning, NameKind, Recipe, Region,
 };
 use crate::error::LoadError;
-use crate::ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};
-use crate::raw::{
-    RawActivation, RawData, RawEntry, RawI18n, RawIcon, RawItem, RawOverlay, RawOverlayList,
-    RawRecipe, RawSpeed,
+use crate::file::{
+    Aliases, DataFile, Entry, FacilityEntry, ItemEntry, Overlay, OverlayList, RecipeEntry,
+    RecipeKind, from_json,
 };
+use crate::ids::{CategoryId, FacilityId, ItemId, RecipeId, RegionId};
 use crate::version::Names;
-
-/// Side length of one cell in `icons.webp`.
-const ICON_SIZE: u32 = 64;
-
-/// The facility that moves items between regions. Its recipes are hidden from the recipe browser.
-const DOMAIN_TRANSFER: &str = "__domain_transfer";
-
-const FLUID_PREFIXES: [&str; 2] = ["liquid_", "gas_"];
 
 type Items = IndexMap<ItemId, Item>;
 type Facilities = IndexMap<FacilityId, Facility>;
@@ -34,6 +26,21 @@ pub(crate) struct Sources<'a> {
     pub data: &'a Path,
     pub overlay: &'a Path,
     pub names: &'a Path,
+}
+
+/// A names table, `crates/aic-editor/i18n/names/<lang>.json`: display names keyed by the data's
+/// IDs, the same for every data version. Facilities are named under `items`. Other keys (the
+/// table's own `name` and `version`) are ignored.
+#[derive(Debug, Default, Deserialize)]
+struct NamesTable {
+    #[serde(default)]
+    categories: HashMap<String, String>,
+    #[serde(default)]
+    items: HashMap<String, String>,
+    #[serde(default)]
+    recipes: HashMap<String, String>,
+    #[serde(default)]
+    locations: HashMap<String, String>,
 }
 
 impl Catalog {
@@ -67,121 +74,44 @@ pub(crate) fn parse(
     names_json: &[u8],
     sources: &Sources<'_>,
 ) -> Result<Catalog, LoadError> {
-    let mut raw: RawData = from_json(data_json, sources.data)?;
-    let mut activations = IndexMap::new();
+    let mut data = DataFile::from_json(data_json, sources.data)?;
     if let Some(overlay) = overlay_json {
-        let mut overlay: RawOverlay = from_json(overlay, sources.overlay)?;
-        activations = std::mem::take(&mut overlay.facility_activation);
-        apply_overlay(&mut raw, overlay, sources.overlay)?;
+        let overlay = Overlay::from_json(overlay, sources.overlay)?;
+        apply_overlay(&mut data, overlay, sources.overlay)?;
     }
-    let i18n: RawI18n = from_json(names_json, sources.names)?;
+    let names: NamesTable = from_json(names_json, sources.names)?;
     let mut builder = Builder {
         file: sources.data.to_path_buf(),
-        i18n,
+        names,
         warnings: Vec::new(),
     };
-    let mut catalog = builder.build(raw)?;
+    let mut catalog = builder.build(data)?;
     catalog.warnings = builder.warnings;
-    // After the build, so the checks see the items and recipes as the overlay left them.
-    set_activations(&mut catalog, activations, sources.overlay)?;
     Ok(catalog)
-}
-
-/// Gives each facility the overlay names its activation input, once the item, the rate and every
-/// recipe of the facility check out. A recipe that takes less of the item than a running facility
-/// needs would make that input scale below zero, so it is an error, like the data's own
-/// inconsistencies.
-fn set_activations(
-    catalog: &mut Catalog,
-    activations: IndexMap<String, RawActivation>,
-    file: &Path,
-) -> Result<(), LoadError> {
-    let invalid = |path: String, message: String| LoadError::Invalid {
-        file: file.to_path_buf(),
-        path,
-        message,
-    };
-    for (id, activation) in activations {
-        let path = format!("facility_activation.{id}");
-        let Some(facility) = catalog.facilities.get(id.as_str()) else {
-            let message = if catalog.items.contains_key(id.as_str()) {
-                format!("`{id}` is not a facility")
-            } else {
-                format!("unknown facility `{id}`")
-            };
-            return Err(invalid(path, message));
-        };
-        let Some((item, _)) = catalog.items.get_key_value(activation.item.as_str()) else {
-            return Err(invalid(
-                format!("{path}.item"),
-                format!("unknown item `{}`", activation.item),
-            ));
-        };
-        check_positive(activation.per_min).map_err(|m| invalid(format!("{path}.per_min"), m))?;
-        let recipes =
-            (catalog.recipes.values()).filter(|recipe| recipe.facilities.contains(&facility.id));
-        for recipe in recipes {
-            let rate = (recipe.inputs.iter())
-                .find(|(input, _)| input == item)
-                .map(|(_, qty)| recipe.rate_per_min(*qty, facility.speed));
-            let needed = activation.per_min;
-            match rate {
-                None => {
-                    return Err(invalid(
-                        path,
-                        format!("recipe `{}` does not take `{item}`", recipe.id),
-                    ));
-                }
-                Some(rate) if rate < needed - SAME_RATE * needed => {
-                    return Err(invalid(
-                        path,
-                        format!(
-                            "recipe `{}` takes {rate}/min of `{item}`, less than the {needed}/min \
-                             each running facility needs",
-                            recipe.id
-                        ),
-                    ));
-                }
-                Some(_) => {}
-            }
-        }
-        let activation = ActivationInput::new(item.clone(), activation.per_min);
-        let facility = catalog
-            .facilities
-            .get_mut(id.as_str())
-            .expect("found above");
-        facility.activation = Some(activation);
-    }
-    Ok(())
 }
 
 /// Merges an overlay into the data before it is checked, so overlay entries get the same checks as
 /// the data's own.
-fn apply_overlay(raw: &mut RawData, overlay: RawOverlay, file: &Path) -> Result<(), LoadError> {
+fn apply_overlay(data: &mut DataFile, overlay: Overlay, file: &Path) -> Result<(), LoadError> {
     let invalid = |path: String, message: String| LoadError::Invalid {
         file: file.to_path_buf(),
         path,
         message,
     };
-    merge(&mut raw.items, overlay.items, "items", &invalid)?;
-    merge(&mut raw.recipes, overlay.recipes, "recipes", &invalid)?;
-    for (id, speed) in overlay.facility_speeds {
-        let path = format!("facility_speeds.{id}");
-        let machine = raw
-            .items
-            .iter_mut()
-            .find(|item| item.id == id)
-            .and_then(|item| item.machine.as_mut())
-            .ok_or_else(|| invalid(path.clone(), format!("`{id}` is not a facility")))?;
-        check_positive(speed).map_err(|m| invalid(path, m))?;
-        machine.speed = speed;
-    }
+    merge(&mut data.items, overlay.items, "items", &invalid)?;
+    merge(
+        &mut data.facilities,
+        overlay.facilities,
+        "facilities",
+        &invalid,
+    )?;
+    merge(&mut data.recipes, overlay.recipes, "recipes", &invalid)?;
     Ok(())
 }
 
-fn merge<T: RawEntry>(
+fn merge<T: Entry>(
     entries: &mut Vec<T>,
-    changes: RawOverlayList<T>,
+    changes: OverlayList<T>,
     key: &str,
     invalid: &dyn Fn(String, String) -> LoadError,
 ) -> Result<(), LoadError> {
@@ -213,32 +143,24 @@ fn merge<T: RawEntry>(
     Ok(())
 }
 
-fn from_json<T: DeserializeOwned>(bytes: &[u8], file: &Path) -> Result<T, LoadError> {
-    let mut de = serde_json::Deserializer::from_slice(bytes);
-    let json_error = |path: String, source| LoadError::Json {
-        file: file.to_path_buf(),
-        path,
-        source,
-    };
-    let value = serde_path_to_error::deserialize(&mut de)
-        .map_err(|e| json_error(e.path().to_string(), e.into_inner()))?;
-    de.end().map_err(|e| json_error(".".to_owned(), e))?;
-    Ok(value)
-}
-
 struct Builder {
     file: PathBuf,
-    i18n: RawI18n,
+    names: NamesTable,
     warnings: Vec<LoadWarning>,
 }
 
 impl Builder {
-    fn build(&mut self, raw: RawData) -> Result<Catalog, LoadError> {
-        let regions = self.regions(&raw)?;
-        let categories = self.categories(&raw);
-        let (items, facilities) = self.items(&raw.items, &regions)?;
-        let recipes = self.recipes(&raw.recipes, &items, &facilities, &regions)?;
-        let (belt_per_min, pipe_per_min) = self.capacities(&raw)?;
+    fn build(&mut self, data: DataFile) -> Result<Catalog, LoadError> {
+        let belt_per_min =
+            check_positive(data.belt_per_min).map_err(|m| self.invalid("belt_per_min", m))?;
+        let pipe_per_min =
+            check_positive(data.pipe_per_min).map_err(|m| self.invalid("pipe_per_min", m))?;
+        let regions = self.regions(&data.regions)?;
+        let categories = self.categories(&data.categories);
+        let items = self.items(&data.items)?;
+        let facilities = self.facilities(&data.facilities, &items, &regions)?;
+        let recipes = self.recipes(&data.recipes, &items, &facilities, &regions)?;
+        let (item_aliases, recipe_aliases) = self.aliases(&data.aliases, &items, &recipes)?;
         Ok(Catalog {
             items,
             facilities,
@@ -247,8 +169,9 @@ impl Builder {
             categories,
             belt_per_min,
             pipe_per_min,
-            icons: self.icons(&raw.icons)?,
-            version: raw.version.values().next().cloned().unwrap_or_default(),
+            item_aliases,
+            recipe_aliases,
+            version: data.version.unwrap_or_default(),
             warnings: Vec::new(),
         })
     }
@@ -261,13 +184,13 @@ impl Builder {
         }
     }
 
-    /// The name in the names table, else the Chinese name, else the ID. A fallback is a warning.
-    fn name(&mut self, kind: NameKind, id: &str, zh: Option<&str>) -> String {
+    /// The name in the names table, else the ID. A fallback is a warning.
+    fn name(&mut self, kind: NameKind, id: &str) -> String {
         let table = match kind {
-            NameKind::Item => &self.i18n.items,
-            NameKind::Recipe => &self.i18n.recipes,
-            NameKind::Region => &self.i18n.locations,
-            NameKind::Category => &self.i18n.categories,
+            NameKind::Item => &self.names.items,
+            NameKind::Recipe => &self.names.recipes,
+            NameKind::Region => &self.names.locations,
+            NameKind::Category => &self.names.categories,
         };
         if let Some(name) = table.get(id) {
             return name.clone();
@@ -276,85 +199,109 @@ impl Builder {
             kind,
             id: id.to_owned(),
         });
-        zh.unwrap_or(id).to_owned()
+        id.to_owned()
     }
 
-    fn regions(&mut self, raw: &RawData) -> Result<Regions, LoadError> {
+    fn regions(&mut self, ids: &[String]) -> Result<Regions, LoadError> {
         let mut regions = IndexMap::new();
-        for (i, region) in raw.locations.iter().enumerate() {
-            let id = RegionId::from(region.id.as_str());
-            if regions.contains_key(&id) {
-                return Err(self.invalid(
-                    format!("locations[{i}].id"),
-                    format!("duplicate region `{id}`"),
-                ));
+        for (i, id) in ids.iter().enumerate() {
+            let region_id = RegionId::from(id.as_str());
+            if regions.contains_key(&region_id) {
+                return Err(
+                    self.invalid(format!("regions[{i}]"), format!("duplicate region `{id}`"))
+                );
             }
-            let name = self.name(NameKind::Region, &region.id, region.name.as_deref());
-            regions.insert(id.clone(), Region { id, name });
+            let name = self.name(NameKind::Region, id);
+            regions.insert(
+                region_id.clone(),
+                Region {
+                    id: region_id,
+                    name,
+                },
+            );
         }
         Ok(regions)
     }
 
-    fn categories(&mut self, raw: &RawData) -> IndexMap<CategoryId, Category> {
-        raw.categories
-            .iter()
-            .map(|category| {
-                let id = CategoryId::from(category.id.as_str());
-                let name = self.name(NameKind::Category, &category.id, category.name.as_deref());
-                (id.clone(), Category { id, name })
+    fn categories(&mut self, ids: &[String]) -> IndexMap<CategoryId, Category> {
+        ids.iter()
+            .map(|id| {
+                let category_id = CategoryId::from(id.as_str());
+                let name = self.name(NameKind::Category, id);
+                (
+                    category_id.clone(),
+                    Category {
+                        id: category_id,
+                        name,
+                    },
+                )
             })
             .collect()
     }
 
-    fn items(
-        &mut self,
-        raw: &[RawItem],
-        regions: &Regions,
-    ) -> Result<(Items, Facilities), LoadError> {
+    fn items(&mut self, entries: &[ItemEntry]) -> Result<Items, LoadError> {
         let mut items = IndexMap::new();
-        let mut facilities = IndexMap::new();
-        for (i, item) in raw.iter().enumerate() {
-            let id = ItemId::from(item.id.as_str());
+        for (i, entry) in entries.iter().enumerate() {
+            let id = ItemId::from(entry.id.as_str());
             if items.contains_key(&id) {
                 return Err(
                     self.invalid(format!("items[{i}].id"), format!("duplicate item `{id}`"))
                 );
             }
-            let name = self.name(NameKind::Item, &item.id, item.name.as_deref());
-            if let Some(machine) = &item.machine {
-                let path = format!("items[{i}].machine");
-                check_positive(machine.speed)
-                    .map_err(|m| self.invalid(format!("{path}.speed"), m))?;
-                let facility = Facility {
-                    id: FacilityId::from(item.id.as_str()),
-                    name: name.clone(),
-                    speed: machine.speed,
-                    power_kw: machine.usage.unwrap_or(0.0),
-                    regions: self.region_ids(
-                        &machine.locations,
-                        regions,
-                        &format!("{path}.locations"),
-                    )?,
-                    // The overlay's, set once the recipes are known (`set_activations`).
-                    activation: None,
-                };
-                facilities.insert(facility.id.clone(), facility);
-            }
-            let is_fluid = item.machine.is_none()
-                && FLUID_PREFIXES
-                    .iter()
-                    .any(|prefix| item.id.starts_with(prefix));
             let item = Item {
                 id: id.clone(),
-                name,
-                name_zh: item.name.clone().unwrap_or_else(|| item.id.clone()),
-                category: CategoryId::from(item.category.as_str()),
-                icon: item.icon.clone().unwrap_or_else(|| item.id.clone()),
-                is_fluid,
+                name: self.name(NameKind::Item, &entry.id),
+                phase: entry.phase,
+                color: entry.color.clone(),
             };
             items.insert(id, item);
         }
-        Ok((items, facilities))
+        Ok(items)
+    }
+
+    fn facilities(
+        &mut self,
+        entries: &[FacilityEntry],
+        items: &Items,
+        regions: &Regions,
+    ) -> Result<Facilities, LoadError> {
+        let mut facilities = IndexMap::new();
+        for (i, entry) in entries.iter().enumerate() {
+            let path = format!("facilities[{i}]");
+            let id = FacilityId::from(entry.id.as_str());
+            if facilities.contains_key(&id) {
+                return Err(
+                    self.invalid(format!("{path}.id"), format!("duplicate facility `{id}`"))
+                );
+            }
+            check_positive(entry.speed).map_err(|m| self.invalid(format!("{path}.speed"), m))?;
+            check_finite(entry.power_kw)
+                .map_err(|m| self.invalid(format!("{path}.power_kw"), m))?;
+            let activation = match &entry.activation {
+                None => None,
+                Some(activation) => {
+                    let Some((item, _)) = items.get_key_value(activation.item.as_str()) else {
+                        return Err(self.invalid(
+                            format!("{path}.activation.item"),
+                            format!("unknown item `{}`", activation.item),
+                        ));
+                    };
+                    let per_min = check_positive(activation.per_min)
+                        .map_err(|m| self.invalid(format!("{path}.activation.per_min"), m))?;
+                    Some(ActivationInput::new(item.clone(), per_min))
+                }
+            };
+            let facility = Facility {
+                id: id.clone(),
+                name: self.name(NameKind::Item, &entry.id),
+                speed: entry.speed,
+                power_kw: entry.power_kw,
+                regions: self.region_ids(&entry.regions, regions, &format!("{path}.regions"))?,
+                activation,
+            };
+            facilities.insert(id, facility);
+        }
+        Ok(facilities)
     }
 
     fn region_ids(
@@ -374,67 +321,126 @@ impl Builder {
 
     fn recipes(
         &mut self,
-        raw: &[RawRecipe],
+        entries: &[RecipeEntry],
         items: &Items,
         facilities: &Facilities,
         regions: &Regions,
     ) -> Result<IndexMap<RecipeId, Recipe>, LoadError> {
         let mut recipes = IndexMap::new();
-        for (i, recipe) in raw.iter().enumerate() {
+        for (i, entry) in entries.iter().enumerate() {
             let path = format!("recipes[{i}]");
-            let id = RecipeId::from(recipe.id.as_str());
+            let id = RecipeId::from(entry.id.as_str());
             if recipes.contains_key(&id) {
                 return Err(self.invalid(format!("{path}.id"), format!("duplicate recipe `{id}`")));
             }
-            check_positive(recipe.time).map_err(|m| self.invalid(format!("{path}.time"), m))?;
-            let facility_ids = self.facility_ids(recipe, facilities, &path)?;
+            let time_s = check_positive(entry.time_s)
+                .map_err(|m| self.invalid(format!("{path}.time_s"), m))?;
+            let facility_ids = self.facility_ids(entry, facilities, &path)?;
+            let mut inputs = self.quantities(&entry.inputs, items, &format!("{path}.in"))?;
+            let outputs = self.quantities(&entry.outputs, items, &format!("{path}.out"))?;
+            if let Some((item, qty)) = self.activation(entry, &facility_ids, facilities, &path)? {
+                match inputs.iter_mut().find(|(input, _)| *input == item) {
+                    Some((_, total)) => *total += qty,
+                    None => inputs.push((item, qty)),
+                }
+            }
+            let is_trade = entry.kind == Some(RecipeKind::Trade);
+            if is_trade && (entry.inputs.len() != 1 || entry.outputs.is_empty()) {
+                return Err(self.invalid(
+                    format!("{path}.kind"),
+                    "a trade takes exactly one item and gives at least one",
+                ));
+            }
+            if let Some(power) = entry.power_kw {
+                check_finite(power).map_err(|m| self.invalid(format!("{path}.power_kw"), m))?;
+            }
+            let environment = match &entry.environment {
+                None => None,
+                Some(gas) => match items.get_key_value(gas.as_str()) {
+                    Some((gas, _)) => Some(gas.clone()),
+                    None => {
+                        return Err(self.invalid(
+                            format!("{path}.environment"),
+                            format!("unknown item `{gas}`"),
+                        ));
+                    }
+                },
+            };
             let recipe = Recipe {
                 id: id.clone(),
-                name: self.name(NameKind::Recipe, &recipe.id, recipe.name.as_deref()),
-                category: CategoryId::from(recipe.category.as_str()),
-                icon: recipe.icon.clone().unwrap_or_else(|| recipe.id.clone()),
-                time_s: recipe.time,
-                inputs: self.quantities(&recipe.inputs, items, &format!("{path}.in"))?,
-                outputs: self.quantities(&recipe.outputs, items, &format!("{path}.out"))?,
-                power_override_kw: recipe.usage,
-                is_mining: has_flag(recipe, "mining"),
-                is_trade: has_flag(recipe, "hideProducer")
-                    && recipe.inputs.len() == 1
-                    && !recipe.outputs.is_empty(),
-                hidden: has_flag(recipe, "hideProducer")
-                    || facility_ids.iter().any(|f| f.as_str() == DOMAIN_TRANSFER),
+                name: self.name(NameKind::Recipe, &entry.id),
+                category: CategoryId::from(entry.category.as_str()),
+                time_s,
+                inputs,
+                outputs,
+                power_override_kw: entry.power_kw,
+                is_mining: entry.kind == Some(RecipeKind::Mining),
+                is_trade,
+                hidden: entry.hidden || is_trade,
                 facilities: facility_ids,
-                regions: self.region_ids(
-                    &recipe.locations,
-                    regions,
-                    &format!("{path}.locations"),
-                )?,
+                regions: self.region_ids(&entry.regions, regions, &format!("{path}.regions"))?,
+                environment,
             };
             recipes.insert(id, recipe);
         }
         Ok(recipes)
     }
 
+    /// The activation input a recipe's facilities need, as a quantity per craft to add to its
+    /// inputs: `per_min` over one craft at the facilities' speed. Facilities of one recipe that
+    /// disagree on it can't share the recipe's inputs, so that is an error.
+    fn activation(
+        &self,
+        entry: &RecipeEntry,
+        facility_ids: &[FacilityId],
+        facilities: &Facilities,
+        path: &str,
+    ) -> Result<Option<(ItemId, f64)>, LoadError> {
+        let all: Vec<&Facility> = facility_ids.iter().map(|id| &facilities[id]).collect();
+        let Some(first) = all.iter().find(|f| f.activation.is_some()) else {
+            return Ok(None);
+        };
+        let activation = first
+            .activation
+            .as_ref()
+            .expect("found one with an activation");
+        if let Some(other) = all
+            .iter()
+            .find(|f| f.activation.as_ref() != Some(activation) || f.speed != first.speed)
+        {
+            return Err(self.invalid(
+                format!("{path}.facilities"),
+                format!(
+                    "`{}` and `{}` differ in activation input or speed, so they can't share a \
+                     recipe",
+                    first.id, other.id
+                ),
+            ));
+        }
+        let qty = activation.per_min() * entry.time_s / (60.0 * first.speed);
+        Ok(Some((activation.item().clone(), qty)))
+    }
+
     fn facility_ids(
         &self,
-        recipe: &RawRecipe,
+        recipe: &RecipeEntry,
         facilities: &Facilities,
         path: &str,
     ) -> Result<Vec<FacilityId>, LoadError> {
-        if recipe.producers.is_empty() {
+        if recipe.facilities.is_empty() {
             return Err(self.invalid(
-                format!("{path}.producers"),
+                format!("{path}.facilities"),
                 "no facility can run this recipe",
             ));
         }
         recipe
-            .producers
+            .facilities
             .iter()
             .enumerate()
             .map(|(j, id)| match facilities.get_key_value(id.as_str()) {
                 Some((id, _)) => Ok(id.clone()),
                 None => Err(self.invalid(
-                    format!("{path}.producers[{j}]"),
+                    format!("{path}.facilities[{j}]"),
                     format!("unknown facility `{id}`"),
                 )),
             })
@@ -460,107 +466,60 @@ impl Builder {
             .collect()
     }
 
-    /// Belt and pipe capacity in items per minute.
-    fn capacities(&self, raw: &RawData) -> Result<(f64, f64), LoadError> {
-        let defaults = &raw.defaults;
-        let belt = self.capacity(
-            &raw.items,
-            defaults.max_belt.as_deref(),
-            "belt",
-            "maxBelt",
-            |item| item.belt.as_ref(),
-        )?;
-        let pipe = self.capacity(
-            &raw.items,
-            defaults.max_pipe.as_deref(),
-            "pipe",
-            "maxPipe",
-            |item| item.pipe.as_ref(),
-        )?;
-        Ok((belt, pipe))
-    }
-
-    /// The capacity of the item that `defaults.<default_key>` names, or else of the first item that has
-    /// `key`.
-    fn capacity(
+    /// An alias goes from an ID this version doesn't have to one it does.
+    #[allow(clippy::type_complexity)]
+    fn aliases(
         &self,
-        items: &[RawItem],
-        preferred: Option<&str>,
-        key: &str,
-        default_key: &str,
-        speed: fn(&RawItem) -> Option<&RawSpeed>,
-    ) -> Result<f64, LoadError> {
-        let found = items.iter().enumerate().find_map(|(i, item)| {
-            let raw_speed = speed(item)?;
-            preferred
-                .is_none_or(|id| id == item.id)
-                .then_some((i, raw_speed))
-        });
-        let Some((i, raw_speed)) = found else {
-            return Err(match preferred {
-                Some(id) => self.invalid(
-                    format!("defaults.{default_key}"),
-                    format!("`{id}` is not an item with `{key}`"),
-                ),
-                None => self.invalid("items", format!("no item has `{key}`")),
-            });
-        };
-        check_positive(raw_speed.speed)
-            .map_err(|m| self.invalid(format!("items[{i}].{key}.speed"), m))?;
-        Ok(raw_speed.speed * 60.0)
+        aliases: &Aliases,
+        items: &Items,
+        recipes: &IndexMap<RecipeId, Recipe>,
+    ) -> Result<(IndexMap<String, ItemId>, IndexMap<String, RecipeId>), LoadError> {
+        let item_aliases = self.alias_table(&aliases.items, items, "items", "item")?;
+        let recipe_aliases = self.alias_table(&aliases.recipes, recipes, "recipes", "recipe")?;
+        Ok((item_aliases, recipe_aliases))
     }
 
-    fn icons(&self, raw: &[RawIcon]) -> Result<IndexMap<String, Icon>, LoadError> {
-        raw.iter()
-            .enumerate()
-            .map(|(i, icon)| {
-                let rect = parse_position(&icon.position).ok_or_else(|| {
-                    self.invalid(
-                        format!("icons[{i}].position"),
-                        format!(
-                            "expected two offsets like \"-64px 0px\", found \"{}\"",
-                            icon.position
-                        ),
-                    )
-                })?;
-                let icon_out = Icon {
-                    rect,
-                    color: icon.color.clone(),
-                };
-                Ok((icon.id.clone(), icon_out))
+    fn alias_table<K, V>(
+        &self,
+        aliases: &IndexMap<String, String>,
+        known: &IndexMap<K, V>,
+        key: &str,
+        what: &str,
+    ) -> Result<IndexMap<String, K>, LoadError>
+    where
+        K: std::hash::Hash + Eq + Clone + std::borrow::Borrow<str>,
+    {
+        aliases
+            .iter()
+            .map(|(old, new)| {
+                let path = format!("aliases.{key}.{old}");
+                if known.contains_key(old.as_str()) {
+                    return Err(self.invalid(
+                        path,
+                        format!("`{old}` is a {what} of this version, so it can't be an alias"),
+                    ));
+                }
+                match known.get_key_value(new.as_str()) {
+                    Some((new, _)) => Ok((old.clone(), new.clone())),
+                    None => Err(self.invalid(path, format!("unknown {what} `{new}`"))),
+                }
             })
             .collect()
     }
 }
 
-fn has_flag(recipe: &RawRecipe, flag: &str) -> bool {
-    recipe.flags.iter().any(|f| f == flag)
-}
-
-fn check_positive(value: f64) -> Result<(), String> {
+fn check_positive(value: f64) -> Result<f64, String> {
     if value.is_finite() && value > 0.0 {
-        Ok(())
+        Ok(value)
     } else {
         Err(format!("expected a positive number, found {value}"))
     }
 }
 
-/// `"-64px -128px"` is the cell at x = 64, y = 128. The offsets are negative because they move the
-/// sprite sheet behind a fixed window.
-fn parse_position(position: &str) -> Option<IconRect> {
-    let offset = |part: &str| -> Option<u32> {
-        let px: i64 = part.strip_suffix("px")?.parse().ok()?;
-        u32::try_from(-px).ok()
-    };
-    let mut parts = position.split_whitespace();
-    let (x, y) = (offset(parts.next()?)?, offset(parts.next()?)?);
-    if parts.next().is_some() {
-        return None;
+fn check_finite(value: f64) -> Result<f64, String> {
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(format!("expected a number, found {value}"))
     }
-    Some(IconRect {
-        x,
-        y,
-        w: ICON_SIZE,
-        h: ICON_SIZE,
-    })
 }

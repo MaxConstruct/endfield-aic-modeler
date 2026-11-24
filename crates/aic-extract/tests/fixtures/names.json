@@ -1,0 +1,17 @@
+{
+  "name": "Fixture",
+  "categories": {
+    "settlement": "Outpost"
+  },
+  "items": {
+    "copper_ore": "Copper Ore (ours)",
+    "liquid_clean_gate": "Purification Node(Sewage Inlet)",
+    "settlement-tundra_coupon": "Valley Outpost (ours)"
+  },
+  "recipes": {
+    "filling_bottled_iron_water": "Clean Water (Bottled)"
+  },
+  "locations": {
+    "tundra": "Valley IV"
+  }
+}

@@ -6,6 +6,7 @@ members = [
     "crates/aic-editor",
     "crates/aic-node-graph",
     "crates/aic-app",
+    "crates/aic-extract",
 ]
 
 [workspace.package]

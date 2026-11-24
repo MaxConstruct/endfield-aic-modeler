@@ -1,0 +1,30 @@
+{
+ "miner_2": {
+  "id": "miner_2",
+  "mineable": [
+   {
+    "consumeItem": {
+     "count": 0,
+     "id": ""
+    },
+    "miningItemId": "item_copper_ore",
+    "produceRate": 1
+   }
+  ],
+  "msPerRound": 3000
+ },
+ "miner_4": {
+  "id": "miner_4",
+  "mineable": [
+   {
+    "consumeItem": {
+     "count": 1,
+     "id": "item_liquid_water"
+    },
+    "miningItemId": "item_copper_ore",
+    "produceRate": 1
+   }
+  ],
+  "msPerRound": 3000
+ }
+}

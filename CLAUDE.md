@@ -13,12 +13,12 @@ Read before working:
 1. **The UI never does math.** All solving lives in `aic-core` and all non-drawing app logic in `aic-editor`; neither has a GUI dependency. A UI builds a `Graph`, calls `solve(&catalog, &graph)`, and renders the `Solution`.
 2. **Internal IDs are game IDs** (`copper_nugget`, `furnance_1`), never display names. Display names come from the i18n table at render time.
 3. **All rates are items per minute** inside the app. Convert once, in the data layer.
-4. **Data loading goes through our own schema.** Only `crates/aic-data/src/raw.rs` knows the factoriolab format. Everything else uses `Catalog`.
+4. **Data loading goes through our own schema.** `data/<version>.json` is our own format, defined only in `crates/aic-data/src/file.rs` (ADR 0014); `aic-extract` writes it through those types from the game's tables. Everything else uses `Catalog`.
 5. **Data is copied in by hand, not fetched.** No submodules, no clone scripts, no third-party network access at build or run time. Never download game data.
-6. **Use the glossary's terms in code.** `Facility`, not `Machine`. `Link`, not `Edge`. `Region`, not `Location`. Two exceptions: `raw.rs` uses factoriolab's names, and `crates/aic-node-graph`, a general widget, keeps egui_graph's (edge, socket). `aic-app` turns links into edges and ports into sockets (ADR 0011).
+6. **Use the glossary's terms in code.** `Facility`, not `Machine`. `Link`, not `Edge`. `Region`, not `Location`. One exception: `crates/aic-node-graph`, a general widget, keeps egui_graph's (edge, socket). `aic-app` turns links into edges and ports into sockets (ADR 0011).
 7. **Every user-facing UI string goes through Fluent.** No string literals in widgets.
 8. **Player values are limits and the solver maximizes** (ADR 0003). Never reintroduce exact targets or a "minimize facilities" objective.
-9. Every milestone ends with `cargo test --workspace`, `cargo clippy --workspace -- -D warnings` and `scripts/check-frontends.sh` (no crate gets a dependency ADR 0010 forbids) passing.
+9. Every milestone ends with `cargo test --workspace`, `cargo clippy --workspace -- -D warnings` and `scripts/check-frontends.sh` (no crate gets a dependency ADR 0010 or 0014 forbids) passing.
 
 ## Working here
 

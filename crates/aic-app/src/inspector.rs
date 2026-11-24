@@ -343,7 +343,7 @@ impl Editor {
         let graph = self.session.document().graph();
         let solution = self.session.document().solution();
         let item = &graph.link(link).expect("checked by caller").item;
-        let fluid = catalog.item(item.as_str()).is_some_and(|i| i.is_fluid);
+        let fluid = catalog.item(item.as_str()).is_some_and(|i| i.is_fluid());
         ui.horizontal(|ui| {
             widgets::item_icon(ui, catalog, item.as_str(), 18.0);
             ui.label(

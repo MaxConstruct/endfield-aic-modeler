@@ -1,0 +1,28 @@
+{
+ "group_furnance": {
+  "msPerRound": 1000,
+  "craftList": [
+   "furnance_copper_nugget_1",
+   "filling_bottled_iron_water"
+  ]
+ },
+ "group_pool": {
+  "msPerRound": 1000,
+  "craftList": [
+   "pool_sewage_1",
+   "pool_sewage_2"
+  ]
+ },
+ "group_transmuter": {
+  "msPerRound": 1000,
+  "craftList": [
+   "liquid_transmuter_2_xiranite_powder_1"
+  ]
+ },
+ "group_oven": {
+  "msPerRound": 500,
+  "craftList": [
+   "xiranite_oven_xiranite_powder_2"
+  ]
+ }
+}

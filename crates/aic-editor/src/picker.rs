@@ -2,7 +2,7 @@
 //! calls these to fill it.
 
 use aic_core::{NodeId, NodeKind, Side};
-use aic_data::{Catalog, ItemId, Recipe, RecipeId};
+use aic_data::{Catalog, FacilityId, ItemId, Recipe, RecipeId, RegionId};
 
 use crate::names;
 
@@ -135,7 +135,7 @@ pub fn builtin_kind(catalog: &Catalog, builtin: Builtin, item: Option<&ItemId>) 
     let one_lane = || {
         let fluid = item
             .and_then(|id| catalog.item(id.as_str()))
-            .is_some_and(|item| item.is_fluid);
+            .is_some_and(|item| item.is_fluid());
         if fluid {
             catalog.pipe_per_min()
         } else {
@@ -162,13 +162,20 @@ pub fn builtin_kind(catalog: &Catalog, builtin: Builtin, item: Option<&ItemId>) 
     }
 }
 
-/// A new recipe node: on the recipe's first facility, with no limit, so the solver sizes it from the
-/// rest of the graph. A settlement trade becomes an outpost order.
-pub fn recipe_node(catalog: &Catalog, recipe: RecipeId) -> Option<NodeKind> {
+/// A new recipe node for a graph of `region`: on the first of the recipe's facilities that the
+/// region has (else its first), with no limit, so the solver sizes it from the rest of the graph.
+/// A settlement trade becomes an outpost order.
+pub fn recipe_node(catalog: &Catalog, region: &RegionId, recipe: RecipeId) -> Option<NodeKind> {
     if let Some(order) = NodeKind::outpost_order(catalog, &recipe) {
         return Some(order);
     }
-    let facility = catalog.recipe(recipe.as_str())?.facilities.first()?.clone();
+    let facilities = &catalog.recipe(recipe.as_str())?.facilities;
+    let buildable = |id: &&FacilityId| {
+        (catalog.facility(id.as_str())).is_some_and(|facility| facility.available_in(region))
+    };
+    let facility = (facilities.iter().find(buildable))
+        .or(facilities.first())?
+        .clone();
     Some(NodeKind::Recipe {
         recipe,
         facility,
@@ -273,5 +280,51 @@ mod tests {
                 limit: 30.0
             }
         );
+    }
+
+    /// Ore on a rig only Valley IV has, listed first, and on one built anywhere.
+    fn two_rigs() -> Catalog {
+        let data = br#"{
+            "format": 1, "belt_per_min": 30, "pipe_per_min": 120,
+            "regions": ["tundra", "jinlong"],
+            "items": [{ "id": "ore" }],
+            "facilities": [
+                { "id": "valley_rig", "regions": ["tundra"] },
+                { "id": "rig" },
+                { "id": "wuling_rig", "regions": ["jinlong"] }
+            ],
+            "recipes": [
+                { "id": "ore", "category": "material", "time_s": 3, "out": { "ore": 1 },
+                  "facilities": ["valley_rig", "rig"], "kind": "mining" },
+                { "id": "deep_ore", "category": "material", "time_s": 3, "out": { "ore": 2 },
+                  "facilities": ["wuling_rig"], "kind": "mining" }
+            ]
+        }"#;
+        let names = aic_data::Names {
+            file: "names.json",
+            json: b"{}",
+        };
+        Catalog::from_bytes(data, names).expect("test catalog loads")
+    }
+
+    fn facility_of(kind: Option<NodeKind>) -> String {
+        match kind {
+            Some(NodeKind::Recipe { facility, .. }) => facility.to_string(),
+            other => panic!("expected a recipe node, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_new_recipe_node_runs_on_the_first_facility_its_region_has() {
+        let catalog = two_rigs();
+        let node = |region: &str, recipe: &str| {
+            facility_of(recipe_node(&catalog, &region.into(), recipe.into()))
+        };
+        assert_eq!(node("tundra", "ore"), "valley_rig");
+        // Wuling has no valley rig, so the node starts on the one it can build.
+        assert_eq!(node("jinlong", "ore"), "rig");
+        // A recipe the region can't run at all still lands on its first facility, with the
+        // solver's region warning.
+        assert_eq!(node("tundra", "deep_ore"), "wuling_rig");
     }
 }

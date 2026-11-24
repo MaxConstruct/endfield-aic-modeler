@@ -1,0 +1,54 @@
+{
+ "item_port_battle_cannon_1": {
+  "buildingId": "battle_cannon_1",
+  "itemId": "item_port_battle_cannon_1"
+ },
+ "item_port_furnance_1": {
+  "buildingId": "furnance_1",
+  "itemId": "item_port_furnance_1"
+ },
+ "item_port_gas_pump_1": {
+  "buildingId": "gas_pump_1",
+  "itemId": "item_port_gas_pump_1"
+ },
+ "item_port_liquid_cleaner_1": {
+  "buildingId": "liquid_cleaner_1",
+  "itemId": "item_port_liquid_cleaner_1"
+ },
+ "item_port_miner_2": {
+  "buildingId": "miner_2",
+  "itemId": "item_port_miner_2"
+ },
+ "item_port_miner_4": {
+  "buildingId": "miner_4",
+  "itemId": "item_port_miner_4"
+ },
+ "item_port_mix_pool_1": {
+  "buildingId": "mix_pool_1",
+  "itemId": "item_port_mix_pool_1"
+ },
+ "item_port_mix_pool_2": {
+  "buildingId": "mix_pool_2",
+  "itemId": "item_port_mix_pool_2"
+ },
+ "item_port_power_sta_1": {
+  "buildingId": "power_station_1",
+  "itemId": "item_port_power_sta_1"
+ },
+ "item_port_pump_1": {
+  "buildingId": "pump_1",
+  "itemId": "item_port_pump_1"
+ },
+ "item_port_phase_trans_2": {
+  "buildingId": "transmuter_2",
+  "itemId": "item_port_phase_trans_2"
+ },
+ "item_port_vaporizer_1": {
+  "buildingId": "vaporizer_1",
+  "itemId": "item_port_vaporizer_1"
+ },
+ "item_port_xiranite_oven_1": {
+  "buildingId": "xiranite_oven_1",
+  "itemId": "item_port_xiranite_oven_1"
+ }
+}

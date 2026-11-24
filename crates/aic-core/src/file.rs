@@ -201,7 +201,8 @@ impl Graph {
         serde_json::to_string_pretty(&file).expect("a graph has only string keys and plain values")
     }
 
-    /// Reads a save file. A recipe or facility the catalog doesn't know becomes a
+    /// Reads a save file. IDs the catalog has aliases for become the ones they stand for
+    /// ([`Graph::rebind`]); a recipe or facility the catalog doesn't know becomes a
     /// [`NodeKind::MissingRecipe`] node rather than an error. Links are not checked here; call
     /// [`Graph::validate`].
     pub fn from_json(catalog: &Catalog, json: &str) -> Result<LoadedGraph, FileError> {
@@ -284,6 +285,8 @@ impl Graph {
         if file.format_version < 2 {
             graph.route_crossing_links();
         }
+        // IDs of an older data version that this one has aliases for.
+        graph.rebind(catalog);
         // A view that isn't finite or has no zoom is dropped rather than shown.
         let view = file
             .view

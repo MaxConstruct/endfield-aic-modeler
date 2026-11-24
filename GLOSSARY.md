@@ -15,8 +15,12 @@ A transformation of input items into output items that one facility performs ove
 _Avoid_: Formula, craft
 
 **Activation input**:
-An input a facility needs at a fixed rate for each facility that is running, whatever its throughput (e.g. 6 Xiragen per minute for each Solid-Gas Transmuting Unit, even one at half load). A recipe's inputs include it; only the rest of that item's rate scales with the facility count.
+An input a facility needs at a fixed rate for each facility that is running, whatever its throughput (e.g. 6 Xiragen per minute for each Solid-Gas Transmuting Unit, even one at half load). A recipe's inputs include it (the data file lists it apart, on the facility, and loading adds it); only the rest of that item's rate scales with the facility count.
 _Avoid_: Fuel, upkeep, idle cost, base input
+
+**Gas environment**:
+A gas that a Gas Dispersing Unit (`vaporizer_1`) spreads around itself, which some recipes need in place to run (e.g. Inergen for `xiranite_oven_xiranite_powder_2`). It is not a flow: the recipe doesn't consume it, and one unit serves every facility in its range. Named by the gas's item ID.
+_Avoid_: Atmosphere, gas mode, aura, field
 
 **Byproduct**:
 Any output of a recipe other than the one the player is producing it for (e.g. `liquid_sewage` from `copper_nugget`).
@@ -29,6 +33,10 @@ _Avoid_: Location, zone, map
 **Data version**:
 A named snapshot of game data, matching a game version (e.g. `v1.5.3`).
 _Avoid_: Dataset, patch
+
+**Alias**:
+An ID an older data version used for a recipe or item, which a newer one maps to its own ID for the same thing (e.g. recipe `copper_nugget` → `furnance_copper_nugget_1`), so graphs saved on the older version still open.
+_Avoid_: Redirect, legacy ID, rename, migration
 
 **Raw resource**:
 An item that a mining recipe extracts in a region (e.g. Cuprium Ore). Each region can supply only so much of each per minute.

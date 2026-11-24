@@ -12,14 +12,15 @@ use serde_json::{Value, json};
 pub const TUNDRA: &str = "tundra";
 pub const JINLONG: &str = "jinlong";
 
-/// A catalog written as factoriolab JSON and loaded through `Catalog::from_bytes`, like real data.
+/// A catalog written in the data file format and loaded through `Catalog::from_bytes`, like real
+/// data.
 #[derive(Default)]
 pub struct TestCatalog {
     items: Vec<String>,
     facilities: Vec<Value>,
     recipes: Vec<Value>,
-    /// `facility_activation` of the overlay the catalog loads with.
-    activations: serde_json::Map<String, Value>,
+    item_aliases: serde_json::Map<String, Value>,
+    recipe_aliases: serde_json::Map<String, Value>,
 }
 
 impl TestCatalog {
@@ -34,8 +35,7 @@ impl TestCatalog {
 
     pub fn facility_with(mut self, id: &str, speed: f64, power_kw: f64, regions: &[&str]) -> Self {
         self.facilities.push(json!({
-            "id": id, "name": id, "category": "machine",
-            "machine": { "speed": speed, "type": "electric", "usage": power_kw, "locations": regions },
+            "id": id, "speed": speed, "power_kw": power_kw, "regions": regions,
         }));
         self
     }
@@ -64,9 +64,7 @@ impl TestCatalog {
         regions: &[&str],
     ) -> Self {
         for (item, _) in inputs.iter().chain(outputs) {
-            if !self.items.iter().any(|known| known == item) {
-                self.items.push((*item).to_owned());
-            }
+            self.know(item);
         }
         let map = |pairs: &[(&str, f64)]| -> Value {
             pairs
@@ -75,34 +73,43 @@ impl TestCatalog {
                 .collect()
         };
         let mut recipe = json!({
-            "id": id, "name": id, "category": "material", "time": time_s,
-            "in": map(inputs), "out": map(outputs), "producers": facilities, "locations": regions,
+            "id": id, "category": "material", "time_s": time_s,
+            "in": map(inputs), "out": map(outputs), "facilities": facilities, "regions": regions,
         });
         if let Some(power) = power_kw {
-            recipe["usage"] = json!(power);
+            recipe["power_kw"] = json!(power);
         }
         self.recipes.push(recipe);
         self
     }
 
-    /// Gives `facility` an activation input, declared in an overlay as for real data.
+    fn know(&mut self, item: &str) {
+        if !self.items.iter().any(|known| known == item) {
+            self.items.push(item.to_owned());
+        }
+    }
+
+    /// Gives `facility`, added before, an activation input, as real data does. It comes on top of
+    /// the inputs its recipes are given: each recipe then takes `per_min` more of `item` per
+    /// facility flat out.
     pub fn activation(mut self, facility: &str, item: &str, per_min: f64) -> Self {
-        (self.activations).insert(
-            facility.to_owned(),
-            json!({ "item": item, "per_min": per_min }),
-        );
+        self.know(item);
+        let entry = (self.facilities.iter_mut())
+            .find(|entry| entry["id"] == facility)
+            .expect("the facility is added first");
+        entry["activation"] = json!({ "item": item, "per_min": per_min });
         self
     }
 
-    /// A mining recipe: no inputs, flagged `mining`, available in every region.
+    /// A mining recipe: no inputs, of kind `mining`, available in every region.
     pub fn mining(mut self, id: &str, facility: &str, time_s: f64, output: (&str, f64)) -> Self {
         self = self.recipe(id, facility, time_s, &[], &[output]);
         let recipe = self.recipes.last_mut().expect("just added");
-        recipe["flags"] = json!(["mining"]);
+        recipe["kind"] = json!("mining");
         self
     }
 
-    /// A settlement trade, hidden like the game data's: `coupons` of `coupon` per item of `input`.
+    /// A settlement trade: `coupons` of `coupon` per item of `input`.
     pub fn outpost_order(
         mut self,
         id: &str,
@@ -113,37 +120,53 @@ impl TestCatalog {
     ) -> Self {
         self = self.recipe(id, facility, 2.0, &[(input, 1.0)], &[(coupon, coupons)]);
         let recipe = self.recipes.last_mut().expect("just added");
-        recipe["flags"] = json!(["hideProducer"]);
+        recipe["kind"] = json!("trade");
+        self
+    }
+
+    /// Says an older data version called item `new` `old`.
+    pub fn item_alias(mut self, old: &str, new: &str) -> Self {
+        self.item_aliases.insert(old.to_owned(), json!(new));
+        self
+    }
+
+    /// Says an older data version called recipe `new` `old`.
+    pub fn recipe_alias(mut self, old: &str, new: &str) -> Self {
+        self.recipe_aliases.insert(old.to_owned(), json!(new));
         self
     }
 
     pub fn build(self) -> Catalog {
-        let mut items: Vec<Value> = vec![
-            json!({ "id": "belt", "name": "belt", "category": "belt-and-pipe", "belt": { "speed": 0.5 } }),
-            json!({ "id": "pipe", "name": "pipe", "category": "belt-and-pipe", "pipe": { "speed": 2 } }),
-        ];
-        items.extend(
-            self.items
-                .iter()
-                .map(|id| json!({ "id": id, "name": id, "category": "material" })),
-        );
-        items.extend(self.facilities);
         let data = json!({
-            "version": { "arknights-endfield": "test" },
-            "locations": [{ "id": TUNDRA, "name": TUNDRA }, { "id": JINLONG, "name": JINLONG }],
-            "items": items,
+            "format": 1,
+            "version": "test",
+            "belt_per_min": 30,
+            "pipe_per_min": 120,
+            "regions": [TUNDRA, JINLONG],
+            "items": self.items.iter().map(|id| item_entry(id)).collect::<Vec<_>>(),
+            "facilities": self.facilities,
             "recipes": self.recipes,
+            "aliases": { "items": self.item_aliases, "recipes": self.recipe_aliases },
         });
         let names = aic_data::Names {
             file: "names.json",
             json: b"{}",
         };
-        let overlay = (!self.activations.is_empty())
-            .then(|| json!({ "facility_activation": self.activations }).to_string());
-        let overlay = overlay.as_ref().map(|overlay| overlay.as_bytes());
-        Catalog::from_bytes_with_overlay(data.to_string().as_bytes(), overlay, names)
-            .expect("test catalog loads")
+        Catalog::from_bytes(data.to_string().as_bytes(), names).expect("test catalog loads")
     }
+}
+
+/// An item whose ID starts with `liquid_` is a liquid and one with `gas_` a gas, as the game's IDs
+/// go; any other is solid.
+fn item_entry(id: &str) -> Value {
+    let phase = if id.starts_with("liquid_") {
+        "liquid"
+    } else if id.starts_with("gas_") {
+        "gas"
+    } else {
+        "solid"
+    };
+    json!({ "id": id, "phase": phase })
 }
 
 pub fn region(id: &str) -> RegionId {

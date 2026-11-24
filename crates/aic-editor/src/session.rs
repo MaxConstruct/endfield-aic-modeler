@@ -512,7 +512,9 @@ impl Session {
             Origin::Canvas => None,
         };
         let kind = match choice {
-            Choice::Recipe(recipe) => picker::recipe_node(&self.catalog, recipe)?,
+            Choice::Recipe(recipe) => {
+                picker::recipe_node(&self.catalog, self.doc.graph().region(), recipe)?
+            }
             Choice::Builtin(builtin) => picker::builtin_kind(&self.catalog, builtin, item),
             Choice::Workspace => return None,
         };

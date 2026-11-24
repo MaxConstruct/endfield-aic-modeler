@@ -1,40 +1,197 @@
 {
-  "version": { "arknights-endfield": "vtest" },
-  "categories": [
-    { "id": "material", "name": "material", "icon": "iron_ingot" },
-    { "id": "component", "name": "component", "icon": "screw" }
+  "format": 1,
+  "version": "vtest",
+  "belt_per_min": 30,
+  "pipe_per_min": 120,
+  "regions": [
+    "tundra",
+    "jinlong"
   ],
-  "locations": [
-    { "id": "tundra", "name": "tundra" },
-    { "id": "jinlong", "name": "jinlong" }
+  "categories": [
+    "material",
+    "component"
   ],
   "items": [
-    { "id": "belt", "name": "belt", "category": "belt-and-pipe", "belt": { "speed": 0.5 } },
-    { "id": "pipe", "name": "pipe", "category": "belt-and-pipe", "pipe": { "speed": 2 } },
-    { "id": "iron_ore", "name": "iron_ore", "category": "material" },
-    { "id": "iron_ingot", "name": "iron_ingot", "category": "material" },
-    { "id": "iron_plate", "name": "iron_plate", "category": "component" },
-    { "id": "iron_rod", "name": "iron_rod", "category": "component" },
-    { "id": "screw", "name": "screw", "category": "component" },
-    { "id": "reinforced_plate", "name": "reinforced_plate", "category": "component" },
-    { "id": "modular_frame", "name": "modular_frame", "category": "component" },
-    { "id": "wire", "name": "wire", "category": "component" },
-    { "id": "coupon", "name": "coupon", "category": "component" },
-    { "id": "miner", "name": "miner", "category": "machine", "machine": { "speed": 1, "type": "electric", "usage": 5 } },
-    { "id": "smelter", "name": "smelter", "category": "machine", "machine": { "speed": 1, "type": "electric", "usage": 4 } },
-    { "id": "constructor", "name": "constructor", "category": "machine", "machine": { "speed": 1, "type": "electric", "usage": 4 } },
-    { "id": "assembler", "name": "assembler", "category": "machine", "machine": { "speed": 1, "type": "electric", "usage": 15 } },
-    { "id": "outpost", "name": "outpost", "category": "machine", "machine": { "speed": 1, "type": "electric", "usage": 0 } }
+    {
+      "id": "iron_ore"
+    },
+    {
+      "id": "iron_ingot"
+    },
+    {
+      "id": "iron_plate"
+    },
+    {
+      "id": "iron_rod"
+    },
+    {
+      "id": "screw"
+    },
+    {
+      "id": "reinforced_plate"
+    },
+    {
+      "id": "modular_frame"
+    },
+    {
+      "id": "wire"
+    },
+    {
+      "id": "coupon"
+    }
+  ],
+  "facilities": [
+    {
+      "id": "miner",
+      "power_kw": 5
+    },
+    {
+      "id": "smelter",
+      "power_kw": 4
+    },
+    {
+      "id": "constructor",
+      "power_kw": 4
+    },
+    {
+      "id": "assembler",
+      "power_kw": 15
+    },
+    {
+      "id": "outpost"
+    }
   ],
   "recipes": [
-    { "id": "iron_ore", "name": "iron_ore", "category": "material", "time": 1, "in": {}, "out": { "iron_ore": 1 }, "producers": ["miner"], "flags": ["mining"] },
-    { "id": "iron_ingot", "name": "iron_ingot", "category": "material", "time": 2, "in": { "iron_ore": 1 }, "out": { "iron_ingot": 1 }, "producers": ["smelter"] },
-    { "id": "iron_plate", "name": "iron_plate", "category": "component", "time": 6, "in": { "iron_ingot": 3 }, "out": { "iron_plate": 2 }, "producers": ["constructor"] },
-    { "id": "iron_rod", "name": "iron_rod", "category": "component", "time": 4, "in": { "iron_ingot": 1 }, "out": { "iron_rod": 1 }, "producers": ["constructor"] },
-    { "id": "screw", "name": "screw", "category": "component", "time": 6, "in": { "iron_rod": 1 }, "out": { "screw": 4 }, "producers": ["constructor"] },
-    { "id": "reinforced_plate", "name": "reinforced_plate", "category": "component", "time": 12, "in": { "iron_plate": 6, "screw": 12 }, "out": { "reinforced_plate": 1 }, "producers": ["assembler"] },
-    { "id": "modular_frame", "name": "modular_frame", "category": "component", "time": 60, "in": { "reinforced_plate": 3, "iron_rod": 12 }, "out": { "modular_frame": 2 }, "producers": ["assembler"] },
-    { "id": "iron_wire", "name": "iron_wire", "category": "component", "time": 4, "in": { "iron_ingot": 1 }, "out": { "wire": 2 }, "producers": ["constructor"], "locations": ["jinlong"] },
-    { "id": "coupon-iron_plate", "name": "coupon-iron_plate", "category": "component", "time": 2, "in": { "iron_plate": 1 }, "out": { "coupon": 1 }, "producers": ["outpost"], "flags": ["hideProducer"] }
+    {
+      "id": "iron_ore",
+      "category": "material",
+      "time_s": 1,
+      "in": {},
+      "out": {
+        "iron_ore": 1
+      },
+      "facilities": [
+        "miner"
+      ],
+      "kind": "mining"
+    },
+    {
+      "id": "iron_ingot",
+      "category": "material",
+      "time_s": 2,
+      "in": {
+        "iron_ore": 1
+      },
+      "out": {
+        "iron_ingot": 1
+      },
+      "facilities": [
+        "smelter"
+      ]
+    },
+    {
+      "id": "iron_plate",
+      "category": "component",
+      "time_s": 6,
+      "in": {
+        "iron_ingot": 3
+      },
+      "out": {
+        "iron_plate": 2
+      },
+      "facilities": [
+        "constructor"
+      ]
+    },
+    {
+      "id": "iron_rod",
+      "category": "component",
+      "time_s": 4,
+      "in": {
+        "iron_ingot": 1
+      },
+      "out": {
+        "iron_rod": 1
+      },
+      "facilities": [
+        "constructor"
+      ]
+    },
+    {
+      "id": "screw",
+      "category": "component",
+      "time_s": 6,
+      "in": {
+        "iron_rod": 1
+      },
+      "out": {
+        "screw": 4
+      },
+      "facilities": [
+        "constructor"
+      ]
+    },
+    {
+      "id": "reinforced_plate",
+      "category": "component",
+      "time_s": 12,
+      "in": {
+        "iron_plate": 6,
+        "screw": 12
+      },
+      "out": {
+        "reinforced_plate": 1
+      },
+      "facilities": [
+        "assembler"
+      ]
+    },
+    {
+      "id": "modular_frame",
+      "category": "component",
+      "time_s": 60,
+      "in": {
+        "reinforced_plate": 3,
+        "iron_rod": 12
+      },
+      "out": {
+        "modular_frame": 2
+      },
+      "facilities": [
+        "assembler"
+      ]
+    },
+    {
+      "id": "iron_wire",
+      "category": "component",
+      "time_s": 4,
+      "in": {
+        "iron_ingot": 1
+      },
+      "out": {
+        "wire": 2
+      },
+      "facilities": [
+        "constructor"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "coupon-iron_plate",
+      "category": "component",
+      "time_s": 2,
+      "in": {
+        "iron_plate": 1
+      },
+      "out": {
+        "coupon": 1
+      },
+      "facilities": [
+        "outpost"
+      ],
+      "kind": "trade"
+    }
   ]
 }

@@ -1,0 +1,8 @@
+{
+ "item_proc_battery_1": {
+  "id": "item_proc_battery_1",
+  "powerProvide": 220,
+  "progressRound": 40,
+  "fuelEnergy": 1
+ }
+}

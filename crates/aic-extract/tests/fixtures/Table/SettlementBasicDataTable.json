@@ -1,0 +1,40 @@
+{
+ "stm_tundra_1": {
+  "domainId": "domain_1",
+  "settlementLevelMap": {
+   "1": {
+    "settlementTradeItemMap": {
+     "item_iron_cmpt": {
+      "itemId": "item_iron_cmpt",
+      "rewardMoneyCount": 1
+     }
+    }
+   },
+   "2": {
+    "settlementTradeItemMap": {
+     "item_iron_cmpt": {
+      "itemId": "item_iron_cmpt",
+      "rewardMoneyCount": 2
+     },
+     "item_proc_battery_1": {
+      "itemId": "item_proc_battery_1",
+      "rewardMoneyCount": 16
+     }
+    }
+   }
+  }
+ },
+ "stm_tundra_2": {
+  "domainId": "domain_1",
+  "settlementLevelMap": {
+   "1": {
+    "settlementTradeItemMap": {
+     "item_iron_cmpt": {
+      "itemId": "item_iron_cmpt",
+      "rewardMoneyCount": 3
+     }
+    }
+   }
+  }
+ }
+}

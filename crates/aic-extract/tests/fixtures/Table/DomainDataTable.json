@@ -1,0 +1,18 @@
+{
+ "domain_1": {
+  "domainId": "domain_1",
+  "domainName": {
+   "id": 1,
+   "text": ""
+  },
+  "domainGoldItemId": "item_domain_tundra_coupon"
+ },
+ "domain_2": {
+  "domainId": "domain_2",
+  "domainName": {
+   "id": 2,
+   "text": ""
+  },
+  "domainGoldItemId": "item_domain_jinlong_coupon"
+ }
+}

@@ -30,7 +30,7 @@ forbidden_for() {
 }
 
 failed=0
-for crate in aic-data aic-core aic-editor; do
+for crate in aic-data aic-core aic-editor aic-extract; do
     tree="$(cargo tree -p "$crate" -e normal,dev,build --target all --all-features --prefix none --color never)"
     # The crate names, one per line: the first word of each line of the tree.
     names="$(printf '%s\n' "$tree" | awk '{print $1}' | sort -u)"

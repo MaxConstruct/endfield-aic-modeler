@@ -142,7 +142,7 @@ fn transmuting_catalog() -> Catalog {
             "enr_powder",
             "phase_trans_2",
             10.0,
-            &[("gas_xiranite_enr", 5.0), ("gas_xiranite", 1.0)],
+            &[("gas_xiranite_enr", 5.0)],
             &[("xiranite_enr_powder", 2.0)],
         )
         // 36 Xiragen → 30 Xiranite per minute: 30 Xiragen scales, 6 is activation.
@@ -150,9 +150,10 @@ fn transmuting_catalog() -> Catalog {
             "powder",
             "phase_trans_2",
             2.0,
-            &[("gas_xiranite", 1.2)],
+            &[("gas_xiranite", 1.0)],
             &[("xiranite_powder", 1.0)],
         )
+        // On top of the inputs above: 1 more Xiragen per 10 s craft, 0.2 per 2 s craft.
         .activation("phase_trans_2", "gas_xiranite", 6.0)
         .build()
 }

@@ -437,22 +437,18 @@ mod tests {
 
     fn catalog() -> Catalog {
         let data = r#"{
-            "version": { "arknights-endfield": "test" },
-            "locations": [{ "id": "tundra", "name": "tundra" }],
-            "items": [
-                { "id": "belt", "name": "belt", "category": "belt-and-pipe", "belt": { "speed": 0.5 } },
-                { "id": "pipe", "name": "pipe", "category": "belt-and-pipe", "pipe": { "speed": 2 } },
-                { "id": "ore", "name": "ore", "category": "material" },
-                { "id": "ingot", "name": "ingot", "category": "material" },
-                { "id": "slag", "name": "slag", "category": "material" },
-                { "id": "furnace", "name": "furnace", "category": "machine",
-                  "machine": { "speed": 1, "type": "electric", "usage": 5 } }
-            ],
+            "format": 1,
+            "version": "test",
+            "belt_per_min": 30,
+            "pipe_per_min": 120,
+            "regions": ["tundra"],
+            "items": [{ "id": "ore" }, { "id": "ingot" }, { "id": "slag" }],
+            "facilities": [{ "id": "furnace", "power_kw": 5 }],
             "recipes": [
-                { "id": "ingot", "name": "ingot", "category": "material", "time": 2,
-                  "in": { "ore": 1 }, "out": { "ingot": 1, "slag": 1 }, "producers": ["furnace"] },
-                { "id": "ore", "name": "ore", "category": "material", "time": 2,
-                  "in": { "ingot": 1, "slag": 1 }, "out": { "ore": 1 }, "producers": ["furnace"] }
+                { "id": "ingot", "category": "material", "time_s": 2,
+                  "in": { "ore": 1 }, "out": { "ingot": 1, "slag": 1 }, "facilities": ["furnace"] },
+                { "id": "ore", "category": "material", "time_s": 2,
+                  "in": { "ingot": 1, "slag": 1 }, "out": { "ore": 1 }, "facilities": ["furnace"] }
             ]
         }"#;
         let names = aic_data::Names {
