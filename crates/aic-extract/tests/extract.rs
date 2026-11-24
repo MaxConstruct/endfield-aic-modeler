@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 
 use aic_data::file::{DataFile, RecipeEntry, RecipeKind};
 use aic_data::{Catalog, Names, Phase};
-use aic_extract::{Args, ExtractError, Extraction, NameKind, NamesFile, Tables, extract, run};
+use aic_extract::{
+    AliasKind, Args, ExtractError, Extraction, NameKind, NamesFile, Summary, Tables, extract, run,
+};
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -446,6 +448,145 @@ fn old_ids_get_aliases_to_the_recipe_and_item_that_took_their_place() {
     assert!(!aliases.recipes.contains_key("slow_nugget"));
     let unaliased: Vec<&str> = report.unaliased.iter().map(|u| u.id.as_str()).collect();
     assert_eq!(unaliased, ["slow_nugget"]);
+    // The previous version has no aliases of its own: these are all there is.
+    assert!(previous().aliases.is_empty());
+    assert_eq!(
+        entries(&aliases.recipes),
+        [
+            ("sewage-treat", "liquid_clean_gate-liquid_sewage"),
+            ("copper_nugget", "furnance_copper_nugget_1"),
+        ]
+    );
+    assert!(report.dropped_aliases.is_empty());
+}
+
+/// The previous version, with aliases of its own from an older one's IDs.
+fn previous_with_aliases(items: &[(&str, &str)], recipes: &[(&str, &str)]) -> DataFile {
+    let mut previous = previous();
+    let pairs = |list: &[(&str, &str)]| -> indexmap::IndexMap<String, String> {
+        (list.iter())
+            .map(|(old, new)| ((*old).to_owned(), (*new).to_owned()))
+            .collect()
+    };
+    previous.aliases.items = pairs(items);
+    previous.aliases.recipes = pairs(recipes);
+    previous
+}
+
+fn extraction_after(previous: &DataFile) -> Extraction {
+    extract(&tables(), Some(previous), &mut names(), "v9.9.9").expect("extracts")
+}
+
+fn entries(map: &indexmap::IndexMap<String, String>) -> Vec<(&str, &str)> {
+    map.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
+}
+
+#[test]
+fn the_previous_versions_recipe_aliases_are_carried_and_re_pointed_where_renamed() {
+    let previous = previous_with_aliases(
+        &[],
+        &[
+            // Its target is renamed this run: it follows.
+            ("older_copper", "copper_nugget"),
+            // Its target kept its ID.
+            ("older_trade", "tundra_coupon-iron_cmpt"),
+            // Its target is gone, with nothing in its place.
+            ("older_slow", "slow_nugget"),
+            // Now a recipe of its own.
+            ("furnance_copper_nugget_1", "copper_nugget"),
+        ],
+    );
+    let Extraction { data, report } = extraction_after(&previous);
+    assert_eq!(
+        entries(&data.aliases.recipes),
+        [
+            ("older_copper", "furnance_copper_nugget_1"),
+            ("older_trade", "tundra_coupon-iron_cmpt"),
+            // This run's, after, in the previous version's order.
+            ("sewage-treat", "liquid_clean_gate-liquid_sewage"),
+            ("copper_nugget", "furnance_copper_nugget_1"),
+        ]
+    );
+    let dropped: Vec<(AliasKind, &str, &str)> = (report.dropped_aliases.iter())
+        .map(|d| (d.kind, d.id.as_str(), d.target.as_str()))
+        .collect();
+    assert_eq!(dropped, [(AliasKind::Recipe, "older_slow", "slow_nugget")]);
+}
+
+#[test]
+fn the_previous_versions_item_aliases_are_carried_and_re_pointed_where_renamed() {
+    let mut previous = previous_with_aliases(
+        &[
+            // Its target is renamed this run: it follows.
+            ("older_coupon", "tundra_coupon"),
+            // Its target kept its ID.
+            ("older_ore", "copper_ore"),
+            // Its target is gone, with nothing in its place.
+            ("older_gear", "gear"),
+            // Now an item of its own.
+            ("iron_bottle", "copper_ore"),
+        ],
+        &[],
+    );
+    let mut gear = previous.items[0].clone();
+    gear.id = "gear".to_owned();
+    previous.items.push(gear);
+    let Extraction { data, report } = extraction_after(&previous);
+    assert_eq!(
+        entries(&data.aliases.items),
+        [
+            ("older_coupon", "domain_tundra_coupon"),
+            ("older_ore", "copper_ore"),
+            ("tundra_coupon", "domain_tundra_coupon"),
+        ]
+    );
+    let dropped: Vec<(AliasKind, &str, &str)> = (report.dropped_aliases.iter())
+        .map(|d| (d.kind, d.id.as_str(), d.target.as_str()))
+        .collect();
+    assert_eq!(dropped, [(AliasKind::Item, "older_gear", "gear")]);
+}
+
+#[test]
+fn carried_aliases_load_and_the_dropped_ones_are_printed() {
+    let previous = previous_with_aliases(
+        &[
+            ("older_coupon", "tundra_coupon"),
+            ("older_ore", "copper_ore"),
+            ("iron_bottle", "copper_ore"),
+        ],
+        &[
+            ("older_copper", "copper_nugget"),
+            ("older_trade", "tundra_coupon-iron_cmpt"),
+            ("older_slow", "slow_nugget"),
+            ("furnance_copper_nugget_1", "copper_nugget"),
+        ],
+    );
+    let mut names = names();
+    let Extraction { data, report } =
+        extract(&tables(), Some(&previous), &mut names, "v9.9.9").expect("extracts");
+    let names_json = names.to_json();
+    let catalog = Catalog::from_bytes(
+        data.to_json().as_bytes(),
+        Names {
+            file: "names.json",
+            json: names_json.as_bytes(),
+        },
+    )
+    .expect("the data loads");
+    assert!(catalog.warnings().is_empty(), "{:?}", catalog.warnings());
+    let recipe = catalog.recipe_alias("older_copper").map(|id| id.as_str());
+    assert_eq!(recipe, Some("furnance_copper_nugget_1"));
+    let item = catalog.item_alias("older_coupon").map(|id| id.as_str());
+    assert_eq!(item, Some("domain_tundra_coupon"));
+    let summary = Summary {
+        data: &data,
+        report: &report,
+    }
+    .to_string();
+    assert!(
+        summary.contains("Recipe older_slow (for slow_nugget)"),
+        "{summary}"
+    );
 }
 
 #[test]

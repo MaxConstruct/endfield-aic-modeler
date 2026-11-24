@@ -26,7 +26,7 @@ pub use extract::{
     TRADE_TIME_S, aliases, extract,
 };
 pub use names::{NameDifference, NameKind, NamesFile};
-pub use report::{PriceConflict, Report, SharedName, Summary, Unaliased};
+pub use report::{AliasKind, DroppedAlias, PriceConflict, Report, SharedName, Summary, Unaliased};
 pub use tables::Tables;
 
 /// The command line, parsed.

@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 
 use crate::error::ExtractError;
 use crate::names::{NameKind, NamesFile};
-use crate::report::{PriceConflict, Report, SharedName, Unaliased};
+use crate::report::{AliasKind, DroppedAlias, PriceConflict, Report, SharedName, Unaliased};
 use crate::tables::{Stacks, Tables};
 
 /// The game's domains and the region IDs the app has always used for them.
@@ -1235,20 +1235,28 @@ fn ordered_like(
     known
 }
 
-/// Aliases from `previous`'s IDs to `data`'s.
+/// Aliases from `previous`'s IDs, and from the older IDs its own aliases map, to `data`'s.
 ///
 /// Items: [`ITEM_ALIASES`], where the old ID is gone and the new one exists. Recipes: for each old
 /// recipe whose ID is gone, the one new recipe that runs on every facility the old one listed and
 /// takes and makes the same items (old ones through the item aliases) at the same rates per
 /// second, as the files list them (activation inputs apart). None or several: no alias, and the
-/// report says so.
+/// report says so. `previous`'s own aliases come first, carried forward: re-pointed where their
+/// target got an alias in this run, and left out and reported where it is gone.
 pub fn aliases(previous: &DataFile, data: &DataFile, report: &mut Report) -> Aliases {
     let has_item = |file: &DataFile, id: &str| file.items.iter().any(|i| i.id == id);
-    let items: IndexMap<String, String> = ITEM_ALIASES
+    let fresh_items: IndexMap<String, String> = ITEM_ALIASES
         .iter()
         .filter(|(old, new)| has_item(previous, old) && !has_item(data, old) && has_item(data, new))
         .map(|(old, new)| ((*old).to_owned(), (*new).to_owned()))
         .collect();
+    let items = carried(
+        &previous.aliases.items,
+        fresh_items,
+        |id| has_item(data, id),
+        AliasKind::Item,
+        report,
+    );
     let renamed = |id: &str| items.get(id).map_or(id, String::as_str).to_owned();
     let rates = |list: &IndexMap<String, f64>, time_s: f64, rename: bool| -> Vec<(String, f64)> {
         let mut rates: Vec<(String, f64)> = list
@@ -1302,5 +1310,50 @@ pub fn aliases(previous: &DataFile, data: &DataFile, report: &mut Report) -> Ali
             }),
         }
     }
+    let recipes = carried(
+        &previous.aliases.recipes,
+        recipes,
+        |id| data.recipes.iter().any(|r| r.id == id),
+        AliasKind::Recipe,
+        report,
+    );
     Aliases { items, recipes }
+}
+
+/// The previous version's own aliases (`older`), then this run's (`fresh`), each pointing at an
+/// ID this version has.
+///
+/// An old ID this version has itself needs no alias. One whose target is still here keeps it; one
+/// whose target got an alias this run follows it, so no alias leads to another. The rest stand for
+/// something gone, with nothing in its place: left out, and the report says so.
+fn carried(
+    older: &IndexMap<String, String>,
+    fresh: IndexMap<String, String>,
+    has: impl Fn(&str) -> bool,
+    kind: AliasKind,
+    report: &mut Report,
+) -> IndexMap<String, String> {
+    let mut aliases = IndexMap::new();
+    for (old, target) in older {
+        if has(old) {
+            continue;
+        }
+        let now = if has(target) {
+            Some(target)
+        } else {
+            fresh.get(target)
+        };
+        match now {
+            Some(now) => {
+                aliases.insert(old.clone(), now.clone());
+            }
+            None => report.dropped_aliases.push(DroppedAlias {
+                kind,
+                id: old.clone(),
+                target: target.clone(),
+            }),
+        }
+    }
+    aliases.extend(fresh);
+    aliases
 }

@@ -22,6 +22,8 @@ pub struct Report {
     pub price_conflicts: Vec<PriceConflict>,
     /// Recipes of the previous version that got no alias.
     pub unaliased: Vec<Unaliased>,
+    /// The previous version's own aliases whose target is gone with nothing in its place.
+    pub dropped_aliases: Vec<DroppedAlias>,
     /// Names several recipes still have after telling them apart by input and gas environment.
     pub shared_names: Vec<SharedName>,
     /// Recipes whose items share no region; they are listed in every region.
@@ -49,6 +51,23 @@ pub struct SharedName {
 pub struct Unaliased {
     pub id: String,
     pub reason: String,
+}
+
+/// An alias of the previous version left out: what it stood for is gone from this version and
+/// got no alias of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DroppedAlias {
+    pub kind: AliasKind,
+    /// The old ID.
+    pub id: String,
+    /// The previous version's ID it stood for.
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AliasKind {
+    Item,
+    Recipe,
 }
 
 /// The report with the data it describes, for printing.
@@ -127,6 +146,12 @@ impl fmt::Display for Summary<'_> {
             "previous recipes without an alias",
             &report.unaliased,
             |u| format!("{}: {}", u.id, u.reason),
+        )?;
+        section(
+            f,
+            "previous aliases dropped (what they stood for is gone, with no alias)",
+            &report.dropped_aliases,
+            |d| format!("{:?} {} (for {})", d.kind, d.id, d.target),
         )
     }
 }

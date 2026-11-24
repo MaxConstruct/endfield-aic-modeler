@@ -829,7 +829,10 @@ is in our own format, read by one loader, and `v1.6.0` comes from the game clien
   - where the game calls items the same (a filled bottle is called as its empty bottle), one made by
     filling a container of that name is called `<container>(<contents>)`;
   - aliases from `--previous`: seven item IDs the old data made up, and each old recipe whose ID is
-    gone to the one new recipe on its facilities with the same items at the same rates.
+    gone to the one new recipe on its facilities with the same items at the same rates. The
+    previous version's own aliases come first and are carried forward, re-pointed where their
+    target was renamed in this run (no alias leads to another); one whose target is gone with
+    nothing in its place is left out and reported.
   Tests on hand-written tables in `crates/aic-extract/tests/fixtures/`.
 - **`data/v1.6.0.json`**: 247 items, 32 facilities, 387 recipes, 7 item aliases and 155 recipe
   aliases. Every v1.5.3 recipe that v1.6.0 has, by ID (42) or alias (155), runs at the same rates per

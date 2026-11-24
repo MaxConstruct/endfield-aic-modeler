@@ -105,9 +105,12 @@ do nothing; every error names the file and the path in it.
 
   It writes `data/<version>.json`, adds the English names the data needs to
   `crates/aic-editor/i18n/names/en.json`, and prints a report: counts, names that differ from the
-  game's, outposts that disagree on a price, and the previous version's
-  recipes that got no alias. `--previous` takes an older version in this format: its item colours
-  are kept and its IDs get aliases. `--data-dir`, `--names` and `--lang` (`EN`) change where it
+  game's, outposts that disagree on a price, the previous version's recipes that got no alias,
+  and its aliases that could not be carried. `--previous` takes an older version in this format:
+  its item colours are kept and its IDs get aliases. Its own aliases are carried forward, so a
+  graph saved two versions back still opens: one whose target was renamed in this run points at
+  the new ID, and one whose target is gone with nothing in its place is left out and reported.
+  `--data-dir`, `--names` and `--lang` (`EN`) change where it
   writes and which text table it reads. The run checks that what it wrote loads.
 
   A name the table already has stays as it is, with two exceptions. A facility that is a building
