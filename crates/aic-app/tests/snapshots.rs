@@ -3963,3 +3963,40 @@ fn a_fit_to_the_cards_leaves_out_a_removed_card() {
     let card = node_rect(&mut harness, near);
     assert!(card.contains(middle), "{card:?} is not at {middle:?}");
 }
+
+#[test]
+fn one_undo_takes_back_a_card_picked_from_a_port() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    let plate = add_from_browser(&mut harness, "Iron Plate");
+    let pin = pin_at(&mut harness, plate, Side::Input, "iron_ingot");
+    let drop = pin - vec2(160.0, 0.0);
+    drag(&mut harness, pin, drop, Modifiers::NONE);
+    harness
+        .get_all_by_label("Iron Ingot")
+        .last()
+        .expect("offered")
+        .click();
+    harness.run();
+    let smelter = selected(&mut harness);
+    let aligned = node_pos(&mut harness, smelter);
+    let right = node_rect(&mut harness, smelter).right();
+    assert!((right - drop.x).abs() < 1.0, "{right} is not at {drop:?}");
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert_eq!(node_count(&mut harness), 1, "the card is gone in one undo");
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.run();
+    assert_eq!(node_count(&mut harness), 2);
+    assert_eq!(node_pos(&mut harness, smelter), aligned);
+    assert_eq!(editor(&mut harness).document().graph().links().len(), 1);
+
+    // What comes after is a step of its own.
+    let at = node_rect(&mut harness, smelter).center_top() + vec2(0.0, 6.0);
+    drag(&mut harness, at, at + vec2(0.0, 80.0), Modifiers::NONE);
+    assert_ne!(node_pos(&mut harness, smelter), aligned);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert_eq!(node_count(&mut harness), 2, "only the move is undone");
+    assert_eq!(node_pos(&mut harness, smelter), aligned);
+}

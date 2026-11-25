@@ -363,8 +363,12 @@ impl Editor {
     }
 
     /// Ends the undo step once the player lets go: a drag, or typing in a field, undoes in one go.
+    /// So does adding a card from a port: the step waits for the canvas to measure the card and
+    /// line it up with the port, a frame later.
     fn end_undo_step(&mut self, ctx: &egui::Context) {
-        let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
+        let busy = ctx.input(|i| i.pointer.any_down())
+            || ctx.memory(|m| m.focused().is_some())
+            || !self.view.anchors.is_empty();
         if !busy {
             self.session.checkpoint();
         }
