@@ -29,9 +29,7 @@ impl Browser {
     ) -> Option<RecipeId> {
         ui.heading(strings.get("browser-title"));
         ui.add(
-            widgets::text_field(ui, &mut self.query)
-                .hint_text(strings.get("browser-search-hint"))
-                .desired_width(f32::INFINITY),
+            widgets::wide_field(ui, &mut self.query).hint_text(strings.get("browser-search-hint")),
         );
         let all = strings.get("browser-all-categories");
         let selected = self

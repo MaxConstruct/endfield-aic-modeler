@@ -97,15 +97,17 @@ pub struct Session {
     last_solve: Option<Duration>,
 }
 
+/// The region a first graph starts in: Wuling.
+const DEFAULT_REGION: &str = "jinlong";
+
 impl Session {
-    /// A session on an empty graph in the catalog's first region.
+    /// A session on an empty graph in Wuling ([`DEFAULT_REGION`]), or in the catalog's first region
+    /// when the data has no Wuling.
     pub fn new(catalog: Catalog, availability: Availability) -> Self {
-        let region = catalog
-            .regions()
-            .keys()
-            .next()
-            .cloned()
-            .unwrap_or_else(|| RegionId::from(""));
+        let regions = catalog.regions();
+        let region = (regions.get_key_value(DEFAULT_REGION))
+            .or_else(|| regions.first())
+            .map_or_else(|| RegionId::from(""), |(id, _)| id.clone());
         Self {
             catalog,
             strings: Strings::english(),
@@ -819,6 +821,26 @@ mod tests {
 
     fn session() -> Session {
         Session::new(fixture_catalog(), Availability::default())
+    }
+
+    #[test]
+    fn a_first_graph_is_in_wuling() {
+        assert_eq!(session().document().graph().region().as_str(), "jinlong");
+    }
+
+    #[test]
+    fn a_first_graph_is_in_the_first_region_of_data_without_wuling() {
+        let data = br#"{
+            "format": 1, "belt_per_min": 30, "pipe_per_min": 120,
+            "regions": ["tundra"], "items": [], "facilities": [], "recipes": []
+        }"#;
+        let names = aic_data::Names {
+            file: "names.json",
+            json: b"{}",
+        };
+        let catalog = Catalog::from_bytes(data, names).expect("the data loads");
+        let session = Session::new(catalog, Availability::default());
+        assert_eq!(session.document().graph().region().as_str(), "tundra");
     }
 
     fn smelter() -> NodeKind {

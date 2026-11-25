@@ -560,11 +560,11 @@ Implement section 5. Rebuild the LPs on every change, since graphs are small.
     Toggles choose whether the search matches recipe names, inputs, outputs, or any mix.
   - Only recipes of the graph's region; hidden recipes left out.
   - **From an input port of item X ("Add producer of X"):** the list shows only recipes that output X,
-    including mining recipes, and the left column offers a Source of X. Every recipe is listed the same
+    including mining recipes, and the left column offers the depot (a source of X). Every recipe is listed the same
     way, in data order, all visible at once; no expanding. (Satisfactory Modeler highlights alternative
     recipes. The data has no main/alternative flag, so that waits until we know how to tell them apart.)
   - **From an output port of item X ("Add consumer of X"):** the mirror case. Only recipes that take X
-    as input, and the left column offers a Sink of X.
+    as input, and the left column offers the depot (a sink of X).
   - One click adds the node and, when opened from a port, links it to that port. The new node gets no
     limit, so the solver sizes it from the rest of the graph. Its facility is the recipe's first one;
     the node card's facility picker changes it later. Logistics nodes added from a port take its item.

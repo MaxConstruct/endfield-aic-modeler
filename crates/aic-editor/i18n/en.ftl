@@ -177,8 +177,7 @@ picker-search-hint = Search recipes
 picker-match-name = Name
 picker-match-inputs = Inputs
 picker-match-outputs = Outputs
-picker-source-of = Source of { $item }
-picker-sink-of = Sink of { $item }
+picker-depot = Depot
 picker-no-recipes = No recipe matches.
 
 ## Recipe browser

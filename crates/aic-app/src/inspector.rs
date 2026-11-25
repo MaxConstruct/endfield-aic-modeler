@@ -64,7 +64,7 @@ impl Editor {
             .clone();
         ui.label(RichText::new(strings.get("kind-workspace")).small().weak());
         let mut name = info.name.clone();
-        let response = ui.add(widgets::text_field(ui, &mut name).desired_width(f32::INFINITY));
+        let response = ui.add(widgets::wide_field(ui, &mut name));
         let label = strings.get("inspector-workspace-name");
         ui.ctx()
             .accesskit_node_builder(response.id, |node| node.set_label(label));
@@ -243,7 +243,7 @@ impl Editor {
             _ => return,
         };
         let mut typed = None;
-        ui.horizontal(|ui| {
+        widgets::field_row(ui, |ui| {
             ui.label(strings.get("inspector-limit"));
             let field = LimitField {
                 id: egui::Id::new("inspector-limit"),

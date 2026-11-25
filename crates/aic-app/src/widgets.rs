@@ -10,6 +10,7 @@ use crate::settings::parse_amount;
 use aic_editor::format;
 use aic_editor::names;
 use aic_editor::picker::foreign_regions;
+use aic_editor::style;
 
 /// Colors with a meaning across the app.
 pub use crate::theme::color as colors;
@@ -19,13 +20,34 @@ pub fn limit_text(limit: Option<f64>) -> String {
     limit.map(format::editable).unwrap_or_default()
 }
 
-/// A one-line text field, as every field in the app starts: as tall as a button
-/// (`interact_size`), which the canvas scales with its text. Left to itself egui makes it as tall
-/// as its text and a margin the canvas doesn't scale, so a field on a card would come out shorter.
+/// How tall a text field is in `ui`: `FIELD_HEIGHT`, scaled on the canvas as its spacing is.
+fn field_height(ui: &Ui) -> f32 {
+    let scale = ui.spacing().interact_size.y / style::spacing::INTERACT_SIZE[1];
+    style::spacing::FIELD_HEIGHT * scale
+}
+
+/// A one-line text field, as every field in the app starts. Left to itself egui makes it as tall
+/// as its text and a margin the canvas doesn't scale.
 pub fn text_field<'t>(ui: &Ui, text: &'t mut dyn egui::TextBuffer) -> egui::TextEdit<'t> {
     egui::TextEdit::singleline(text)
-        .min_size(Vec2::new(0.0, ui.spacing().interact_size.y))
+        .min_size(Vec2::new(0.0, field_height(ui)))
         .vertical_align(egui::Align::Center)
+}
+
+/// A field for words, as wide as its panel, its text in line with that of the buttons under it.
+pub fn wide_field<'t>(ui: &Ui, text: &'t mut dyn egui::TextBuffer) -> egui::TextEdit<'t> {
+    let [padding_x, padding_y] = style::spacing::BUTTON_PADDING;
+    text_field(ui, text)
+        .desired_width(f32::INFINITY)
+        .margin(egui::Margin::symmetric(padding_x as i8, padding_y as i8))
+}
+
+/// A row with a text field in it. `Ui::horizontal` starts a row as tall as a button, and what
+/// comes before the taller field would be centred on that.
+pub fn field_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    let size = Vec2::new(ui.available_width(), field_height(ui));
+    let layout = egui::Layout::left_to_right(egui::Align::Center);
+    ui.allocate_ui_with_layout(size, layout, add)
 }
 
 /// A field for typing a limit. It shows `current` unless the player is typing in it, and returns
@@ -310,6 +332,12 @@ impl RegionBadges {
         }
         response
     }
+}
+
+/// Was it double-clicked? egui counts a double-click soon after another click as a triple click,
+/// not a double one; either counts here.
+pub fn double_clicked(response: &egui::Response) -> bool {
+    response.double_clicked() || response.triple_clicked()
 }
 
 /// A warning sign: an amber triangle with a dark `!`, `size` points wide.

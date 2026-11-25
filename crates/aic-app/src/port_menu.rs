@@ -79,7 +79,7 @@ impl PortMenu {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(WIDTH);
                     if has_limit {
-                        ui.horizontal(|ui| {
+                        widgets::field_row(ui, |ui| {
                             ui.label(theme::strong(strings.get("port-menu-limit")));
                             let field = LimitField {
                                 id: field_id,

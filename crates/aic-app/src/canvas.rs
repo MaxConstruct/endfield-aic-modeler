@@ -87,6 +87,24 @@ const EDGE_GAP: f32 = 8.0;
 const GRID: f32 = 40.0;
 /// Room left around the cards when the canvas is fitted to them, in view space.
 const FIT_MARGIN: f32 = 100.0;
+/// What a scroll is scaled by so that one notch of a mouse wheel zooms as far in a browser as on
+/// the desktop, where winit reports it as a line and egui makes a line 40 points.
+fn wheel_scale(web: bool, os: egui::os::OperatingSystem, unit: egui::MouseWheelUnit) -> f32 {
+    use egui::os::OperatingSystem::{IOS, Mac};
+    if !web {
+        return 1.0;
+    }
+    match unit {
+        // A Mac's trackpad reports the same points to a browser and to an app.
+        egui::MouseWheelUnit::Point if matches!(os, Mac | IOS) => 1.0,
+        // Elsewhere a browser makes a notch about 100 pixels.
+        egui::MouseWheelUnit::Point => 40.0 / 100.0,
+        // Firefox makes it three lines, and egui a line 8 points on the web.
+        egui::MouseWheelUnit::Line => 40.0 / (3.0 * 8.0),
+        egui::MouseWheelUnit::Page => 1.0,
+    }
+}
+
 /// How far the canvas zooms out and in. The canvas is laid out at `MAX_ZOOM`, which is what the
 /// document's view space is scaled by.
 pub const MIN_ZOOM: f32 = 0.2;
@@ -214,6 +232,9 @@ pub struct Canvas {
     /// Wheel scroll not yet turned into a zoom step, as a factor. Small scrolls add up here until
     /// they reach the next 5%.
     wheel_rest: f32,
+    /// What the last wheel event's scroll is scaled by before it zooms ([`wheel_scale`]). egui
+    /// plays a scroll out over several frames, after its event is gone.
+    wheel_scale: f32,
     /// The level shown last frame.
     level: Option<WorkspaceId>,
     /// Where the top of the graph was looked at last, kept while a workspace is open so a save
@@ -245,6 +266,7 @@ impl Canvas {
             pending_zoom: None,
             pending_fit: None,
             wheel_rest: 1.0,
+            wheel_scale: 1.0,
             level: None,
             top_view: None,
             title_edit: String::new(),
@@ -459,7 +481,7 @@ impl Canvas {
             // A link stays selected until a click on the background lets go of it.
             events.push(CanvasEvent::Select(None));
         }
-        if background.double_clicked() {
+        if widgets::double_clicked(background) {
             self.pending_fit = Some(Fit::Cards);
             ui.ctx().request_repaint();
         }
@@ -558,6 +580,14 @@ impl Canvas {
     /// it pans, as everywhere. A pinch, or Ctrl with the wheel, zooms smoothly. Dragging the
     /// background pans; that is the widget's.
     fn scroll(&mut self, ui: &Ui, camera: &mut TSTransform) {
+        let os = ui.ctx().os();
+        ui.input(|i| {
+            for event in &i.raw.events {
+                if let egui::Event::MouseWheel { unit, .. } = event {
+                    self.wheel_scale = wheel_scale(cfg!(target_arch = "wasm32"), os, *unit);
+                }
+            }
+        });
         let (delta, pinch, pos, modifiers) = ui.input(|i| {
             (
                 i.smooth_scroll_delta,
@@ -591,7 +621,8 @@ impl Canvas {
             return;
         }
         let speed = ui.ctx().options(|o| o.input_options.scroll_zoom_speed);
-        let wanted = current * self.wheel_rest * (speed * (delta.x + delta.y)).exp();
+        let scrolled = self.wheel_scale * (delta.x + delta.y);
+        let wanted = current * self.wheel_rest * (speed * scrolled).exp();
         let zoom = round_zoom(wanted);
         // Past either end of the range, the rest of the scroll is dropped.
         self.wheel_rest = if (MIN_ZOOM..=MAX_ZOOM).contains(&wanted) {
@@ -1259,7 +1290,7 @@ impl Cards<'_> {
         }
         // A double-click on a workspace's card opens it.
         if let Member::Workspace(workspace) = card.member
-            && shown.double_clicked()
+            && widgets::double_clicked(shown)
         {
             self.events.push(CanvasEvent::ShowLevel(Some(workspace)));
         }
@@ -1726,10 +1757,8 @@ impl Cards<'_> {
             beside = beside.on_hover_text(hint);
         }
         // A double-click on the port, its icon or its rate, opens its menu: the limit as a rate,
-        // and clearing its links. egui counts a quick third click as a triple click, not a
-        // double one; either opens it.
-        let twice = |r: &egui::Response| r.double_clicked() || r.triple_clicked();
-        if twice(&response) || twice(&beside) {
+        // and clearing its links.
+        if widgets::double_clicked(&response) || widgets::double_clicked(&beside) {
             self.events.push(CanvasEvent::OpenPortMenu {
                 port: Port {
                     node,
@@ -1839,7 +1868,7 @@ impl Cards<'_> {
                 "workspace-open",
                 CanvasEvent::ShowLevel(Some(workspace)),
             );
-            ui.horizontal(|ui| {
+            widgets::field_row(ui, |ui| {
                 ui.label(strings.get("workspace-title"));
                 let name = (self.graph.workspace_info(workspace))
                     .map(|w| w.name.clone())
@@ -2017,4 +2046,21 @@ fn big_number(ui: &mut Ui, text: &str) {
 /// A card's title, cut short with an ellipsis to fit the card; the whole title shows on hover.
 fn title_label(ui: &mut Ui, text: RichText) {
     ui.add(egui::Label::new(text).truncate());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::MouseWheelUnit::{Line, Point};
+    use egui::os::OperatingSystem::{Mac, Windows};
+
+    #[test]
+    fn a_wheel_notch_scrolls_as_far_in_a_browser_as_on_the_desktop() {
+        // 40 points: egui's line on the desktop.
+        assert_eq!(40.0 * wheel_scale(false, Windows, Line), 40.0);
+        // Chrome: 100 pixels. Firefox: 3 lines, of 8 points each on the web.
+        assert_eq!(100.0 * wheel_scale(true, Windows, Point), 40.0);
+        assert!((3.0 * 8.0 * wheel_scale(true, Windows, Line) - 40.0).abs() < 1e-4);
+        assert_eq!(wheel_scale(true, Mac, Point), 1.0, "a trackpad is the same");
+    }
 }

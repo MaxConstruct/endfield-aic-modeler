@@ -12,6 +12,7 @@ use crate::i18n::Strings;
 use crate::theme::{self, color};
 use crate::widgets;
 use aic_editor::names;
+use aic_editor::style;
 
 pub use aic_editor::settings::{Availability, BadAmount, STORAGE_KEY, SupplyEdits, parse_amount};
 
@@ -140,9 +141,9 @@ impl Editor {
         let edits = &mut self.settings.edits;
         let unit = strings.get("settings-per-min");
         let unit_width = text_width(ui, &unit);
-        let height = ui.spacing().interact_size.y;
+        let height = style::spacing::FIELD_HEIGHT;
         for item in raw {
-            ui.horizontal(|ui| {
+            widgets::field_row(ui, |ui| {
                 widgets::item_icon(ui, catalog, item.as_str(), ICON);
                 let name = names::item(catalog, item.as_str());
                 let gap = ui.spacing().item_spacing.x;

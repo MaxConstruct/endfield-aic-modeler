@@ -40,7 +40,7 @@ static OPENINGS: AtomicU64 = AtomicU64::new(0);
 
 const WIDTH: f32 = 620.0;
 const HEIGHT: f32 = 420.0;
-const LEFT_WIDTH: f32 = 160.0;
+const LEFT_WIDTH: f32 = 124.0;
 const ROW_HEIGHT: f32 = 32.0;
 const BADGE: f32 = 32.0;
 /// From one item badge to the next.
@@ -106,9 +106,7 @@ impl Picker {
         graph_region: &RegionId,
     ) -> Option<Choice> {
         let search = ui.add(
-            widgets::text_field(ui, &mut self.query)
-                .hint_text(strings.get("picker-search-hint"))
-                .desired_width(f32::INFINITY),
+            widgets::wide_field(ui, &mut self.query).hint_text(strings.get("picker-search-hint")),
         );
         if self.just_opened {
             search.request_focus();
@@ -145,7 +143,7 @@ impl Picker {
                     Origin::Canvas => None,
                 };
                 for builtin in builtins(&self.origin) {
-                    let label = self.builtin_label(catalog, strings, builtin);
+                    let label = Self::builtin_label(strings, builtin);
                     let image = builtin_image(builtin, phase);
                     let image = widgets::image_atom(ui.ctx(), ImageKind::Node, image, BADGE);
                     let button = match image {
@@ -208,14 +206,10 @@ impl Picker {
         chosen
     }
 
-    fn builtin_label(&self, catalog: &Catalog, strings: &Strings, builtin: Builtin) -> String {
-        let item = match &self.origin {
-            Origin::Port { item, .. } => names::item(catalog, item.as_str()),
-            Origin::Canvas => "",
-        };
+    fn builtin_label(strings: &Strings, builtin: Builtin) -> String {
         match builtin {
-            Builtin::Source => strings.format("picker-source-of", &[("item", item)]),
-            Builtin::Sink => strings.format("picker-sink-of", &[("item", item)]),
+            // Which one it is, the port says: a source feeds an input, a sink takes an output.
+            Builtin::Source | Builtin::Sink => strings.get("picker-depot"),
             Builtin::Splitter => strings.get("kind-splitter"),
             Builtin::Merger => strings.get("kind-merger"),
             Builtin::Storage => strings.get("kind-storage"),

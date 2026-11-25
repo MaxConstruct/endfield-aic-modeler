@@ -59,6 +59,7 @@ fn harness(version_file: &Path) -> Harness<'static, App> {
 }
 
 /// A harness whose clock moves `step_dt` seconds a frame (kittest's default is a quarter second).
+/// Its graph is in Valley IV, where the fixtures' recipes are.
 fn harness_stepping(version_file: &Path, step_dt: f32) -> Harness<'static, App> {
     let catalog = aic_editor::testing::load(version_file).expect("data loads");
     let real = version_file.parent() == Some(fixture("../../data").as_path());
@@ -72,7 +73,11 @@ fn harness_stepping(version_file: &Path, step_dt: f32) -> Harness<'static, App> 
             } else {
                 look_of_a_fixture(&cc.egui_ctx);
             }
-            steady(App::new(Strings::english(), Ok(catalog), None))
+            let mut app = steady(App::new(Strings::english(), Ok(catalog), None));
+            if let Some(editor) = app.editor_mut() {
+                editor.new_graph("tundra".into());
+            }
+            app
         });
     harness.run();
     // The inspector starts closed; most tests read or type into it.
@@ -306,7 +311,7 @@ fn rebuild_golden_07_through_the_picker() {
         Side::Input,
         "iron_ore",
         (-80.0, 0.0),
-        "Source of Iron Ore",
+        "Depot",
     );
     // A new source starts at one belt (30/min); the player types 60.
     type_limit(&mut harness, "60");
@@ -369,7 +374,7 @@ fn rebuild_golden_05_through_the_picker() {
         Side::Output,
         "plant_grass_2",
         (360.0, 0.0),
-        "Sink of Yazhen",
+        "Depot",
     );
     type_limit(&mut harness, "10");
     link(&mut harness, planting, picking, "plant_grass_2");
@@ -633,7 +638,7 @@ fn type_into(harness: &mut Harness<'_, App>, label: &str, text: &str) {
 }
 
 /// Both clicks go into one frame: the harness gives each queued event its own frame of 0.25 s,
-/// longer than egui's double-click window.
+/// which puts two clicks half a second apart, too long for a double-click.
 fn double_click_at(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) {
     harness.hover_at(pos);
     harness.step();
@@ -649,6 +654,44 @@ fn double_click_at(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) {
             });
     }
     harness.run();
+}
+
+/// A press and a release at `pos` in one frame.
+fn one_click_at(harness: &mut Harness<'_, App>, pos: eframe::egui::Pos2) {
+    for pressed in [true, false] {
+        harness
+            .input_mut()
+            .events
+            .push(eframe::egui::Event::PointerButton {
+                pos,
+                button: eframe::egui::PointerButton::Primary,
+                pressed,
+                modifiers: eframe::egui::Modifiers::NONE,
+            });
+    }
+    harness.step();
+}
+
+#[test]
+fn two_clicks_within_half_a_second_are_a_double_click() {
+    // A frame is 0.1 s.
+    for (frames, opens) in [(4, true), (6, false)] {
+        let mut harness = harness_stepping(&aic_editor::testing::fixture_file(), 0.1);
+        let plate = add_from_browser(&mut harness, "Iron Plate");
+        let pin = editor(&mut harness)
+            .port_on_screen(plate, Side::Output, "iron_plate")
+            .expect("pin is drawn");
+        let at = beside_output_pin(&mut harness, pin);
+        harness.hover_at(at);
+        harness.step();
+        one_click_at(&mut harness, at);
+        for _ in 1..frames {
+            harness.step();
+        }
+        one_click_at(&mut harness, at);
+        harness.run();
+        assert_eq!(editor(&mut harness).port_menu_is_open(), opens, "{frames}");
+    }
 }
 
 #[test]
@@ -3227,7 +3270,7 @@ fn picker_rows_keep_names_clear_of_the_icons() {
 }
 
 #[test]
-fn every_text_field_is_as_tall_as_a_supply_field() {
+fn every_text_field_is_as_tall_as_the_search() {
     let mut harness = harness(&aic_editor::testing::fixture_file());
     settings_header(&harness).click();
     harness.run();
@@ -3240,7 +3283,7 @@ fn every_text_field_is_as_tall_as_a_supply_field() {
         .collect();
     heights.sort_by(f32::total_cmp);
     // The search, a supply and the inspector's limit; a card is laid out at 200%.
-    assert_eq!(heights, [20.0, 20.0, 20.0, 40.0]);
+    assert_eq!(heights, [28.0, 28.0, 28.0, 56.0]);
 }
 
 // M11: the canvas on aic-node-graph (ADR 0011). What the pointer does on the canvas, driven with

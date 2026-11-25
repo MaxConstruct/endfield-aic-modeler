@@ -253,7 +253,7 @@ selected node is 2pt. `WidgetVisuals::expansion` is 0 in every state: hover chan
 Quiet and flat. Rest: `CONTROL` fill, `DIVIDER` outline, `TEXT`. Hover/open: `CONTROL_HOVER`, `BORDER_STRONG`, `TEXT_STRONG`. Pressed: `CONTROL_ACTIVE`, `ACCENT` outline. All 1pt, radius small, built by the `control` closure in `theme::visuals`. Toggled selectable buttons use the selection wash.
 
 ### Inputs / Fields
-`INSET` fill, radius small, 20pt high. Focus: `ACCENT_TEXT` outline, 2pt `ACCENT` cursor that doesn't blink. Unparseable input turns its text `NEGATIVE`; nothing pops up.
+`INSET` fill, radius small, 28pt high (`widgets::text_field`), on a card too. One as wide as its panel has its text in line with the buttons under it (`widgets::wide_field`); a label beside one goes in a `widgets::field_row`. Focus: `ACCENT_TEXT` outline, 2pt `ACCENT` cursor that doesn't blink. Unparseable input turns its text `NEGATIVE`; nothing pops up.
 
 ### Node Card (signature)
 `RAISED`, 1pt `BORDER`, radius medium, card shadow, 300pt wide; text never wraps and can't be selected (a drag moves the node). Header filled with its kind's tint: a 12pt muted kind line (omitted on recipe cards) over a `theme::strong` title; a recipe card puts its facility's name under the title instead, 12pt `TEXT_MUTED`, with the header's full width for long names (a frameless button that cycles facilities when the recipe has several). Body: facility image, the focal **Number**, a small limit button. Ports are item-icon pins at the edges with mono rates beside them, colored `LINKED`, `DEPOT_IN` or `DEPOT_OUT`; a throttled port gets a 10pt amber triangle. Selected: 2pt `ACCENT` outline.

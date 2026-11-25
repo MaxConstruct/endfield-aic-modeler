@@ -169,11 +169,16 @@ pub fn number_style() -> TextStyle {
     TextStyle::Name(NUMBER_STYLE.into())
 }
 
-/// Sets the app's fonts and style on `ctx`. Call once, before the first frame.
+/// The longest two clicks may be apart, in seconds, to be a double-click: Windows' own default.
+/// egui's is 0.3.
+const DOUBLE_CLICK: f64 = 0.5;
+
+/// Sets the app's fonts, style and double-click time on `ctx`. Call once, before the first frame.
 pub fn install(ctx: &egui::Context) {
     ctx.set_fonts(fonts());
     ctx.set_theme(egui::ThemePreference::Dark);
     ctx.style_mut_of(egui::Theme::Dark, apply);
+    ctx.options_mut(|options| options.input_options.max_double_click_delay = DOUBLE_CLICK);
 }
 
 /// The style of a node card: a raised surface with a hairline outline and a short shadow.

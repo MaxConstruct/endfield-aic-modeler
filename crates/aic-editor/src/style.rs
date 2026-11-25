@@ -159,6 +159,8 @@ pub mod spacing {
     pub const BUTTON_PADDING: [f32; 2] = [8.0, 2.0];
     /// The smallest a widget that can be clicked is: across, down.
     pub const INTERACT_SIZE: [f32; 2] = [40.0, 20.0];
+    /// A text field's height.
+    pub const FIELD_HEIGHT: f32 = 28.0;
     /// Inside a window.
     pub const WINDOW_MARGIN: i8 = 10;
     /// Inside a menu.
