@@ -3897,3 +3897,69 @@ fn below_the_plain_zoom_only_the_selected_link_keeps_its_label() {
     zoom_canvas(&mut harness, PLAIN_BELOW - ZOOM_STEP);
     assert_eq!(labels(&harness), 1, "the selected link's label");
 }
+
+/// Drops a link dragged from `pin` at `drop`, closes the picker, and returns whether it opened.
+fn drop_opens_picker(harness: &mut Harness<'_, App>, pin: Pos2, drop: Pos2) -> bool {
+    drag(harness, pin, drop, Modifiers::NONE);
+    let opened = editor(harness).picker_is_open();
+    if opened {
+        harness.key_press(Key::Escape);
+        harness.run();
+    }
+    opened
+}
+
+#[test]
+fn a_link_dropped_where_a_removed_card_was_opens_the_picker() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    let (ingot, plate) = ingot_and_plate(&mut harness);
+    editor(&mut harness).zoom_canvas_to(0.5);
+    harness.run();
+    let pin = pin_at(&mut harness, plate, Side::Input, "iron_ingot");
+    let drop = node_rect(&mut harness, ingot).center();
+    assert!(
+        !drop_opens_picker(&mut harness, pin, drop),
+        "a link dropped on a card opens no picker"
+    );
+
+    editor(&mut harness).document_mut().remove_node(ingot);
+    harness.run();
+    assert!(
+        drop_opens_picker(&mut harness, pin, drop),
+        "the card is gone, and the canvas there is empty"
+    );
+    assert!(editor(&mut harness).node_on_screen(ingot).is_none());
+
+    // Added and taken back by an undo.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    let back = node_rect(&mut harness, ingot).center();
+    assert!(!drop_opens_picker(&mut harness, pin, back));
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    harness.run();
+    assert!(drop_opens_picker(&mut harness, pin, back));
+
+    // Removed in the same frame as another card comes: as many cards as before.
+    let removed = smelter(&mut harness, 0.0, 0.0);
+    harness.run();
+    let drop = node_rect(&mut harness, removed).center();
+    editor(&mut harness).document_mut().remove_node(removed);
+    constructor(&mut harness, 500.0, 500.0);
+    harness.run();
+    assert!(drop_opens_picker(&mut harness, pin, drop));
+}
+
+#[test]
+fn a_fit_to_the_cards_leaves_out_a_removed_card() {
+    let mut harness = harness(&aic_editor::testing::fixture_file());
+    let near = smelter(&mut harness, 400.0, 300.0);
+    let far = smelter(&mut harness, 2600.0, 1700.0);
+    harness.run();
+    editor(&mut harness).document_mut().remove_node(far);
+    harness.run();
+    let empty = background(&mut harness);
+    double_click_at(&mut harness, empty);
+    let middle = canvas_rect(&mut harness).center();
+    let card = node_rect(&mut harness, near);
+    assert!(card.contains(middle), "{card:?} is not at {middle:?}");
+}

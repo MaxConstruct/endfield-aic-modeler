@@ -214,7 +214,8 @@ pub struct Canvas {
     to_global: TSTransform,
     /// The canvas area on screen, as of the last frame.
     pub rect: Rect,
-    /// Where each node and workspace card was drawn last frame, in view space.
+    /// Where each node and workspace card was drawn last frame, in view space. Only of cards the
+    /// level still shows: a link dropped in one of these opens no picker.
     node_rects: HashMap<Member, Rect>,
     /// The middle of each pin's icon as last drawn, from its card's corner, in view space.
     pins: HashMap<PinKey, Vec2>,
@@ -1265,7 +1266,22 @@ impl Cards<'_> {
                 self.after(ui, nodes, card, &shown);
             }
         }
+        self.forget_removed();
         self.settle_link(ui);
+    }
+
+    /// Forgets where the cards no longer shown were drawn, so that the canvas there is empty: a
+    /// link can be dropped on it, and a fit leaves it out. Runs once every card has shown, when
+    /// any place more than there are cards is a removed one's.
+    fn forget_removed(&mut self) {
+        let view = self.view;
+        if self.node_rects.len() == view.cards().len() {
+            return;
+        }
+        self.node_rects
+            .retain(|&member, _| view.card(member).is_some());
+        self.pins
+            .retain(|&(member, ..), _| view.card(member).is_some());
     }
 
     /// What follows a card once it has shown: where it is, the edge it should land on, its menu,
