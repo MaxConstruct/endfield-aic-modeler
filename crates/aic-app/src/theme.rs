@@ -69,6 +69,10 @@ pub mod color {
     pub const LINKED: Color32 = rgba(style::color::LINKED);
     /// Throttle markers and hints such as a link over one belt.
     pub const WARN: Color32 = rgba(style::color::WARN);
+    /// Behind a tag whose text is [`WARN`], such as the gas environment a recipe needs.
+    pub const WARN_FILL: Color32 = rgba(style::color::WARN_FILL);
+    /// The outline of that tag.
+    pub const WARN_STROKE: Color32 = rgba(style::color::WARN_STROKE);
     /// A storage filling up.
     pub const POSITIVE: Color32 = rgba(style::color::POSITIVE);
     /// A storage draining, text that doesn't parse, errors.

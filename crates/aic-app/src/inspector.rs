@@ -179,6 +179,16 @@ impl Editor {
                             }
                         });
                     ui.end_row();
+                    if let Some(gas) = (catalog.recipe(recipe.as_str()))
+                        .and_then(|recipe| recipe.environment.as_ref())
+                    {
+                        ui.label(strings.get("inspector-environment"));
+                        ui.label(
+                            RichText::new(names::environment(catalog, strings, gas))
+                                .color(colors::WARN),
+                        );
+                        ui.end_row();
+                    }
                     ui.label(strings.get("inspector-count"));
                     let count = solution.facility_count.get(&node).copied().flatten();
                     ui.monospace(format::short(count));

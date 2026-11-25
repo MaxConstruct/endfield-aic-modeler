@@ -75,6 +75,10 @@ pub mod color {
     pub const LINKED: Rgba = Rgba::rgb(0x9A, 0xA0, 0xAB);
     /// Throttle markers and hints such as a link over one belt.
     pub const WARN: Rgba = Rgba::rgb(0xE9, 0xA2, 0x3B);
+    /// Behind a tag whose text is [`WARN`], such as the gas environment a recipe needs.
+    pub const WARN_FILL: Rgba = Rgba::rgb(0x3A, 0x2B, 0x12);
+    /// The outline of that tag.
+    pub const WARN_STROKE: Rgba = Rgba::rgb(0x6E, 0x50, 0x1F);
     /// A storage filling up.
     pub const POSITIVE: Rgba = Rgba::rgb(0x6C, 0xC7, 0x7E);
     /// A storage draining, text that doesn't parse, errors.
@@ -314,6 +318,12 @@ mod tests {
             assert!(contrast(color::TEXT_MUTED, tint) >= 4.5, "{tint:?}");
         }
         assert!(contrast(color::ACCENT_TEXT, color::ACCENT_FILL) >= 4.5);
+    }
+
+    #[test]
+    fn a_warning_tag_reads_on_its_fill_and_its_outline_shows_on_a_card() {
+        assert!(contrast(color::WARN, color::WARN_FILL) >= 4.5);
+        assert!(contrast(color::WARN_STROKE, color::RAISED) >= 1.5);
     }
 
     #[test]

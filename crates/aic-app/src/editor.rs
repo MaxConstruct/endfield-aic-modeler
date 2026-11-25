@@ -641,29 +641,16 @@ impl Editor {
                 }
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-                    self.status_messages(ui, strings);
+                    self.status_messages(ui);
                 });
             });
         });
     }
 
-    /// The data version warning and the status message, after the app info.
-    fn status_messages(&self, ui: &mut Ui, strings: &Strings) {
-        if self.session.other_data_version().is_some() || self.session.status().is_some() {
-            ui.separator();
-        }
-        if let Some(version) = self.session.other_data_version() {
-            let text = strings.format(
-                "file-other-data-version",
-                &[
-                    ("file", version),
-                    ("active", self.session.catalog().version()),
-                ],
-            );
-            ui.label(RichText::new(text).color(colors::WARN));
-            ui.separator();
-        }
+    /// The status message, after the app info.
+    fn status_messages(&self, ui: &mut Ui) {
         if let Some(status) = self.session.status() {
+            ui.separator();
             ui.label(RichText::new(status).color(colors::WARN));
         }
     }

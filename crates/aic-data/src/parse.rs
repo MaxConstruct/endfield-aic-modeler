@@ -7,7 +7,8 @@ use indexmap::IndexMap;
 use serde::Deserialize;
 
 use crate::catalog::{
-    ActivationInput, Catalog, Category, Facility, Item, LoadWarning, NameKind, Recipe, Region,
+    ActivationInput, Catalog, Category, Facility, FacilityInputs, Item, LoadWarning, NameKind,
+    Recipe, Region,
 };
 use crate::error::LoadError;
 use crate::file::{
@@ -277,9 +278,17 @@ impl Builder {
             check_positive(entry.speed).map_err(|m| self.invalid(format!("{path}.speed"), m))?;
             check_finite(entry.power_kw)
                 .map_err(|m| self.invalid(format!("{path}.power_kw"), m))?;
-            let activation = match &entry.activation {
-                None => None,
-                Some(activation) => {
+            let inputs = match (&entry.activation, entry.whole_units) {
+                (None, false) => FacilityInputs::Scaled,
+                (None, true) => FacilityInputs::WholeUnits,
+                (Some(_), true) => {
+                    return Err(self.invalid(
+                        format!("{path}.whole_units"),
+                        "a facility of whole units takes every input whole, so it can't also \
+                         have an activation input",
+                    ));
+                }
+                (Some(activation), false) => {
                     let Some((item, _)) = items.get_key_value(activation.item.as_str()) else {
                         return Err(self.invalid(
                             format!("{path}.activation.item"),
@@ -288,7 +297,7 @@ impl Builder {
                     };
                     let per_min = check_positive(activation.per_min)
                         .map_err(|m| self.invalid(format!("{path}.activation.per_min"), m))?;
-                    Some(ActivationInput::new(item.clone(), per_min))
+                    FacilityInputs::Activation(ActivationInput::new(item.clone(), per_min))
                 }
             };
             let facility = Facility {
@@ -297,11 +306,45 @@ impl Builder {
                 speed: entry.speed,
                 power_kw: entry.power_kw,
                 regions: self.region_ids(&entry.regions, regions, &format!("{path}.regions"))?,
-                activation,
+                inputs,
+                // Below, once every facility it may name is known.
+                stack: Vec::new(),
             };
             facilities.insert(id, facility);
         }
+        // A stack names facilities, itself or later ones too: a T1 array is one of itself.
+        for (i, entry) in entries.iter().enumerate() {
+            let stack =
+                self.facility_counts(&entry.stack, &facilities, &format!("facilities[{i}].stack"))?;
+            facilities[i].stack = stack;
+        }
         Ok(facilities)
+    }
+
+    /// Facility IDs with a positive whole count each, as a stack or a projection lists them.
+    fn facility_counts(
+        &self,
+        counts: &IndexMap<String, u32>,
+        facilities: &Facilities,
+        path: &str,
+    ) -> Result<Vec<(FacilityId, u32)>, LoadError> {
+        counts
+            .iter()
+            .map(|(id, &n)| {
+                let Some((id, _)) = facilities.get_key_value(id.as_str()) else {
+                    return Err(
+                        self.invalid(format!("{path}.{id}"), format!("unknown facility `{id}`"))
+                    );
+                };
+                if n == 0 {
+                    return Err(self.invalid(
+                        format!("{path}.{id}"),
+                        "expected a positive whole number, found 0",
+                    ));
+                }
+                Ok((id.clone(), n))
+            })
+            .collect()
     }
 
     fn region_ids(
@@ -354,18 +397,18 @@ impl Builder {
             if let Some(power) = entry.power_kw {
                 check_finite(power).map_err(|m| self.invalid(format!("{path}.power_kw"), m))?;
             }
-            let environment = match &entry.environment {
-                None => None,
-                Some(gas) => match items.get_key_value(gas.as_str()) {
-                    Some((gas, _)) => Some(gas.clone()),
-                    None => {
-                        return Err(self.invalid(
-                            format!("{path}.environment"),
-                            format!("unknown item `{gas}`"),
-                        ));
-                    }
-                },
-            };
+            let environment = self.gas(
+                entry.environment.as_deref(),
+                items,
+                &format!("{path}.environment"),
+            )?;
+            let creates_environment = self.gas(
+                entry.creates_environment.as_deref(),
+                items,
+                &format!("{path}.creates_environment"),
+            )?;
+            let projects =
+                self.facility_counts(&entry.projects, facilities, &format!("{path}.projects"))?;
             let recipe = Recipe {
                 id: id.clone(),
                 name: self.name(NameKind::Recipe, &entry.id),
@@ -380,15 +423,32 @@ impl Builder {
                 facilities: facility_ids,
                 regions: self.region_ids(&entry.regions, regions, &format!("{path}.regions"))?,
                 environment,
+                creates_environment,
+                projects,
             };
             recipes.insert(id, recipe);
         }
         Ok(recipes)
     }
 
+    /// The item a gas environment names, which must exist.
+    fn gas(
+        &self,
+        gas: Option<&str>,
+        items: &Items,
+        path: &str,
+    ) -> Result<Option<ItemId>, LoadError> {
+        let Some(gas) = gas else { return Ok(None) };
+        match items.get_key_value(gas) {
+            Some((gas, _)) => Ok(Some(gas.clone())),
+            None => Err(self.invalid(path, format!("unknown item `{gas}`"))),
+        }
+    }
+
     /// The activation input a recipe's facilities need, as a quantity per craft to add to its
     /// inputs: `per_min` over one craft at the facilities' speed. Facilities of one recipe that
-    /// disagree on it can't share the recipe's inputs, so that is an error.
+    /// disagree on it, or on running in whole units, can't share the recipe's inputs, so that is
+    /// an error.
     fn activation(
         &self,
         entry: &RecipeEntry,
@@ -397,25 +457,29 @@ impl Builder {
         path: &str,
     ) -> Result<Option<(ItemId, f64)>, LoadError> {
         let all: Vec<&Facility> = facility_ids.iter().map(|id| &facilities[id]).collect();
-        let Some(first) = all.iter().find(|f| f.activation.is_some()) else {
-            return Ok(None);
-        };
-        let activation = first
-            .activation
-            .as_ref()
-            .expect("found one with an activation");
-        if let Some(other) = all
-            .iter()
-            .find(|f| f.activation.as_ref() != Some(activation) || f.speed != first.speed)
-        {
-            return Err(self.invalid(
+        let differ = |a: &Facility, b: &Facility, what: &str| {
+            self.invalid(
                 format!("{path}.facilities"),
                 format!(
-                    "`{}` and `{}` differ in activation input or speed, so they can't share a \
-                     recipe",
-                    first.id, other.id
+                    "`{}` and `{}` differ in {what}, so they can't share a recipe",
+                    a.id, b.id
                 ),
-            ));
+            )
+        };
+        if let Some(whole) = all.iter().find(|f| f.whole_units())
+            && let Some(other) = all.iter().find(|f| !f.whole_units())
+        {
+            return Err(differ(whole, other, "whole units"));
+        }
+        let Some(first) = all.iter().find(|f| f.activation().is_some()) else {
+            return Ok(None);
+        };
+        let activation = first.activation().expect("found one with an activation");
+        if let Some(other) = all
+            .iter()
+            .find(|f| f.activation() != Some(activation) || f.speed != first.speed)
+        {
+            return Err(differ(first, other, "activation input or speed"));
         }
         let qty = activation.per_min() * entry.time_s / (60.0 * first.speed);
         Ok(Some((activation.item().clone(), qty)))

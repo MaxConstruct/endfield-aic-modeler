@@ -71,12 +71,18 @@ fn an_overlay_gives_a_facility_an_activation_input_on_top_of_its_recipes_inputs(
         }] } }"#,
     )
     .unwrap();
-    let activation = (catalog.facility("furnance_1").unwrap().activation.as_ref())
+    let activation = (catalog.facility("furnance_1").unwrap().activation())
         .expect("furnance_1 has an activation input");
     assert_eq!(activation.item(), &ItemId::from("liquid_water"));
     assert_eq!(activation.per_min(), 6.0);
     // Every other facility has none.
-    assert!(catalog.facility("planter_1").unwrap().activation.is_none());
+    assert!(
+        catalog
+            .facility("planter_1")
+            .unwrap()
+            .activation()
+            .is_none()
+    );
     // The recipe now takes 30 + 6 per minute: 1.2 per 2 s craft.
     let recipe = catalog.recipe("copper_nugget").unwrap();
     let water = (recipe.inputs.iter()).find(|(item, _)| item.as_str() == "liquid_water");
@@ -90,7 +96,7 @@ fn without_an_overlay_no_facility_has_an_activation_input() {
         catalog
             .facilities()
             .values()
-            .all(|facility| facility.activation.is_none())
+            .all(|facility| facility.activation().is_none())
     );
 }
 

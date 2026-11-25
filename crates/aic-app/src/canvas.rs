@@ -817,10 +817,13 @@ struct Face {
     /// The recipe whose region badges go before the title, when the graph's region lacks it, and
     /// the regions that have it, as text.
     badges: Option<(RecipeId, String)>,
-    /// The region warnings, a line each, on the sign before the title.
+    /// The region warnings and a missing gas environment, a line each, on the sign before the
+    /// title.
     warnings: Option<String>,
     /// A recipe card's facility, and whether a click on it moves to another.
     facility: Option<(String, bool)>,
+    /// The gas environment a recipe card's recipe needs, on a tag beside its facility.
+    environment: Option<String>,
     /// A storage's balance, and its colour.
     balance: Option<(String, Color32)>,
     body: Body,
@@ -922,6 +925,9 @@ impl Read<'_> {
                     issue @ (Issue::RecipeOutsideRegion { node, .. }
                     | Issue::FacilityOutsideRegion { node, .. }),
                 ) if *node == id => Some(aic_editor::messages::issue_text(catalog, strings, issue)),
+                Warning::EnvironmentMissing { node, .. } if *node == id => Some(
+                    aic_editor::messages::warning_text(catalog, strings, self.graph, warning),
+                ),
                 _ => None,
             })
             .collect();
@@ -949,6 +955,8 @@ impl Read<'_> {
                 names::facility(catalog, facility.as_str()).to_owned(),
                 choices > 1,
             ));
+            face.environment = (found.and_then(|found| found.environment.as_ref()))
+                .map(|gas| names::environment(catalog, strings, gas));
         }
         if let NodeKind::Storage { .. } = kind
             && let Some(balance) = self.solution.storage.get(&id).and_then(|s| s.balance)
@@ -1583,17 +1591,42 @@ impl Cards<'_> {
         };
         self.title_row(ui, face, theme::strong(title));
         if let Some((name, cycles)) = &face.facility {
-            self.facility_line(ui, id, name, *cycles);
+            self.facility_line(ui, id, name, *cycles, face.environment.as_deref());
         }
         if let Some((balance, color)) = &face.balance {
             ui.label(RichText::new(balance).color(*color).strong());
         }
     }
 
-    /// A recipe card's facility, under its title where a long name has the card's width. With a
-    /// choice of facilities it is a button: one click moves to the next, and the inspector has the
-    /// full list.
-    fn facility_line(&mut self, ui: &mut Ui, id: NodeId, name: &str, cycles: bool) {
+    /// A recipe card's facility, under its title where a long name has the card's width, and the
+    /// tag of the gas environment its recipe needs beside it. The tag always shows whole: a name
+    /// too long for both is cut short.
+    fn facility_line(
+        &mut self,
+        ui: &mut Ui,
+        id: NodeId,
+        name: &str,
+        cycles: bool,
+        environment: Option<&str>,
+    ) {
+        let Some(environment) = environment else {
+            self.facility_name(ui, id, name, cycles);
+            return;
+        };
+        let tag = widgets::Tag::new(ui, environment, VIEW_SCALE);
+        ui.horizontal(|ui| {
+            let room = ui.available_width() - tag.size().x - ui.spacing().item_spacing.x;
+            ui.scope(|ui| {
+                ui.set_max_width(room.max(0.0));
+                self.facility_name(ui, id, name, cycles);
+            });
+            tag.ui(ui);
+        });
+    }
+
+    /// A recipe card's facility. With a choice of facilities it is a button: one click moves to
+    /// the next, and the inspector has the full list.
+    fn facility_name(&mut self, ui: &mut Ui, id: NodeId, name: &str, cycles: bool) {
         let text = RichText::new(name).small().color(theme::color::TEXT_MUTED);
         if !cycles {
             ui.add(egui::Label::new(text).truncate());

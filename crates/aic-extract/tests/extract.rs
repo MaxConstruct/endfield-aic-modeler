@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use aic_data::file::{DataFile, RecipeEntry, RecipeKind};
+use aic_data::file::{DataFile, FacilityEntry, RecipeEntry, RecipeKind};
 use aic_data::{Catalog, Names, Phase};
 use aic_extract::{
     AliasKind, Args, ExtractError, Extraction, NameKind, NamesFile, Summary, Tables, extract, run,
@@ -202,6 +202,327 @@ fn the_other_buildings_get_recipes_of_their_own() {
     assert!(vapour.outputs.is_empty());
 }
 
+fn facility<'a>(data: &'a DataFile, id: &str) -> &'a FacilityEntry {
+    (data.facilities.iter())
+        .find(|f| f.id == id)
+        .unwrap_or_else(|| panic!("no facility {id}"))
+}
+
+fn counts(map: &indexmap::IndexMap<String, u32>) -> Vec<(&str, u32)> {
+    map.iter().map(|(k, v)| (k.as_str(), *v)).collect()
+}
+
+fn recipes_on<'a>(data: &'a DataFile, facility: &str) -> Vec<&'a str> {
+    (data.recipes.iter())
+        .filter(|r| r.facilities.iter().any(|f| f == facility))
+        .map(|r| r.id.as_str())
+        .collect()
+}
+
+#[test]
+fn the_gas_dispersing_unit_runs_in_whole_units_and_its_recipes_create_their_environment() {
+    let (Extraction { data, .. }, _) = extraction();
+    let unit = facility(&data, "vaporizer_1");
+    assert!(unit.whole_units);
+    assert_eq!(unit.activation, None);
+    let vapour = recipe(&data, "vaporizer_1-gas_inert");
+    assert_eq!(vapour.creates_environment.as_deref(), Some("gas_inert"));
+    // It needs no environment itself.
+    assert_eq!(vapour.environment, None);
+    assert_eq!(
+        recipe(&data, "furnance_copper_nugget_1").creates_environment,
+        None
+    );
+}
+
+#[test]
+fn the_array_conversions_come_off_the_forge_of_equilibrium() {
+    let (Extraction { data, .. }, names) = extraction();
+    // The game lists each conversion once per tier as a craft of the Forge of Equilibrium. Only
+    // its own recipe is left on it.
+    assert_eq!(
+        recipes_on(&data, "magic_balancer_1"),
+        ["magic_balancer_1_copper_enr"]
+    );
+    let conversions: Vec<&str> = (data.recipes.iter())
+        .map(|r| r.id.as_str())
+        .filter(|id| id.starts_with("formation_"))
+        .collect();
+    assert_eq!(conversions.len(), 3, "{conversions:?}");
+    assert!(
+        conversions.iter().all(|id| id.ends_with("_1")),
+        "{conversions:?}"
+    );
+    // The higher tiers' crafts leave no name behind either.
+    assert!(
+        !(names.recipes.values()).any(|n| n == "L-Cuprium Creation (higher tier)"),
+        "{:?}",
+        names.recipes
+    );
+    assert!(
+        !names
+            .recipes
+            .contains_key("formation_magic_ming_item_copper_ming_2")
+    );
+}
+
+#[test]
+fn each_conversion_is_one_recipe_on_every_tier_of_its_array() {
+    let (Extraction { data, .. }, names) = extraction();
+    // 25 tiles of the area, each one item a pulse of 10 s, at speed 1.
+    let ming = recipe(&data, "formation_magic_ming_item_copper_ming_1");
+    assert_eq!(ming.time_s, 10.0);
+    assert_eq!(pairs(&ming.inputs), [("copper_nugget", 25.0)]);
+    assert_eq!(pairs(&ming.outputs), [("copper_ming", 25.0)]);
+    assert_eq!(
+        ming.facilities,
+        [
+            "magic_ming_1",
+            "magic_ming_2",
+            "magic_ming_3",
+            "magic_ming_4"
+        ]
+    );
+    assert_eq!(ming.category, "type_4");
+    assert_eq!(
+        names.recipes["formation_magic_ming_item_copper_ming_1"],
+        "L-Cuprium Creation"
+    );
+    let heng = recipe(&data, "formation_magic_heng_item_copper_enr_heng_1");
+    assert_eq!(heng.facilities, ["magic_heng_1", "magic_heng_2"]);
+    assert_eq!(pairs(&heng.outputs), [("copper_enr_heng", 25.0)]);
+}
+
+#[test]
+fn an_array_is_a_facility_per_tier_with_its_chance_as_its_speed() {
+    let (Extraction { data, .. }, names) = extraction();
+    let speeds: Vec<(&str, f64)> = (data.facilities.iter())
+        .filter(|f| f.id.starts_with("magic_") && !f.id.contains("spawner"))
+        .filter(|f| f.id != "magic_balancer_1")
+        .map(|f| (f.id.as_str(), f.speed))
+        .collect();
+    assert_eq!(
+        speeds,
+        [
+            ("magic_ming_1", 0.2),
+            ("magic_ming_2", 0.4),
+            ("magic_ming_3", 0.6),
+            ("magic_ming_4", 1.0),
+            ("magic_hui_1", 0.2),
+            ("magic_hui_2", 0.4),
+            ("magic_heng_1", 0.4),
+            ("magic_heng_2", 0.8),
+        ]
+    );
+    let t3 = facility(&data, "magic_ming_3");
+    // No power; built where the forges are.
+    assert_eq!(
+        (t3.power_kw, t3.regions.clone()),
+        (0.0, vec!["jinlong".to_owned()])
+    );
+    assert!(!t3.whole_units);
+    assert_eq!(names.items["magic_ming_3"], "L-Array T3");
+    assert_eq!(names.items["magic_heng_2"], "E-Array T2");
+}
+
+#[test]
+fn an_array_says_what_projections_it_is_stacked_from() {
+    let (Extraction { data, .. }, _) = extraction();
+    let stack = |id: &str| counts(&facility(&data, id).stack);
+    // Tier n of an L- or T-Array is n of its own T1; a T1 is one of itself.
+    assert_eq!(stack("magic_ming_1"), [("magic_ming_1", 1)]);
+    assert_eq!(stack("magic_ming_3"), [("magic_ming_1", 3)]);
+    assert_eq!(stack("magic_hui_2"), [("magic_hui_1", 2)]);
+    // An E-Array is made of an L and a T: tier n of n of each.
+    assert_eq!(
+        stack("magic_heng_1"),
+        [("magic_ming_1", 1), ("magic_hui_1", 1)]
+    );
+    assert_eq!(
+        stack("magic_heng_2"),
+        [("magic_ming_1", 2), ("magic_hui_1", 2)]
+    );
+    assert!(facility(&data, "furnance_1").stack.is_empty());
+}
+
+#[test]
+fn a_forge_has_a_recipe_for_each_choice_of_its_arrays() {
+    let (Extraction { data, .. }, names) = extraction();
+    assert_eq!(
+        recipes_on(&data, "magic_spawner_1"),
+        ["magic_spawner_1-magic_ming", "magic_spawner_1-magic_hui"]
+    );
+    assert_eq!(
+        recipes_on(&data, "magic_spawner_2"),
+        [
+            "magic_spawner_2-magic_ming-magic_ming",
+            "magic_spawner_2-magic_ming-magic_hui",
+            "magic_spawner_2-magic_hui-magic_hui"
+        ]
+    );
+    // 6 Xiragen a minute, nothing out, and what it projects.
+    let forge = recipe(&data, "magic_spawner_1-magic_ming");
+    assert_eq!(
+        (forge.time_s, pairs(&forge.inputs)),
+        (60.0, vec![("gas_xiranite", 6.0)])
+    );
+    assert!(forge.outputs.is_empty());
+    assert_eq!(counts(&forge.projects), [("magic_ming_1", 1)]);
+    let both = recipe(&data, "magic_spawner_2-magic_ming-magic_hui");
+    assert_eq!(
+        counts(&both.projects),
+        [("magic_ming_1", 1), ("magic_hui_1", 1)]
+    );
+    let two = recipe(&data, "magic_spawner_2-magic_hui-magic_hui");
+    assert_eq!(counts(&two.projects), [("magic_hui_1", 2)]);
+    assert_eq!(
+        names.recipes["magic_spawner_1-magic_ming"],
+        "Forge of Luminance(L-Array)"
+    );
+    assert_eq!(
+        names.recipes["magic_spawner_2-magic_ming-magic_hui"],
+        "Bipolar Forge of Luminance(L-Array + T-Array)"
+    );
+    for id in ["magic_spawner_1", "magic_spawner_2"] {
+        let forge = facility(&data, id);
+        assert!(forge.whole_units, "{id}");
+        assert_eq!(
+            (forge.power_kw, forge.regions.clone()),
+            (0.0, vec!["jinlong".to_owned()]),
+            "{id}"
+        );
+    }
+    assert_eq!(names.items["magic_spawner_2"], "Bipolar Forge of Luminance");
+}
+
+#[test]
+fn arrays_run_at_their_tiers_rates_in_the_catalog() {
+    let (Extraction { data, .. }, names) = extraction();
+    let names_json = names.to_json();
+    let catalog = Catalog::from_bytes(
+        data.to_json().as_bytes(),
+        Names {
+            file: "names.json",
+            json: names_json.as_bytes(),
+        },
+    )
+    .expect("the data loads");
+    let per_min = |recipe: &str, facility: &str| {
+        let recipe = catalog.recipe(recipe).unwrap();
+        let facility = catalog.facility(facility).unwrap();
+        recipe.rate_per_min(recipe.outputs[0].1, facility.speed)
+    };
+    let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    let ming = "formation_magic_ming_item_copper_ming_1";
+    let heng = "formation_magic_heng_item_copper_enr_heng_1";
+    for (recipe, facility, expected) in [
+        (ming, "magic_ming_1", 30.0),
+        (ming, "magic_ming_2", 60.0),
+        (ming, "magic_ming_3", 90.0),
+        (ming, "magic_ming_4", 150.0),
+        (heng, "magic_heng_1", 60.0),
+        (heng, "magic_heng_2", 120.0),
+    ] {
+        let rate = per_min(recipe, facility);
+        assert!(close(rate, expected), "{facility}: {rate}");
+    }
+    // A forge's gas is all activation input: nothing of it scales.
+    let forge = catalog.facility("magic_spawner_1").unwrap();
+    let recipe = catalog.recipe("magic_spawner_1-magic_ming").unwrap();
+    let rate = recipe.input_rates(forge).next().unwrap().1;
+    assert_eq!((rate.scaled, rate.activation), (0.0, 6.0));
+}
+
+#[test]
+fn the_report_says_what_became_of_the_array_tables() {
+    let (Extraction { data, report }, _) = extraction();
+    let summary = Summary {
+        data: &data,
+        report: &report,
+    }
+    .to_string();
+    assert!(
+        summary.contains("arrays: 8 arrays of 3 kinds, 3 conversions, 5 forge recipes"),
+        "{summary}"
+    );
+    assert!(
+        summary.contains("8 array crafts taken off magic_balancer_1"),
+        "{summary}"
+    );
+}
+
+/// The fixture tables less the ones a version before arrays lacks.
+fn tables_without_arrays() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("aic-extract-no-arrays-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for entry in std::fs::read_dir(fixtures().join("Table")).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_str().unwrap().to_owned();
+        if name.starts_with("FactoryFormation") || name == "FactoryConst.json" {
+            continue;
+        }
+        std::fs::copy(&path, dir.join(name)).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn tables_without_arrays_still_extract() {
+    let dir = tables_without_arrays();
+    let tables = Tables::read(&dir, "EN").expect("reads without the array tables");
+    let _ = std::fs::remove_dir_all(&dir);
+    let Extraction { data, report } =
+        extract(&tables, Some(&previous()), &mut names(), "v9.9.9").expect("extracts");
+    assert!(
+        data.facilities
+            .iter()
+            .all(|f| !f.id.starts_with("magic_ming"))
+    );
+    assert!(
+        data.facilities
+            .iter()
+            .all(|f| !f.id.starts_with("magic_spawner"))
+    );
+    assert!(data.recipes.iter().all(|r| r.projects.is_empty()));
+    // The Gas Dispersing Unit is as it is with them.
+    assert!(facility(&data, "vaporizer_1").whole_units);
+    let summary = Summary {
+        data: &data,
+        report: &report,
+    }
+    .to_string();
+    assert!(!summary.contains("arrays:"), "{summary}");
+}
+
+#[test]
+fn an_arrays_conversions_must_agree_on_its_tiers_chances() {
+    let mut tables = tables();
+    let extra = tables.array_conversions["0"].clone();
+    let mut other = extra;
+    other.to_item_id = "item_copper_hui".to_owned();
+    other.chances = vec![2000.0, 4000.0, 6000.0, 9000.0];
+    tables.array_conversions.insert("9".to_owned(), other);
+    let error = extract(&tables, None, &mut names(), "v9.9.9").unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.starts_with("FactoryFormationTransferTable.json: `9`"),
+        "{message}"
+    );
+}
+
+#[test]
+fn every_area_of_every_forge_must_be_the_same_size() {
+    let mut tables = tables();
+    tables.forges["magic_spawner_2"].areas[1].width = 3.0;
+    let error = extract(&tables, None, &mut names(), "v9.9.9").unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.starts_with("FactoryFormationStakeTable.json: `magic_spawner_2`"),
+        "{message}"
+    );
+}
+
 #[test]
 fn outposts_trade_at_their_highest_level_and_the_larger_price_wins() {
     let (Extraction { data, report }, names) = extraction();
@@ -357,6 +678,29 @@ fn recipes_keep_the_previous_versions_order_and_packaging_comes_last() {
     );
     assert_eq!(at("filling_bottled_iron_water"), trades - 2);
     assert_eq!(at("dismantler_iron_water_1"), trades - 1);
+}
+
+#[test]
+fn new_recipes_placed_by_one_item_keep_the_games_order() {
+    // The previous version mines Xiragen; the forges' five recipes, all new, make nothing and
+    // take Xiragen, so each goes behind the mining recipe, and behind the forge recipes before it.
+    let fresh = extract(&tables(), None, &mut names(), "v9.9.9").expect("extracts");
+    let mut previous = previous();
+    previous
+        .recipes
+        .insert(0, recipe(&fresh.data, "gas_xiranite").clone());
+    let extraction = extract(&tables(), Some(&previous), &mut names(), "v9.9.9").expect("extracts");
+    let at = order(&extraction.data);
+    let forges = [
+        "magic_spawner_1-magic_ming",
+        "magic_spawner_1-magic_hui",
+        "magic_spawner_2-magic_ming-magic_ming",
+        "magic_spawner_2-magic_ming-magic_hui",
+        "magic_spawner_2-magic_hui-magic_hui",
+    ];
+    let places: Vec<usize> = forges.iter().map(|id| at(id)).collect();
+    let mining = at("gas_xiranite");
+    assert_eq!(places, (mining + 1..mining + 6).collect::<Vec<_>>());
 }
 
 #[test]

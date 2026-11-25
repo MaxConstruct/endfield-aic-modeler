@@ -9,6 +9,12 @@
 //! number of running facilities, which makes the section a mixed-integer program; every later
 //! program takes that number as given ([`Program::Fixed`]) and is linear. A section without such a
 //! port builds the same linear program as before activation inputs.
+//!
+//! A facility of whole units (ADR 0015) has nothing but activation inputs, and its count is the
+//! facilities it runs: a whole number. Its limit is rounded down to one. Fed by links, pass 1 ties
+//! its count to its whole number of running facilities; every later program fixes the count to
+//! that number. With no links at all nothing ties it, and its count, bounded by a whole limit and
+//! in the objective only, comes out whole.
 
 use std::collections::HashMap;
 
@@ -16,8 +22,8 @@ use aic_data::{Catalog, ItemId};
 use good_lp::{Constraint, Expression, ProblemVariables, Variable, variable};
 
 use crate::graph::{Graph, LinkId, NodeId, NodeKind, Port, Side};
-use crate::solve::RoundUp;
 use crate::solve::sections::Section;
+use crate::solve::{RoundUp, whole_within};
 
 /// How far below the next whole number the running facilities must stay above the count, so that
 /// a count of exactly 1 runs one facility, not two, and a count of 0 runs none. It must be well
@@ -89,6 +95,8 @@ pub(crate) struct Model {
     /// Activation ports with no links, the node's count and the activation input per running
     /// facility: what each running facility needs is added to the port's flow after the solve.
     pub depot_activation: Vec<(Port, Variable, f64)>,
+    /// Recipe nodes on a facility of whole units (ADR 0015): their counts are whole numbers.
+    pub whole_units: Vec<NodeId>,
 }
 
 /// Whether a solution runs one of `open_running` up to [`MOST_RUNNING`]: that node would run
@@ -169,6 +177,7 @@ pub(crate) fn build(
             running: Vec::new(),
             open_running: Vec::new(),
             depot_activation: Vec::new(),
+            whole_units: Vec::new(),
         },
         program,
         has_throughput: false,
@@ -237,7 +246,44 @@ impl Builder<'_, '_> {
             .facility(facility)
             .expect("validated: facility exists");
         let speed = facility.speed;
+        let whole = facility.whole_units();
+        // A facility of whole units runs no more than the whole units its limit holds (ADR 0015).
+        let limit = if whole {
+            limit.map(whole_within)
+        } else {
+            limit
+        };
         let count = self.activity(node, limit);
+        if whole {
+            self.model.whole_units.push(node);
+        }
+        // One way of running for the node, shared by every activation input it has: a facility of
+        // whole units may have several. Its ports are fed when any of them has links.
+        let (mut has_activation, mut fed) = (false, false);
+        for (item, rate) in recipe.input_rates(facility) {
+            if rate.activation > 0.0 {
+                has_activation = true;
+                let port = Port {
+                    node,
+                    item: item.clone(),
+                    side: Side::Input,
+                };
+                fed |= self.ties(&port);
+            }
+        }
+        if whole {
+            // No facility of the game's has one, but an output with links would tie the count of
+            // whole units to something else too.
+            fed |= (recipe.outputs.iter()).any(|(item, _)| {
+                self.ties(&Port {
+                    node,
+                    item: item.clone(),
+                    side: Side::Output,
+                })
+            });
+        }
+        let activation =
+            (has_activation || whole).then(|| self.activation(node, count, limit, fed, whole));
         let mut fed_by_links = false;
         for (item, rate) in recipe.input_rates(facility) {
             let port = Port {
@@ -247,8 +293,7 @@ impl Builder<'_, '_> {
             };
             let linked = self.model.linked_ports.contains_key(&port);
             let (scaled, amount) = if rate.activation > 0.0 {
-                let activation =
-                    self.activation(node, count, limit, linked && self.relaxed != Some(&port));
+                let activation = activation.expect("made for a node with an activation input");
                 match activation {
                     Activation::Depot => {
                         self.model
@@ -297,19 +342,37 @@ impl Builder<'_, '_> {
         }
     }
 
-    /// How the activation port of `node` is built, adding what it needs: the whole number of
+    /// How the activation ports of `node` are built, adding what they need: the whole number of
     /// running facilities in pass 1, or the bounds that keep the count inside the facilities pass
-    /// 1 settled on. `fed` says whether the port has links (and isn't relaxed).
+    /// 1 settled on. `fed` says whether some activation port has links (and isn't relaxed).
+    /// `whole`: the facility runs in whole units, so its count is the running facilities.
     fn activation(
         &mut self,
         node: NodeId,
         count: Variable,
         limit: Option<f64>,
         fed: bool,
+        whole: bool,
     ) -> Activation {
         match self.program {
             Program::Fixed { scaled, .. } if *scaled == Some(node) => Activation::Scaled,
             _ if !fed => Activation::Depot,
+            Program::Pass1 if whole => {
+                // `limit` is already whole.
+                let most = limit.map_or(MOST_RUNNING, |limit| limit.min(MOST_RUNNING));
+                let running = (self.model.vars).add(variable().integer().min(0).max(most));
+                if most >= MOST_RUNNING {
+                    self.model.open_running.push(running);
+                }
+                self.model.running.push((node, running));
+                (self.model.constraints).push(Expression::from(running).eq(count));
+                Activation::Running(running)
+            }
+            Program::Fixed { running, .. } if whole => {
+                let running = running.get(&node).copied().unwrap_or(0);
+                (self.model.constraints).push(Expression::from(count).eq(f64::from(running)));
+                Activation::Fixed(running)
+            }
             Program::Pass1 => {
                 // Tied from both sides, so it can neither fall short of the count nor start a
                 // facility the count has no work for. `running ≥ count` has no allowance for
@@ -340,6 +403,11 @@ impl Builder<'_, '_> {
                 Activation::Fixed(running)
             }
         }
+    }
+
+    /// Whether `port` has links that constrain its node: it has some, and isn't relaxed.
+    fn ties(&self, port: &Port) -> bool {
+        self.model.linked_ports.contains_key(port) && self.relaxed != Some(port)
     }
 
     /// Splitters, mergers and control ports: what comes in goes out. An unconnected side is depot.

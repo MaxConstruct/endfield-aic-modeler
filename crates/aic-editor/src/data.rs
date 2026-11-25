@@ -12,17 +12,34 @@ use serde::{Deserialize, Serialize};
 
 use crate::embedded;
 
-/// The storage key for [`DataChoice`].
-pub const STORAGE_KEY: &str = "data-choice";
+/// The storage key for [`DataChoice`]. A choice kept here without a version follows the newest.
+pub const STORAGE_KEY: &str = "data-version-and-language";
+/// Where the choice was kept before picking the newest version followed it: a version kept there
+/// may be a pick of what was then the newest, so only its language is read
+/// ([`DataChoice::restore`]).
+pub const OLD_STORAGE_KEY: &str = "data-choice";
 /// The language of game names when none is chosen, or the chosen one is gone.
 pub const DEFAULT_LANGUAGE: &str = "en";
 
-/// The data version and game-name language the player picked. `None` is the newest version.
-/// Kept in eframe storage.
+/// The data version and game-name language the player picked. `None` is the newest version,
+/// whichever that is when the app starts; `Some` pins a version, and picking an older one in the
+/// version picker does that ([`DataFolder::pick_version`]). Kept in eframe storage.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataChoice {
     pub version: Option<String>,
     pub language: Option<String>,
+}
+
+impl DataChoice {
+    /// The choice kept between runs, read with `get` (storage, by key): the one under
+    /// [`STORAGE_KEY`]; else, from one under [`OLD_STORAGE_KEY`], its language with the newest
+    /// version; else the newest in the default language.
+    pub fn restore(get: impl Fn(&str) -> Option<DataChoice>) -> DataChoice {
+        get(STORAGE_KEY).unwrap_or_else(|| DataChoice {
+            version: None,
+            language: get(OLD_STORAGE_KEY).and_then(|old| old.language),
+        })
+    }
 }
 
 /// The data [`DataFolder::open`] loaded.
@@ -100,6 +117,17 @@ impl DataFolder {
             .as_ref()
             .and_then(|name| self.versions.iter().find(|v| v.name == *name))
             .unwrap_or(&self.versions[0])
+    }
+
+    /// `choice` with the version named `version` picked in the version picker. Picking the newest
+    /// follows the newest (`None`), so a newer data version becomes the default once it ships;
+    /// picking an older one pins it.
+    pub fn pick_version(&self, choice: &DataChoice, version: &str) -> DataChoice {
+        let newest = self.versions[0].name == version;
+        DataChoice {
+            version: (!newest).then(|| version.to_owned()),
+            ..choice.clone()
+        }
     }
 
     /// The languages game names come in: the program's names tables, the same for every version.
@@ -199,6 +227,41 @@ mod tests {
         let opened = folder.open(newest.clone()).expect("loads");
         assert_eq!(opened.choice, newest);
         assert!(opened.failed.is_none());
+    }
+
+    #[test]
+    fn picking_the_newest_version_follows_the_newest_from_then_on() {
+        let folder = fixture_data();
+        let pinned = DataChoice {
+            version: Some("v1.9.0".into()),
+            language: Some("en".into()),
+        };
+        let picked = folder.pick_version(&pinned, "v1.10.0");
+        assert_eq!(
+            picked,
+            DataChoice {
+                version: None,
+                language: Some("en".into()),
+            }
+        );
+        assert_eq!(folder.version(&picked).name, "v1.10.0");
+    }
+
+    #[test]
+    fn picking_an_older_version_pins_it() {
+        let folder = fixture_data();
+        let following = DataChoice {
+            version: None,
+            language: Some("en".into()),
+        };
+        let picked = folder.pick_version(&following, "v1.9.0");
+        assert_eq!(
+            picked,
+            DataChoice {
+                version: Some("v1.9.0".into()),
+                language: Some("en".into()),
+            }
+        );
     }
 
     #[test]

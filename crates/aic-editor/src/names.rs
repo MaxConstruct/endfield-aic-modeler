@@ -32,6 +32,15 @@ pub fn region<'a>(catalog: &'a Catalog, id: &'a str) -> &'a str {
     catalog.region(id).map_or(id, |region| region.name.as_str())
 }
 
+/// The gas environment of `gas` (ADR 0015), as the game names it: "Stable Environment" for
+/// Inergen. A gas whose environment the game doesn't name gets its own name and "Environment".
+pub fn environment(catalog: &Catalog, strings: &Strings, gas: &ItemId) -> String {
+    strings.format(
+        "environment",
+        &[("gas", gas.as_str()), ("name", item(catalog, gas.as_str()))],
+    )
+}
+
 /// "Wuling only": the regions a recipe is limited to, or `None` when every region has it.
 pub fn recipe_regions(catalog: &Catalog, strings: &Strings, recipe: &Recipe) -> Option<String> {
     let everywhere = (catalog.regions().keys()).all(|region| recipe.available_in(region));
@@ -97,5 +106,22 @@ pub fn node_count(strings: &Strings, count: usize) -> String {
         strings.get("workspace-node-count-one")
     } else {
         strings.format("workspace-node-count", &[("count", &count.to_string())])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_environment_is_named_by_its_gas_as_the_game_names_it() {
+        let catalog = crate::testing::real_catalog().expect("the game's data is built in");
+        let strings = Strings::english();
+        let named = |gas: &str| environment(&catalog, &strings, &ItemId::from(gas));
+        assert_eq!(named("gas_inert"), "Stable Environment");
+        assert_eq!(named("gas_acid"), "Acrid Environment");
+        assert_eq!(named("gas_xiranite"), "Xiranite Environment");
+        // The game has no name for Aquagen's: the gas's own name.
+        assert_eq!(named("gas_water"), "Aquagen Environment");
     }
 }

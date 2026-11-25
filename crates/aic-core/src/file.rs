@@ -17,8 +17,8 @@ use crate::workspace::Workspace;
 /// links through new ports.
 pub const FORMAT_VERSION: u32 = 2;
 
-/// A graph read from a file, with the data version it was made with. If that isn't the active data
-/// version, the UI shows a banner; the graph is still loaded by ID.
+/// A graph read from a file, with the data version it was made with. Whatever that version, the
+/// graph is loaded by ID against the active data, through its aliases.
 #[derive(Debug, Clone)]
 pub struct LoadedGraph {
     pub graph: Graph,

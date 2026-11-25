@@ -174,7 +174,9 @@ pub fn builtin_kind(catalog: &Catalog, builtin: Builtin, item: Option<&ItemId>) 
 
 /// A new recipe node for a graph of `region`: on the first of the recipe's facilities that the
 /// region has (else its first), with no limit, so the solver sizes it from the rest of the graph.
-/// A settlement trade becomes an outpost order.
+/// On a facility of whole units (a Gas Dispersing Unit, a Forge of Luminance) it runs one: how
+/// many a plan needs is the player's to say (ADR 0015). A settlement trade becomes an outpost
+/// order.
 pub fn recipe_node(catalog: &Catalog, region: &RegionId, recipe: RecipeId) -> Option<NodeKind> {
     if let Some(order) = NodeKind::outpost_order(catalog, &recipe) {
         return Some(order);
@@ -186,10 +188,11 @@ pub fn recipe_node(catalog: &Catalog, region: &RegionId, recipe: RecipeId) -> Op
     let facility = (facilities.iter().find(buildable))
         .or(facilities.first())?
         .clone();
+    let whole_units = (catalog.facility(facility.as_str())).is_some_and(|f| f.whole_units());
     Some(NodeKind::Recipe {
         recipe,
         facility,
-        limit: None,
+        limit: whole_units.then_some(1.0),
     })
 }
 
@@ -347,5 +350,34 @@ mod tests {
         // A recipe the region can't run at all still lands on its first facility, with the
         // solver's region warning.
         assert_eq!(node("tundra", "deep_ore"), "wuling_rig");
+    }
+
+    #[test]
+    fn a_new_node_of_whole_units_runs_one_and_any_other_has_no_limit() {
+        let data = br#"{
+            "format": 1, "belt_per_min": 30, "pipe_per_min": 120,
+            "regions": ["jinlong"],
+            "items": [{ "id": "gas_inert", "phase": "gas" }, { "id": "ore" }],
+            "facilities": [{ "id": "vaporizer_1", "whole_units": true }, { "id": "rig" }],
+            "recipes": [
+                { "id": "vaporizer_1-gas_inert", "category": "material", "time_s": 60,
+                  "in": { "gas_inert": 6 }, "facilities": ["vaporizer_1"],
+                  "creates_environment": "gas_inert" },
+                { "id": "ore", "category": "material", "time_s": 3, "out": { "ore": 1 },
+                  "facilities": ["rig"], "kind": "mining" }
+            ]
+        }"#;
+        let names = aic_data::Names {
+            file: "names.json",
+            json: b"{}",
+        };
+        let catalog = Catalog::from_bytes(data, names).expect("test catalog loads");
+        let limit = |recipe: &str| match recipe_node(&catalog, &"jinlong".into(), recipe.into()) {
+            Some(NodeKind::Recipe { limit, .. }) => limit,
+            other => panic!("expected a recipe node, got {other:?}"),
+        };
+        // How many units a plan needs is the player's to say (ADR 0015).
+        assert_eq!(limit("vaporizer_1-gas_inert"), Some(1.0));
+        assert_eq!(limit("ore"), None);
     }
 }

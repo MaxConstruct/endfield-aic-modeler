@@ -1,0 +1,8631 @@
+{
+  "format": 1,
+  "version": "v1.7.0",
+  "source": "Extracted by aic-extract from the game client's tables (v1.7.0).",
+  "belt_per_min": 30.0,
+  "pipe_per_min": 120.0,
+  "regions": [
+    "tundra",
+    "jinlong"
+  ],
+  "categories": [
+    "type_1",
+    "type_2",
+    "type_4",
+    "type_5",
+    "gen-power",
+    "settlement"
+  ],
+  "items": [
+    {
+      "id": "originium_ore",
+      "color": "#815d3e"
+    },
+    {
+      "id": "quartz_sand",
+      "color": "#5e4a6c"
+    },
+    {
+      "id": "iron_ore",
+      "color": "#5a718d"
+    },
+    {
+      "id": "liquid_water",
+      "phase": "liquid",
+      "color": "#5ae7f8"
+    },
+    {
+      "id": "copper_ore",
+      "color": "#aa6962"
+    },
+    {
+      "id": "gas_inert",
+      "phase": "gas",
+      "color": "#69a6b4"
+    },
+    {
+      "id": "gas_xiranite",
+      "phase": "gas",
+      "color": "#aac2a1"
+    },
+    {
+      "id": "liquid_acid",
+      "phase": "liquid",
+      "color": "#ba9d66"
+    },
+    {
+      "id": "iron_nugget",
+      "color": "#628095"
+    },
+    {
+      "id": "iron_cmpt",
+      "color": "#6c81aa"
+    },
+    {
+      "id": "quartz_glass",
+      "color": "#715d93"
+    },
+    {
+      "id": "glass_cmpt",
+      "color": "#9195a0"
+    },
+    {
+      "id": "iron_enr",
+      "color": "#56809e"
+    },
+    {
+      "id": "iron_enr_cmpt",
+      "color": "#5f758d"
+    },
+    {
+      "id": "quartz_enr",
+      "color": "#999aa6"
+    },
+    {
+      "id": "glass_enr_cmpt",
+      "color": "#969299"
+    },
+    {
+      "id": "copper_nugget",
+      "color": "#893a31"
+    },
+    {
+      "id": "copper_cmpt",
+      "color": "#7d514a"
+    },
+    {
+      "id": "copper_enr",
+      "color": "#d99287"
+    },
+    {
+      "id": "copper_enr_cmpt",
+      "color": "#ba8071"
+    },
+    {
+      "id": "xiranite_powder",
+      "color": "#305244"
+    },
+    {
+      "id": "activity_xiranite_cmpt"
+    },
+    {
+      "id": "xiranite_enr_powder",
+      "color": "#356339"
+    },
+    {
+      "id": "activity_xiranite_enr_cmpt"
+    },
+    {
+      "id": "copper_enr2",
+      "color": "#e4a388"
+    },
+    {
+      "id": "copper_enr2_cmpt",
+      "color": "#ac7162"
+    },
+    {
+      "id": "activity_copper_poly",
+      "color": "#9ea486"
+    },
+    {
+      "id": "activity_copper_poly_cmpt",
+      "color": "#b99656"
+    },
+    {
+      "id": "copper_ming"
+    },
+    {
+      "id": "copper_ming_cmpt"
+    },
+    {
+      "id": "copper_hui"
+    },
+    {
+      "id": "copper_hui_cmpt"
+    },
+    {
+      "id": "copper_bright"
+    },
+    {
+      "id": "copper_bright_cmpt"
+    },
+    {
+      "id": "iron_bottle",
+      "color": "#395b79"
+    },
+    {
+      "id": "corp_strawberry_1"
+    },
+    {
+      "id": "inn_drink_10"
+    },
+    {
+      "id": "ranch_milk_1"
+    },
+    {
+      "id": "inn_drink_2"
+    },
+    {
+      "id": "corp_sugarcane_1"
+    },
+    {
+      "id": "inn_drink_4"
+    },
+    {
+      "id": "ranch_milk_2"
+    },
+    {
+      "id": "inn_drink_7"
+    },
+    {
+      "id": "glass_bottle",
+      "color": "#5c4c7c"
+    },
+    {
+      "id": "plant_moss_powder_2",
+      "color": "#d4c175"
+    },
+    {
+      "id": "bottled_food_1",
+      "color": "#7e867c"
+    },
+    {
+      "id": "bottled_food_2",
+      "color": "#858e69"
+    },
+    {
+      "id": "iron_enr_bottle",
+      "color": "#5a6c81"
+    },
+    {
+      "id": "plant_moss_enr_powder_2",
+      "color": "#91865b"
+    },
+    {
+      "id": "bottled_food_3",
+      "color": "#818982"
+    },
+    {
+      "id": "plant_moss_powder_1",
+      "color": "#ac6d66"
+    },
+    {
+      "id": "bottled_rec_hp_1",
+      "color": "#b19695"
+    },
+    {
+      "id": "bottled_rec_hp_2",
+      "color": "#bea1a2"
+    },
+    {
+      "id": "plant_moss_enr_powder_1",
+      "color": "#8a6363"
+    },
+    {
+      "id": "bottled_rec_hp_3",
+      "color": "#b6959d"
+    },
+    {
+      "id": "liquid_sewage",
+      "phase": "liquid",
+      "color": "#616161"
+    },
+    {
+      "id": "iron_powder",
+      "color": "#35526b"
+    },
+    {
+      "id": "quartz_powder",
+      "color": "#615079"
+    },
+    {
+      "id": "crystal_shell",
+      "color": "#977741"
+    },
+    {
+      "id": "crystal_powder",
+      "color": "#6c411e"
+    },
+    {
+      "id": "crystal_enr_powder",
+      "color": "#9e643b"
+    },
+    {
+      "id": "crystal_enr",
+      "color": "#756b35"
+    },
+    {
+      "id": "iron_enr_powder",
+      "color": "#597e94"
+    },
+    {
+      "id": "quartz_enr_powder",
+      "color": "#b0adc3"
+    },
+    {
+      "id": "carbon_enr_powder",
+      "color": "#494a49"
+    },
+    {
+      "id": "carbon_enr",
+      "color": "#494952"
+    },
+    {
+      "id": "originium_enr_powder",
+      "color": "#75522c"
+    },
+    {
+      "id": "originium_powder",
+      "color": "#4f3c29"
+    },
+    {
+      "id": "plant_grass_2",
+      "color": "#5e5c49"
+    },
+    {
+      "id": "carbon_mtl",
+      "color": "#3f4049"
+    },
+    {
+      "id": "plant_grass_1",
+      "color": "#798661"
+    },
+    {
+      "id": "plant_moss_3",
+      "color": "#927529"
+    },
+    {
+      "id": "plant_moss_1",
+      "color": "#615b24"
+    },
+    {
+      "id": "plant_moss_2",
+      "color": "#66691e"
+    },
+    {
+      "id": "plant_tundra_wood"
+    },
+    {
+      "id": "plant_grass_powder_2",
+      "color": "#b3917b"
+    },
+    {
+      "id": "carbon_powder",
+      "color": "#4e4d4c"
+    },
+    {
+      "id": "plant_grass_powder_1",
+      "color": "#b9bea0"
+    },
+    {
+      "id": "plant_moss_powder_3",
+      "color": "#9e700a"
+    },
+    {
+      "id": "activity_xiranite_nugget",
+      "color": "#3d9a31"
+    },
+    {
+      "id": "activity_xiranite_enr_nugget",
+      "color": "#49aa41"
+    },
+    {
+      "id": "gas_copper_enr",
+      "phase": "gas",
+      "color": "#d9bdba"
+    },
+    {
+      "id": "gas_copper_enr2",
+      "phase": "gas",
+      "color": "#d7a78d"
+    },
+    {
+      "id": "gas_acid",
+      "phase": "gas",
+      "color": "#d9c69a"
+    },
+    {
+      "id": "gas_copper",
+      "phase": "gas",
+      "color": "#da9f94"
+    },
+    {
+      "id": "activity_copper_poly_gas",
+      "phase": "gas",
+      "color": "#c8a567"
+    },
+    {
+      "id": "gas_copper_enr_heng",
+      "phase": "gas"
+    },
+    {
+      "id": "gas_xiranite_enr_heng",
+      "phase": "gas"
+    },
+    {
+      "id": "gas_copper_bright_clear",
+      "phase": "gas"
+    },
+    {
+      "id": "plant_sp_1"
+    },
+    {
+      "id": "Ingredient_flour_1"
+    },
+    {
+      "id": "plant_sp_2"
+    },
+    {
+      "id": "Ingredient_paprika_1"
+    },
+    {
+      "id": "corp_potato_1"
+    },
+    {
+      "id": "Ingredient_starch_1"
+    },
+    {
+      "id": "Ingredient_sugar_1"
+    },
+    {
+      "id": "byproduct_bean_1"
+    },
+    {
+      "id": "byproduct_bean_moss_1"
+    },
+    {
+      "id": "byproduct_potato_1"
+    },
+    {
+      "id": "byproduct_potato_moss_1"
+    },
+    {
+      "id": "copper_powder",
+      "color": "#a05d51"
+    },
+    {
+      "id": "plant_bbflower_1",
+      "color": "#625c3f"
+    },
+    {
+      "id": "plant_bbflower_powder_1",
+      "color": "#7c7637"
+    },
+    {
+      "id": "filter_core",
+      "color": "#737072"
+    },
+    {
+      "id": "gas_xiranite_enr",
+      "phase": "gas",
+      "color": "#b8ca8c"
+    },
+    {
+      "id": "liquid_xiranite_lowpoly",
+      "phase": "liquid",
+      "color": "#245842"
+    },
+    {
+      "id": "liquid_xiranite_poly",
+      "phase": "liquid",
+      "color": "#3b6541"
+    },
+    {
+      "id": "liquid_copper",
+      "phase": "liquid",
+      "color": "#ba4946"
+    },
+    {
+      "id": "liquid_copper_enr",
+      "phase": "liquid",
+      "color": "#e9aca1"
+    },
+    {
+      "id": "gas_copper_bright_turbid",
+      "phase": "gas"
+    },
+    {
+      "id": "xiranite_ming"
+    },
+    {
+      "id": "xiranite_hui"
+    },
+    {
+      "id": "xiranite_enr_heng"
+    },
+    {
+      "id": "copper_enr_heng"
+    },
+    {
+      "id": "corp_canolaflower_1"
+    },
+    {
+      "id": "Ingredient_oil_1"
+    },
+    {
+      "id": "liquid_plant_grass_1",
+      "phase": "liquid",
+      "color": "#e5f6e2"
+    },
+    {
+      "id": "ranch_fodder_1"
+    },
+    {
+      "id": "ranch_fodder_2"
+    },
+    {
+      "id": "liquid_plant_grass_2",
+      "phase": "liquid",
+      "color": "#c1ed7e"
+    },
+    {
+      "id": "liquid_xiranite",
+      "phase": "liquid",
+      "color": "#467867"
+    },
+    {
+      "id": "liquid_xiranite_enr",
+      "phase": "liquid",
+      "color": "#557a51"
+    },
+    {
+      "id": "xiranite_poly",
+      "color": "#39413e"
+    },
+    {
+      "id": "plant_grass_seed_1",
+      "color": "#959c75"
+    },
+    {
+      "id": "plant_moss_seed_1",
+      "color": "#9c6246"
+    },
+    {
+      "id": "plant_grass_seed_2",
+      "color": "#9e7f6b"
+    },
+    {
+      "id": "plant_moss_seed_2",
+      "color": "#918028"
+    },
+    {
+      "id": "plant_moss_seed_3",
+      "color": "#846911"
+    },
+    {
+      "id": "plant_bbflower_seed_1",
+      "color": "#afa16a"
+    },
+    {
+      "id": "plant_sp_seed_1"
+    },
+    {
+      "id": "plant_sp_seed_2"
+    },
+    {
+      "id": "plant_sp_3"
+    },
+    {
+      "id": "plant_sp_seed_3"
+    },
+    {
+      "id": "plant_sp_4"
+    },
+    {
+      "id": "plant_sp_seed_4"
+    },
+    {
+      "id": "corp_potato_seed_1"
+    },
+    {
+      "id": "corp_tomato_1"
+    },
+    {
+      "id": "corp_tomato_seed_1"
+    },
+    {
+      "id": "corp_cabbage_1"
+    },
+    {
+      "id": "corp_cabbage_seed_1"
+    },
+    {
+      "id": "corp_sugarcane_seed_1"
+    },
+    {
+      "id": "corp_bean_1"
+    },
+    {
+      "id": "corp_bean_seed_1"
+    },
+    {
+      "id": "corp_mushroom_1"
+    },
+    {
+      "id": "corp_mushroom_seed_1"
+    },
+    {
+      "id": "corp_strawberry_seed_1"
+    },
+    {
+      "id": "corp_whitegourd_1"
+    },
+    {
+      "id": "corp_whitegourd_seed_1"
+    },
+    {
+      "id": "corp_canolaflower_seed_1"
+    },
+    {
+      "id": "copper_jar",
+      "color": "#826767"
+    },
+    {
+      "id": "activity_xiranite_enr_box",
+      "color": "#75a16d"
+    },
+    {
+      "id": "glass_enr_bottle",
+      "color": "#75778d"
+    },
+    {
+      "id": "copper_bottle",
+      "color": "#6c4a4b"
+    },
+    {
+      "id": "copper_enr_bottle",
+      "color": "#906b6d"
+    },
+    {
+      "id": "activity_xiranite_bottle"
+    },
+    {
+      "id": "activity_xiranite_enr_bottle"
+    },
+    {
+      "id": "activity_xiranite_box",
+      "color": "#84b982"
+    },
+    {
+      "id": "proc_bomb_1",
+      "color": "#8c7f79"
+    },
+    {
+      "id": "proc_battery_1",
+      "color": "#9f9c9a"
+    },
+    {
+      "id": "proc_battery_2",
+      "color": "#9f9b9d"
+    },
+    {
+      "id": "proc_battery_3",
+      "color": "#9e999e"
+    },
+    {
+      "id": "fbottle_iron_grass_2"
+    },
+    {
+      "id": "bottled_rec_hp_4",
+      "color": "#a69591"
+    },
+    {
+      "id": "fbottle_copper_grass_2"
+    },
+    {
+      "id": "bottled_rec_hp_5",
+      "color": "#9d8277"
+    },
+    {
+      "id": "fbottle_iron_grass_1"
+    },
+    {
+      "id": "bottled_food_4",
+      "color": "#536e71"
+    },
+    {
+      "id": "fbottle_copper_grass_1"
+    },
+    {
+      "id": "bottled_food_5",
+      "color": "#5a8568"
+    },
+    {
+      "id": "proc_battery_4",
+      "color": "#698a70"
+    },
+    {
+      "id": "proc_battery_5",
+      "color": "#5d6956"
+    },
+    {
+      "id": "activity_xiranite_enr_tool"
+    },
+    {
+      "id": "activity_xiranite_hulu"
+    },
+    {
+      "id": "fbottle_xiranenr_grass_2"
+    },
+    {
+      "id": "activity_xiranite_enr_hulu"
+    },
+    {
+      "id": "activity_copper_xiranite_tool",
+      "color": "#7c8282"
+    },
+    {
+      "id": "activity_copper_poly_tool",
+      "color": "#4d7951"
+    },
+    {
+      "id": "activity_xiranite_lung",
+      "color": "#7ca98e"
+    },
+    {
+      "id": "activity_xiranite_enr_lung",
+      "color": "#769f7a"
+    },
+    {
+      "id": "copper_xiranite_ming"
+    },
+    {
+      "id": "copper_xiranite_hui"
+    },
+    {
+      "id": "copper_bright_cube"
+    },
+    {
+      "id": "proc_battery_6"
+    },
+    {
+      "id": "gas_water",
+      "phase": "gas",
+      "color": "#b5b9c2"
+    },
+    {
+      "id": "equip_script_1",
+      "color": "#a0a1b2"
+    },
+    {
+      "id": "equip_script_2",
+      "color": "#8998bc"
+    },
+    {
+      "id": "equip_script_3",
+      "color": "#a2a7b1"
+    },
+    {
+      "id": "equip_script_4",
+      "color": "#5e5744"
+    },
+    {
+      "id": "equip_script_4_1",
+      "color": "#71423c"
+    },
+    {
+      "id": "equip_script_4_2",
+      "color": "#b3756e"
+    },
+    {
+      "id": "equip_script_4_3",
+      "color": "#bc7d5d"
+    },
+    {
+      "id": "muck_feces_1"
+    },
+    {
+      "id": "muck_xiranite_1"
+    },
+    {
+      "id": "fbottle_glass_water"
+    },
+    {
+      "id": "fbottle_glass_acid"
+    },
+    {
+      "id": "fbottle_glass_sewage"
+    },
+    {
+      "id": "fbottle_glass_grass_1"
+    },
+    {
+      "id": "fbottle_glass_grass_2"
+    },
+    {
+      "id": "fbottle_glass_xiranite"
+    },
+    {
+      "id": "fbottle_glass_xiranite_enr"
+    },
+    {
+      "id": "fbottle_glass_xiranite_poly"
+    },
+    {
+      "id": "fbottle_glass_xiranite_lowpoly"
+    },
+    {
+      "id": "fbottle_glass_copper"
+    },
+    {
+      "id": "fbottle_glass_copper_enr"
+    },
+    {
+      "id": "gasjar_copper_gas_water"
+    },
+    {
+      "id": "fbottle_glassenr_water"
+    },
+    {
+      "id": "gasjar_copper_gas_acid"
+    },
+    {
+      "id": "fbottle_glassenr_acid"
+    },
+    {
+      "id": "gasjar_copper_gas_xiranite"
+    },
+    {
+      "id": "fbottle_glassenr_sewage"
+    },
+    {
+      "id": "gasjar_copper_gas_xiranite_enr"
+    },
+    {
+      "id": "fbottle_glassenr_grass_1"
+    },
+    {
+      "id": "gasjar_copper_gas_copper_enr_heng"
+    },
+    {
+      "id": "gasjar_copper_gas_inert"
+    },
+    {
+      "id": "fbottle_glassenr_grass_2"
+    },
+    {
+      "id": "gasjar_copper_gas_copper"
+    },
+    {
+      "id": "gasjar_copper_gas_xiranite_enr_heng"
+    },
+    {
+      "id": "fbottle_glassenr_xiranite"
+    },
+    {
+      "id": "gasjar_copper_gas_copper_bright_turbid"
+    },
+    {
+      "id": "gasjar_copper_gas_copper_enr"
+    },
+    {
+      "id": "fbottle_glassenr_xiranite_enr"
+    },
+    {
+      "id": "fbottle_glassenr_xiranite_poly"
+    },
+    {
+      "id": "fbottle_glassenr_xiranite_lowpoly"
+    },
+    {
+      "id": "gasjar_copper_gas_copper_enr2"
+    },
+    {
+      "id": "gasjar_copper_gas_copper_bright_clear"
+    },
+    {
+      "id": "fbottle_glassenr_copper"
+    },
+    {
+      "id": "fbottle_glassenr_copper_enr"
+    },
+    {
+      "id": "fbottle_iron_water"
+    },
+    {
+      "id": "fbottle_iron_acid"
+    },
+    {
+      "id": "fbottle_iron_sewage"
+    },
+    {
+      "id": "fbottle_iron_xiranite"
+    },
+    {
+      "id": "fbottle_iron_xiranite_enr"
+    },
+    {
+      "id": "fbottle_iron_xiranite_poly"
+    },
+    {
+      "id": "fbottle_iron_xiranite_lowpoly"
+    },
+    {
+      "id": "fbottle_iron_copper"
+    },
+    {
+      "id": "fbottle_iron_copper_enr"
+    },
+    {
+      "id": "fbottle_ironenr_water"
+    },
+    {
+      "id": "fbottle_ironenr_acid"
+    },
+    {
+      "id": "fbottle_ironenr_sewage"
+    },
+    {
+      "id": "fbottle_ironenr_grass_1"
+    },
+    {
+      "id": "fbottle_ironenr_grass_2"
+    },
+    {
+      "id": "fbottle_ironenr_xiranite"
+    },
+    {
+      "id": "fbottle_ironenr_xiranite_enr"
+    },
+    {
+      "id": "fbottle_ironenr_xiranite_poly"
+    },
+    {
+      "id": "fbottle_ironenr_xiranite_lowpoly"
+    },
+    {
+      "id": "fbottle_ironenr_copper"
+    },
+    {
+      "id": "fbottle_ironenr_copper_enr"
+    },
+    {
+      "id": "fbottle_copper_water"
+    },
+    {
+      "id": "fbottle_copper_acid"
+    },
+    {
+      "id": "fbottle_copper_sewage"
+    },
+    {
+      "id": "fbottle_copper_xiranite"
+    },
+    {
+      "id": "fbottle_copper_xiranite_enr"
+    },
+    {
+      "id": "fbottle_copper_xiranite_poly"
+    },
+    {
+      "id": "fbottle_copper_xiranite_lowpoly"
+    },
+    {
+      "id": "fbottle_copper_copper"
+    },
+    {
+      "id": "fbottle_copper_copper_enr"
+    },
+    {
+      "id": "fbottle_copperenr_water"
+    },
+    {
+      "id": "fbottle_copperenr_acid"
+    },
+    {
+      "id": "fbottle_copperenr_sewage"
+    },
+    {
+      "id": "fbottle_copperenr_grass_1"
+    },
+    {
+      "id": "fbottle_copperenr_grass_2"
+    },
+    {
+      "id": "fbottle_copperenr_xiranite"
+    },
+    {
+      "id": "fbottle_copperenr_xiranite_enr"
+    },
+    {
+      "id": "fbottle_copperenr_xiranite_poly"
+    },
+    {
+      "id": "fbottle_copperenr_xiranite_lowpoly"
+    },
+    {
+      "id": "fbottle_copperenr_copper"
+    },
+    {
+      "id": "fbottle_copperenr_copper_enr"
+    },
+    {
+      "id": "domain_tundra_coupon"
+    },
+    {
+      "id": "domain_jinlong_coupon"
+    }
+  ],
+  "facilities": [
+    {
+      "id": "miner_1"
+    },
+    {
+      "id": "miner_2",
+      "power_kw": 5.0
+    },
+    {
+      "id": "miner_3",
+      "power_kw": 10.0
+    },
+    {
+      "id": "miner_4"
+    },
+    {
+      "id": "gas_pump_1"
+    },
+    {
+      "id": "pump_1",
+      "power_kw": 10.0
+    },
+    {
+      "id": "pump_2",
+      "power_kw": 20.0
+    },
+    {
+      "id": "cmpt_mc_1",
+      "power_kw": 20.0
+    },
+    {
+      "id": "filling_pd_mc_1",
+      "power_kw": 20.0
+    },
+    {
+      "id": "furnance_1",
+      "power_kw": 5.0
+    },
+    {
+      "id": "gas_reactor_1",
+      "power_kw": 50.0
+    },
+    {
+      "id": "grinder_1",
+      "power_kw": 5.0
+    },
+    {
+      "id": "liquid_purifier_1",
+      "power_kw": 50.0
+    },
+    {
+      "id": "magic_balancer_1",
+      "power_kw": 50.0,
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "mix_pool_1",
+      "power_kw": 50.0
+    },
+    {
+      "id": "mix_pool_2",
+      "power_kw": 100.0
+    },
+    {
+      "id": "planter_1",
+      "power_kw": 20.0
+    },
+    {
+      "id": "seedcol_1",
+      "power_kw": 10.0
+    },
+    {
+      "id": "shaper_1",
+      "power_kw": 10.0
+    },
+    {
+      "id": "thickener_1",
+      "power_kw": 50.0
+    },
+    {
+      "id": "tools_asm_mc_1",
+      "power_kw": 20.0
+    },
+    {
+      "id": "phase_trans_1",
+      "power_kw": 50.0,
+      "activation": {
+        "item": "liquid_xiranite",
+        "per_min": 6.0
+      }
+    },
+    {
+      "id": "phase_trans_2",
+      "power_kw": 50.0,
+      "activation": {
+        "item": "gas_xiranite",
+        "per_min": 6.0
+      }
+    },
+    {
+      "id": "winder_1",
+      "power_kw": 10.0
+    },
+    {
+      "id": "xiranite_oven_1",
+      "power_kw": 50.0,
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "power_sta_1"
+    },
+    {
+      "id": "liquid_cleaner_1",
+      "power_kw": 50.0,
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_clean_gate"
+    },
+    {
+      "id": "liquid_recycle_gate"
+    },
+    {
+      "id": "vaporizer_1",
+      "whole_units": true
+    },
+    {
+      "id": "magic_ming_1",
+      "speed": 0.2,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_ming_1": 1
+      }
+    },
+    {
+      "id": "magic_ming_2",
+      "speed": 0.4,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_ming_1": 2
+      }
+    },
+    {
+      "id": "magic_ming_3",
+      "speed": 0.6,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_ming_1": 3
+      }
+    },
+    {
+      "id": "magic_ming_4",
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_ming_1": 4
+      }
+    },
+    {
+      "id": "magic_hui_1",
+      "speed": 0.2,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_hui_1": 1
+      }
+    },
+    {
+      "id": "magic_hui_2",
+      "speed": 0.4,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_hui_1": 2
+      }
+    },
+    {
+      "id": "magic_hui_3",
+      "speed": 0.6,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_hui_1": 3
+      }
+    },
+    {
+      "id": "magic_hui_4",
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_hui_1": 4
+      }
+    },
+    {
+      "id": "magic_heng_1",
+      "speed": 0.4,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_ming_1": 1,
+        "magic_hui_1": 1
+      }
+    },
+    {
+      "id": "magic_heng_2",
+      "speed": 0.8,
+      "regions": [
+        "jinlong"
+      ],
+      "stack": {
+        "magic_ming_1": 2,
+        "magic_hui_1": 2
+      }
+    },
+    {
+      "id": "magic_spawner_1",
+      "regions": [
+        "jinlong"
+      ],
+      "whole_units": true
+    },
+    {
+      "id": "magic_spawner_2",
+      "regions": [
+        "jinlong"
+      ],
+      "whole_units": true
+    },
+    {
+      "id": "dismantler_1",
+      "power_kw": 20.0
+    },
+    {
+      "id": "settlement-tundra_coupon",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "settlement-jinlong_coupon",
+      "regions": [
+        "jinlong"
+      ]
+    }
+  ],
+  "recipes": [
+    {
+      "id": "seedcollector_plant_moss_1_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_1": 1.0
+      },
+      "out": {
+        "plant_moss_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "planter_plant_moss_1_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_seed_1": 1.0
+      },
+      "out": {
+        "plant_moss_1": 1.0
+      },
+      "facilities": [
+        "planter_1"
+      ]
+    },
+    {
+      "id": "grinder_plant_moss_powder_1_1",
+      "category": "type_5",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_1": 1.0
+      },
+      "out": {
+        "plant_moss_powder_1": 2.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "thickener_plant_moss_enr_powder_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_powder_1": 2.0,
+        "plant_moss_powder_3": 1.0
+      },
+      "out": {
+        "plant_moss_enr_powder_1": 1.0
+      },
+      "facilities": [
+        "thickener_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_moss_3_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_3": 1.0
+      },
+      "out": {
+        "plant_moss_seed_3": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "planter_plant_moss_3_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_seed_3": 1.0
+      },
+      "out": {
+        "plant_moss_3": 1.0
+      },
+      "facilities": [
+        "planter_1"
+      ]
+    },
+    {
+      "id": "grinder_plant_moss_powder_3_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_3": 1.0
+      },
+      "out": {
+        "plant_moss_powder_3": 3.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_grass_1_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_1": 1.0
+      },
+      "out": {
+        "plant_grass_seed_1": 1.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "planter_plant_grass_1_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_seed_1": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "plant_grass_1": 2.0
+      },
+      "facilities": [
+        "planter_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "grinder_plant_grass_powder_1_1",
+      "category": "type_5",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_1": 1.0
+      },
+      "out": {
+        "plant_grass_powder_1": 2.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "pool_liquid_plant_grass_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_powder_1": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "liquid_plant_grass_1": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "furnance_carbon_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_powder_1": 1.0
+      },
+      "out": {
+        "carbon_powder": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_powder_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_powder_2": 1.0
+      },
+      "out": {
+        "carbon_powder": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_powder_3",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_powder_3": 3.0
+      },
+      "out": {
+        "carbon_powder": 2.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_powder_4",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_powder_1": 1.0
+      },
+      "out": {
+        "carbon_powder": 2.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_powder_5",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_powder_2": 1.0
+      },
+      "out": {
+        "carbon_powder": 2.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "grinder_carbon_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "carbon_mtl": 1.0
+      },
+      "out": {
+        "carbon_powder": 2.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_moss_2_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_2": 1.0
+      },
+      "out": {
+        "plant_moss_seed_2": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "planter_plant_moss_2_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_seed_2": 1.0
+      },
+      "out": {
+        "plant_moss_2": 1.0
+      },
+      "facilities": [
+        "planter_1"
+      ]
+    },
+    {
+      "id": "grinder_plant_moss_powder_2_1",
+      "category": "type_5",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_2": 1.0
+      },
+      "out": {
+        "plant_moss_powder_2": 2.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "thickener_plant_moss_enr_powder_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_powder_2": 2.0,
+        "plant_moss_powder_3": 1.0
+      },
+      "out": {
+        "plant_moss_enr_powder_2": 1.0
+      },
+      "facilities": [
+        "thickener_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_bbflower_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_bbflower_1": 1.0
+      },
+      "out": {
+        "plant_bbflower_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "planter_plant_bbflower_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_bbflower_seed_1": 1.0
+      },
+      "out": {
+        "plant_bbflower_1": 1.0
+      },
+      "facilities": [
+        "planter_1"
+      ]
+    },
+    {
+      "id": "grinder_plant_bbflower_powder_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_bbflower_1": 1.0
+      },
+      "out": {
+        "plant_bbflower_powder_1": 2.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_grass_2_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_2": 1.0
+      },
+      "out": {
+        "plant_grass_seed_2": 1.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "planter_plant_grass_2_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_seed_2": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "plant_grass_2": 2.0
+      },
+      "facilities": [
+        "planter_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "grinder_plant_grass_powder_2_1",
+      "category": "type_5",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_2": 1.0
+      },
+      "out": {
+        "plant_grass_powder_2": 2.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "pool_liquid_plant_grass_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_powder_2": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "liquid_plant_grass_2": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "furnance_carbon_material_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_1": 1.0
+      },
+      "out": {
+        "carbon_mtl": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_material_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_2": 1.0
+      },
+      "out": {
+        "carbon_mtl": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_material_3",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_3": 1.0
+      },
+      "out": {
+        "carbon_mtl": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_material_5",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_1": 1.0
+      },
+      "out": {
+        "carbon_mtl": 2.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_material_6",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_grass_2": 1.0
+      },
+      "out": {
+        "carbon_mtl": 2.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_material_4",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_tundra_wood": 1.0
+      },
+      "out": {
+        "carbon_mtl": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "originium_ore",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {},
+      "out": {
+        "originium_ore": 1.0
+      },
+      "facilities": [
+        "miner_1",
+        "miner_2",
+        "miner_3"
+      ],
+      "kind": "mining"
+    },
+    {
+      "id": "originium_ore-liquid_water",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {
+        "liquid_water": 1.0
+      },
+      "out": {
+        "originium_ore": 1.0
+      },
+      "facilities": [
+        "miner_4"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "furnance_crystal_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "originium_powder": 1.0
+      },
+      "out": {
+        "crystal_powder": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "grinder_crystal_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "crystal_shell": 1.0
+      },
+      "out": {
+        "crystal_powder": 1.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "furnance_crystal_shell_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "originium_ore": 1.0
+      },
+      "out": {
+        "crystal_shell": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_crystal_shell_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "crystal_powder": 1.0
+      },
+      "out": {
+        "crystal_shell": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "thickener_crystal_enr_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "crystal_powder": 2.0,
+        "plant_moss_powder_3": 1.0
+      },
+      "out": {
+        "crystal_enr_powder": 1.0
+      },
+      "facilities": [
+        "thickener_1"
+      ]
+    },
+    {
+      "id": "furnance_crystal_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "crystal_enr_powder": 1.0
+      },
+      "out": {
+        "crystal_enr": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "grinder_originium_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "originium_ore": 1.0
+      },
+      "out": {
+        "originium_powder": 1.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "thickener_originium_enr_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "originium_powder": 2.0,
+        "plant_moss_powder_3": 1.0
+      },
+      "out": {
+        "originium_enr_powder": 1.0
+      },
+      "facilities": [
+        "thickener_1"
+      ]
+    },
+    {
+      "id": "furnance_crystal_enr_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "originium_enr_powder": 1.0
+      },
+      "out": {
+        "crystal_enr_powder": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "thickener_carbon_enr_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "carbon_powder": 2.0,
+        "plant_moss_powder_3": 1.0
+      },
+      "out": {
+        "carbon_enr_powder": 1.0
+      },
+      "facilities": [
+        "thickener_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_enr_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_enr_powder_1": 1.0
+      },
+      "out": {
+        "carbon_enr_powder": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_enr_powder_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_moss_enr_powder_2": 1.0
+      },
+      "out": {
+        "carbon_enr_powder": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_carbon_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "carbon_enr_powder": 1.0
+      },
+      "out": {
+        "carbon_enr": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "quartz_sand",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {},
+      "out": {
+        "quartz_sand": 1.0
+      },
+      "facilities": [
+        "miner_2",
+        "miner_3"
+      ],
+      "kind": "mining"
+    },
+    {
+      "id": "quartz_sand-liquid_water",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {
+        "liquid_water": 1.0
+      },
+      "out": {
+        "quartz_sand": 1.0
+      },
+      "facilities": [
+        "miner_4"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "grinder_quartz_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_glass": 1.0
+      },
+      "out": {
+        "quartz_powder": 1.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "furnance_quartz_glass_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_sand": 1.0
+      },
+      "out": {
+        "quartz_glass": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_quartz_glass_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_powder": 1.0
+      },
+      "out": {
+        "quartz_glass": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "thickener_quartz_enr_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_powder": 2.0,
+        "plant_moss_powder_3": 1.0
+      },
+      "out": {
+        "quartz_enr_powder": 1.0
+      },
+      "facilities": [
+        "thickener_1"
+      ]
+    },
+    {
+      "id": "furnance_quartz_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_enr_powder": 1.0
+      },
+      "out": {
+        "quartz_enr": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "shaper_glass_bottle_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_glass": 2.0
+      },
+      "out": {
+        "glass_bottle": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ]
+    },
+    {
+      "id": "shaper_glass_enr_bottle_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_enr": 2.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ]
+    },
+    {
+      "id": "component_glass_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_glass": 1.0
+      },
+      "out": {
+        "glass_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ]
+    },
+    {
+      "id": "component_glass_enr_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "quartz_enr": 1.0
+      },
+      "out": {
+        "glass_enr_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ]
+    },
+    {
+      "id": "iron_ore",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {},
+      "out": {
+        "iron_ore": 1.0
+      },
+      "facilities": [
+        "miner_3"
+      ],
+      "kind": "mining"
+    },
+    {
+      "id": "iron_ore-liquid_water",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {
+        "liquid_water": 1.0
+      },
+      "out": {
+        "iron_ore": 1.0
+      },
+      "facilities": [
+        "miner_4"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "grinder_iron_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_nugget": 1.0
+      },
+      "out": {
+        "iron_powder": 1.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "furnance_iron_nugget_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_ore": 1.0
+      },
+      "out": {
+        "iron_nugget": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "furnance_iron_nugget_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_powder": 1.0
+      },
+      "out": {
+        "iron_nugget": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "thickener_iron_enr_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_powder": 2.0,
+        "plant_moss_powder_3": 1.0
+      },
+      "out": {
+        "iron_enr_powder": 1.0
+      },
+      "facilities": [
+        "thickener_1"
+      ]
+    },
+    {
+      "id": "furnance_iron_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_powder": 1.0
+      },
+      "out": {
+        "iron_enr": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ]
+    },
+    {
+      "id": "shaper_iron_bottle_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_nugget": 2.0
+      },
+      "out": {
+        "iron_bottle": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ]
+    },
+    {
+      "id": "shaper_iron_enr_bottle_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr": 2.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ]
+    },
+    {
+      "id": "component_iron_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_nugget": 1.0
+      },
+      "out": {
+        "iron_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ]
+    },
+    {
+      "id": "component_iron_enr_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr": 1.0
+      },
+      "out": {
+        "iron_enr_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ]
+    },
+    {
+      "id": "copper_ore-liquid_water",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {
+        "liquid_water": 1.0
+      },
+      "out": {
+        "copper_ore": 1.0
+      },
+      "facilities": [
+        "miner_4"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "grinder_copper_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_nugget": 1.0
+      },
+      "out": {
+        "copper_powder": 1.0
+      },
+      "facilities": [
+        "grinder_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "furnance_copper_nugget_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_ore": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "copper_nugget": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_solid_copper_nugget_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper": 1.0
+      },
+      "out": {
+        "copper_nugget": 2.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_copper_enr": 2.0,
+        "iron_powder": 1.0
+      },
+      "out": {
+        "copper_enr": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_solid_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_enr": 2.0
+      },
+      "out": {
+        "copper_enr": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "magic_balancer_1_copper_enr",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_ming": 10.0,
+        "copper_hui": 10.0
+      },
+      "out": {
+        "copper_enr": 5.0
+      },
+      "facilities": [
+        "magic_balancer_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_solid_copper_enr2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_enr2": 1.0
+      },
+      "out": {
+        "copper_enr2": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "shaper_copper_bottle_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_nugget": 2.0
+      },
+      "out": {
+        "copper_bottle": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "shaper_copper_enr_bottle_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr": 2.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_copper_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_nugget": 1.0
+      },
+      "out": {
+        "copper_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_copper_enr_cmpt_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_enr": 5.0
+      },
+      "out": {
+        "copper_enr_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_copper_enr2_cmpt_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_enr2": 5.0
+      },
+      "out": {
+        "copper_enr2_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "shaper_gas_copper_jar_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_nugget": 2.0,
+        "gas_inert": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_filter_core_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "xiranite_powder": 1.0
+      },
+      "out": {
+        "filter_core": 2.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_liquid_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_powder": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "liquid_copper": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_liquid_liquid_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper": 1.0
+      },
+      "out": {
+        "liquid_copper": 2.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_purifier_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_copper": 4.0
+      },
+      "out": {
+        "liquid_copper_enr": 1.0,
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "liquid_purifier_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_liquid_liquid_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_enr": 1.0
+      },
+      "out": {
+        "liquid_copper_enr": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_gas_gas_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_copper": 2.0
+      },
+      "out": {
+        "gas_copper": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_gas_gas_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_nugget": 2.0
+      },
+      "out": {
+        "gas_copper": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_gas_gas_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_copper_enr": 1.0
+      },
+      "out": {
+        "gas_copper_enr": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_purifier_gas_copper_enr_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper": 2.0,
+        "filter_core": 1.0
+      },
+      "out": {
+        "gas_copper_enr": 2.0
+      },
+      "facilities": [
+        "liquid_purifier_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "environment": "gas_inert"
+    },
+    {
+      "id": "liquid_purifier_gas_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper": 2.0,
+        "filter_core": 2.0
+      },
+      "out": {
+        "gas_copper_enr": 2.0
+      },
+      "facilities": [
+        "liquid_purifier_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_gas_gas_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr": 1.0
+      },
+      "out": {
+        "gas_copper_enr": 2.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "gas_reactor_gas_copper_enr2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_enr": 2.0,
+        "gas_xiranite": 1.0
+      },
+      "out": {
+        "gas_copper_enr2": 1.0
+      },
+      "facilities": [
+        "gas_reactor_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "environment": "gas_acid"
+    },
+    {
+      "id": "liquid_transmuter_2_gas_gas_copper_enr2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr2": 1.0
+      },
+      "out": {
+        "gas_copper_enr2": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "xiranite_oven_xiranite_powder_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "carbon_mtl": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "xiranite_powder": 1.0
+      },
+      "facilities": [
+        "xiranite_oven_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "environment": "gas_inert"
+    },
+    {
+      "id": "xiranite_oven_xiranite_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "carbon_enr": 2.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "xiranite_powder": 1.0
+      },
+      "facilities": [
+        "xiranite_oven_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_solid_xiranite_powder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_xiranite": 1.0
+      },
+      "out": {
+        "xiranite_powder": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_xiranite_poly": 2.0,
+        "iron_powder": 1.0
+      },
+      "out": {
+        "xiranite_poly": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "xiranite_oven_xiranite_enr_powder_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_powder": 10.0,
+        "liquid_xiranite_poly": 5.0
+      },
+      "out": {
+        "xiranite_enr_powder": 1.0
+      },
+      "facilities": [
+        "xiranite_oven_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_solid_xiranite_enr_powder_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "gas_xiranite_enr": 5.0
+      },
+      "out": {
+        "xiranite_enr_powder": 2.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "magic_balancer_1_xiranite_enr",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_ming": 5.0,
+        "xiranite_hui": 5.0
+      },
+      "out": {
+        "xiranite_enr_powder": 2.0
+      },
+      "facilities": [
+        "magic_balancer_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_liquid_liquid_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_powder": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_liquid_liquid_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_xiranite": 1.0
+      },
+      "out": {
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_liquid_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_enr_powder": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "liquid_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_liquid_liquid_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "gas_xiranite_enr": 5.0
+      },
+      "out": {
+        "liquid_xiranite_enr": 2.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_liquid_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_xiranite": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "out": {
+        "liquid_xiranite_poly": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_purifier_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_xiranite_lowpoly": 4.0
+      },
+      "out": {
+        "liquid_xiranite_poly": 1.0,
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "liquid_purifier_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_water",
+      "category": "type_1",
+      "time_s": 1.0,
+      "in": {},
+      "out": {
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "pump_1",
+        "pump_2"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_liquid_liquid_water_1",
+      "category": "type_1",
+      "time_s": 2.0,
+      "in": {
+        "gas_water": 1.0
+      },
+      "out": {
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_acid",
+      "category": "type_1",
+      "time_s": 1.0,
+      "in": {},
+      "out": {
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "pump_2"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_liquid_liquid_acid_1",
+      "category": "type_1",
+      "time_s": 2.0,
+      "in": {
+        "gas_acid": 1.0
+      },
+      "out": {
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_gas_gas_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_water": 1.0
+      },
+      "out": {
+        "gas_water": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "vaporizer_1-gas_water",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_water": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "vaporizer_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "creates_environment": "gas_water"
+    },
+    {
+      "id": "liquid_transmuter_1_gas_gas_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "gas_xiranite": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_gas_gas_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_powder": 1.0
+      },
+      "out": {
+        "gas_xiranite": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_purifier_gas_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_xiranite": 2.0,
+        "filter_core": 2.0
+      },
+      "out": {
+        "gas_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "liquid_purifier_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_purifier_gas_xiranite_enr_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_xiranite": 2.0,
+        "filter_core": 1.0
+      },
+      "out": {
+        "gas_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "liquid_purifier_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "environment": "gas_inert"
+    },
+    {
+      "id": "liquid_transmuter_1_gas_gas_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "liquid_xiranite_enr": 2.0
+      },
+      "out": {
+        "gas_xiranite_enr": 5.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_gas_gas_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_enr_powder": 2.0
+      },
+      "out": {
+        "gas_xiranite_enr": 5.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_1_gas_gas_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "gas_acid": 1.0
+      },
+      "facilities": [
+        "phase_trans_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "vaporizer_1-gas_acid",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_acid": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "vaporizer_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "creates_environment": "gas_acid"
+    },
+    {
+      "id": "gas_inert",
+      "category": "type_1",
+      "time_s": 3.0,
+      "in": {},
+      "out": {
+        "gas_inert": 1.0
+      },
+      "facilities": [
+        "gas_pump_1"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "vaporizer_1-gas_inert",
+      "category": "type_1",
+      "time_s": 60.0,
+      "in": {
+        "gas_inert": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "vaporizer_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "creates_environment": "gas_inert"
+    },
+    {
+      "id": "gas_xiranite",
+      "category": "type_4",
+      "time_s": 3.0,
+      "in": {},
+      "out": {
+        "gas_xiranite": 1.0
+      },
+      "facilities": [
+        "gas_pump_1"
+      ],
+      "kind": "mining",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "magic_spawner_1-magic_ming",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_xiranite": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "magic_spawner_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "projects": {
+        "magic_ming_1": 1
+      }
+    },
+    {
+      "id": "magic_spawner_1-magic_hui",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_xiranite": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "magic_spawner_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "projects": {
+        "magic_hui_1": 1
+      }
+    },
+    {
+      "id": "magic_spawner_2-magic_ming-magic_ming",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_xiranite": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "magic_spawner_2"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "projects": {
+        "magic_ming_1": 2
+      }
+    },
+    {
+      "id": "magic_spawner_2-magic_ming-magic_hui",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_xiranite": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "magic_spawner_2"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "projects": {
+        "magic_ming_1": 1,
+        "magic_hui_1": 1
+      }
+    },
+    {
+      "id": "magic_spawner_2-magic_hui-magic_hui",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_xiranite": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "magic_spawner_2"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "projects": {
+        "magic_hui_1": 2
+      }
+    },
+    {
+      "id": "vaporizer_1-gas_xiranite",
+      "category": "type_4",
+      "time_s": 60.0,
+      "in": {
+        "gas_xiranite": 6.0
+      },
+      "out": {},
+      "facilities": [
+        "vaporizer_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "creates_environment": "gas_xiranite"
+    },
+    {
+      "id": "liquid_cleaner_1-liquid_sewage",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_sewage": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "liquid_cleaner_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_cleaner_1-liquid_xiranite_lowpoly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "liquid_cleaner_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_cleaner_1-liquid_xiranite_poly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "liquid_xiranite_poly": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "liquid_cleaner_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_clean_gate-liquid_sewage",
+      "category": "type_4",
+      "time_s": 0.5,
+      "in": {
+        "liquid_sewage": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "liquid_clean_gate"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_recycle_gate-liquid_xiranite_poly",
+      "category": "type_4",
+      "time_s": 5.0,
+      "in": {
+        "liquid_sewage": 30.0
+      },
+      "out": {
+        "liquid_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "liquid_recycle_gate"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_food_1_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "glass_bottle": 5.0,
+        "plant_moss_powder_2": 5.0
+      },
+      "out": {
+        "bottled_food_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ]
+    },
+    {
+      "id": "filling_bottled_food_2_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_bottle": 10.0,
+        "plant_moss_powder_2": 10.0
+      },
+      "out": {
+        "bottled_food_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ]
+    },
+    {
+      "id": "filling_bottled_food_3_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_enr_bottle": 10.0,
+        "plant_moss_enr_powder_2": 10.0
+      },
+      "out": {
+        "bottled_food_3": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ]
+    },
+    {
+      "id": "tools_proc_food_4_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_cmpt": 10.0,
+        "fbottle_iron_grass_1": 5.0
+      },
+      "out": {
+        "bottled_food_4": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_food_5_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "copper_cmpt": 10.0,
+        "fbottle_copper_grass_1": 5.0
+      },
+      "out": {
+        "bottled_food_5": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_rec_hp_1_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "glass_bottle": 5.0,
+        "plant_moss_powder_1": 5.0
+      },
+      "out": {
+        "bottled_rec_hp_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ]
+    },
+    {
+      "id": "filling_bottled_rec_hp_2_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_bottle": 10.0,
+        "plant_moss_powder_1": 10.0
+      },
+      "out": {
+        "bottled_rec_hp_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ]
+    },
+    {
+      "id": "filling_bottled_rec_hp_3_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_enr_bottle": 10.0,
+        "plant_moss_enr_powder_1": 10.0
+      },
+      "out": {
+        "bottled_rec_hp_3": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ]
+    },
+    {
+      "id": "tools_proc_rec_hp_4_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_cmpt": 10.0,
+        "fbottle_iron_grass_2": 5.0
+      },
+      "out": {
+        "bottled_rec_hp_4": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_rec_hp_5_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "copper_cmpt": 10.0,
+        "fbottle_copper_grass_2": 5.0
+      },
+      "out": {
+        "bottled_rec_hp_5": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "winder_equip_script_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "crystal_shell": 5.0,
+        "quartz_glass": 5.0
+      },
+      "out": {
+        "equip_script_1": 1.0
+      },
+      "facilities": [
+        "winder_1"
+      ]
+    },
+    {
+      "id": "winder_equip_script_2",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "crystal_shell": 10.0,
+        "iron_nugget": 10.0
+      },
+      "out": {
+        "equip_script_2": 1.0
+      },
+      "facilities": [
+        "winder_1"
+      ]
+    },
+    {
+      "id": "winder_equip_script_3",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "crystal_enr": 10.0,
+        "quartz_enr": 10.0
+      },
+      "out": {
+        "equip_script_3": 1.0
+      },
+      "facilities": [
+        "winder_1"
+      ]
+    },
+    {
+      "id": "winder_equip_script_4",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "crystal_enr": 10.0,
+        "xiranite_powder": 10.0
+      },
+      "out": {
+        "equip_script_4": 1.0
+      },
+      "facilities": [
+        "winder_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "winder_equip_script_4_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_cmpt": 10.0,
+        "xiranite_powder": 10.0
+      },
+      "out": {
+        "equip_script_4_1": 1.0
+      },
+      "facilities": [
+        "winder_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "winder_equip_script_4_2",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_enr_cmpt": 2.0,
+        "xiranite_enr_powder": 2.0
+      },
+      "out": {
+        "equip_script_4_2": 1.0
+      },
+      "facilities": [
+        "winder_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "winder_equip_script_4_3",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_enr2_cmpt": 1.0,
+        "xiranite_enr_powder": 2.0
+      },
+      "out": {
+        "equip_script_4_3": 1.0
+      },
+      "facilities": [
+        "winder_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_battery_1_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "glass_cmpt": 5.0,
+        "originium_powder": 10.0
+      },
+      "out": {
+        "proc_battery_1": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ]
+    },
+    {
+      "id": "tools_proc_battery_2_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "iron_cmpt": 10.0,
+        "originium_powder": 15.0
+      },
+      "out": {
+        "proc_battery_2": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ]
+    },
+    {
+      "id": "tools_proc_battery_3_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "iron_enr_cmpt": 10.0,
+        "originium_enr_powder": 15.0
+      },
+      "out": {
+        "proc_battery_3": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ]
+    },
+    {
+      "id": "tools_proc_battery_4_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_powder": 5.0,
+        "originium_enr_powder": 15.0
+      },
+      "out": {
+        "proc_battery_4": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_battery_5_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_poly": 5.0,
+        "originium_enr_powder": 20.0
+      },
+      "out": {
+        "proc_battery_5": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_bomb_1_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "glass_cmpt": 5.0,
+        "plant_bbflower_powder_1": 1.0
+      },
+      "out": {
+        "proc_bomb_1": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ]
+    },
+    {
+      "id": "power_originium_ore",
+      "category": "gen-power",
+      "time_s": 8.0,
+      "in": {
+        "originium_ore": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "power_sta_1"
+      ],
+      "power_kw": -50.0
+    },
+    {
+      "id": "power_proc_battery_1",
+      "category": "gen-power",
+      "time_s": 40.0,
+      "in": {
+        "proc_battery_1": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "power_sta_1"
+      ],
+      "power_kw": -220.0
+    },
+    {
+      "id": "power_proc_battery_2",
+      "category": "gen-power",
+      "time_s": 40.0,
+      "in": {
+        "proc_battery_2": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "power_sta_1"
+      ],
+      "power_kw": -420.0
+    },
+    {
+      "id": "power_proc_battery_3",
+      "category": "gen-power",
+      "time_s": 40.0,
+      "in": {
+        "proc_battery_3": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "power_sta_1"
+      ],
+      "power_kw": -1100.0
+    },
+    {
+      "id": "power_proc_battery_4",
+      "category": "gen-power",
+      "time_s": 40.0,
+      "in": {
+        "proc_battery_4": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "power_sta_1"
+      ],
+      "power_kw": -1600.0,
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "power_proc_battery_5",
+      "category": "gen-power",
+      "time_s": 40.0,
+      "in": {
+        "proc_battery_5": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "power_sta_1"
+      ],
+      "power_kw": -3200.0,
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_activity_xiranite_lung",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_xiranite_box": 5.0,
+        "activity_copper_xiranite_tool": 5.0
+      },
+      "out": {
+        "activity_xiranite_lung": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_activity_xiranite_enr_lung",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_xiranite_enr_box": 1.0,
+        "activity_copper_poly_tool": 1.0
+      },
+      "out": {
+        "activity_xiranite_enr_lung": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "furnance_activity_xiranite_nugget_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_powder": 1.0
+      },
+      "out": {
+        "activity_xiranite_nugget": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "shaper_activity_xiranite_box_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "activity_xiranite_nugget": 1.0
+      },
+      "out": {
+        "activity_xiranite_box": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_activity_xiranite_copper_tool_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_cmpt": 4.0,
+        "xiranite_powder": 1.0
+      },
+      "out": {
+        "activity_copper_xiranite_tool": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "gas_reactor_activity_copper_poly_gas_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper": 2.0,
+        "gas_xiranite": 1.0
+      },
+      "out": {
+        "activity_copper_poly_gas": 1.0
+      },
+      "facilities": [
+        "gas_reactor_1"
+      ],
+      "regions": [
+        "jinlong"
+      ],
+      "environment": "gas_inert"
+    },
+    {
+      "id": "liquid_transmuter_2_activity_copper_poly_gas_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "activity_copper_poly": 1.0
+      },
+      "out": {
+        "activity_copper_poly_gas": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_activity_copper_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "activity_copper_poly_gas": 1.0
+      },
+      "out": {
+        "activity_copper_poly": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_activity_copper_poly_cmpt",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_copper_poly": 5.0
+      },
+      "out": {
+        "activity_copper_poly_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "furnance_activity_xiranite_enr_nugget_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_enr_powder": 1.0
+      },
+      "out": {
+        "activity_xiranite_enr_nugget": 1.0
+      },
+      "facilities": [
+        "furnance_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_activity_copper_poly_tool_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_copper_poly_cmpt": 1.0,
+        "xiranite_enr_powder": 1.0
+      },
+      "out": {
+        "activity_copper_poly_tool": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "shaper_gas_activity_xiranite_enr_box_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_xiranite_enr_nugget": 1.0,
+        "gas_inert": 5.0
+      },
+      "out": {
+        "activity_xiranite_enr_box": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_activity_xiranite_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_powder": 1.0
+      },
+      "out": {
+        "activity_xiranite_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_activity_xiranite_enr_cmpt_1",
+      "category": "type_4",
+      "time_s": 20.0,
+      "in": {
+        "xiranite_enr_powder": 1.0
+      },
+      "out": {
+        "activity_xiranite_enr_cmpt": 2.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_drink_10_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "corp_strawberry_1": 1.0
+      },
+      "out": {
+        "inn_drink_10": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_drink_2_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "ranch_milk_1": 1.0
+      },
+      "out": {
+        "inn_drink_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_drink_4_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "corp_sugarcane_1": 1.0
+      },
+      "out": {
+        "inn_drink_4": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_drink_7_1",
+      "category": "type_5",
+      "time_s": 10.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "ranch_milk_2": 1.0
+      },
+      "out": {
+        "inn_drink_7": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "grinder_Ingredient_flour_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_sp_1": 1.0
+      },
+      "out": {
+        "Ingredient_flour_1": 3.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "grinder_Ingredient_paprika_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "plant_sp_2": 1.0
+      },
+      "out": {
+        "Ingredient_paprika_1": 3.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "grinder_Ingredient_starch_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "corp_potato_1": 1.0
+      },
+      "out": {
+        "Ingredient_starch_1": 3.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "grinder_Ingredient_sugar_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "corp_sugarcane_1": 1.0
+      },
+      "out": {
+        "Ingredient_sugar_1": 3.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "grinder_byproduct_bean_moss_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "byproduct_bean_1": 1.0
+      },
+      "out": {
+        "byproduct_bean_moss_1": 3.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "grinder_byproduct_potato_moss_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "byproduct_potato_1": 1.0
+      },
+      "out": {
+        "byproduct_potato_moss_1": 3.0
+      },
+      "facilities": [
+        "grinder_1"
+      ]
+    },
+    {
+      "id": "pool_Ingredient_oil_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "corp_canolaflower_1": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "Ingredient_oil_1": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_ranch_fodder_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "byproduct_potato_moss_1": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "ranch_fodder_1": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "pool_ranch_fodder_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "byproduct_bean_moss_1": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "ranch_fodder_2": 1.0
+      },
+      "facilities": [
+        "mix_pool_1",
+        "mix_pool_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_sp_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_sp_1": 1.0
+      },
+      "out": {
+        "plant_sp_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_sp_2",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_sp_2": 1.0
+      },
+      "out": {
+        "plant_sp_seed_2": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_sp_3",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_sp_3": 1.0
+      },
+      "out": {
+        "plant_sp_seed_3": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_sp_4",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "plant_sp_4": 1.0
+      },
+      "out": {
+        "plant_sp_seed_4": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_potato_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_potato_1": 1.0
+      },
+      "out": {
+        "corp_potato_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_tomato_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_tomato_1": 1.0
+      },
+      "out": {
+        "corp_tomato_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_cabbage_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_cabbage_1": 1.0
+      },
+      "out": {
+        "corp_cabbage_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_sugarcane_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_sugarcane_1": 1.0
+      },
+      "out": {
+        "corp_sugarcane_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_bean_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_bean_1": 1.0
+      },
+      "out": {
+        "corp_bean_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_mushroom_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_mushroom_1": 1.0
+      },
+      "out": {
+        "corp_mushroom_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_strawberry_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_strawberry_1": 1.0
+      },
+      "out": {
+        "corp_strawberry_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_whitegourd_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_whitegourd_1": 1.0
+      },
+      "out": {
+        "corp_whitegourd_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "seedcollector_plant_canolaflower_1",
+      "category": "type_2",
+      "time_s": 2.0,
+      "in": {
+        "corp_canolaflower_1": 1.0
+      },
+      "out": {
+        "corp_canolaflower_seed_1": 2.0
+      },
+      "facilities": [
+        "seedcol_1"
+      ]
+    },
+    {
+      "id": "shaper_activity_xiranite_bottle_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_powder": 2.0
+      },
+      "out": {
+        "activity_xiranite_bottle": 1.0
+      },
+      "facilities": [
+        "shaper_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "shaper_activity_xiranite_enr_bottle_1",
+      "category": "type_4",
+      "time_s": 20.0,
+      "in": {
+        "xiranite_enr_powder": 1.0
+      },
+      "out": {
+        "activity_xiranite_enr_bottle": 2.0
+      },
+      "facilities": [
+        "shaper_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_activity_xiranite_enr_tool_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_xiranite_enr_cmpt": 1.0,
+        "copper_enr": 1.0
+      },
+      "out": {
+        "activity_xiranite_enr_tool": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_activity_xiranite_hulu_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_xiranite_bottle": 5.0,
+        "activity_xiranite_cmpt": 5.0
+      },
+      "out": {
+        "activity_xiranite_hulu": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_activity_xiranite_enr_hulu_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "fbottle_xiranenr_grass_2": 1.0,
+        "activity_xiranite_enr_tool": 1.0
+      },
+      "out": {
+        "activity_xiranite_enr_hulu": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "xiranite_oven_muck_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "muck_feces_1": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "muck_xiranite_1": 1.0
+      },
+      "facilities": [
+        "xiranite_oven_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_copper_ming_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_ming": 1.0
+      },
+      "out": {
+        "copper_ming_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_copper_hui_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_hui": 1.0
+      },
+      "out": {
+        "copper_hui_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "component_copper_bright_cmpt_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bright": 1.0
+      },
+      "out": {
+        "copper_bright_cmpt": 1.0
+      },
+      "facilities": [
+        "cmpt_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "gas_reactor_gas_copper_bright_clear_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_enr_heng": 1.0,
+        "gas_xiranite_enr_heng": 1.0
+      },
+      "out": {
+        "gas_copper_bright_clear": 2.0
+      },
+      "facilities": [
+        "gas_reactor_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_purifier_gas_copper_bright_clear_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_bright_turbid": 2.0,
+        "filter_core": 2.0
+      },
+      "out": {
+        "gas_copper_bright_clear": 2.0
+      },
+      "facilities": [
+        "liquid_purifier_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "magic_balancer_1_copper_bright_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_enr_heng": 10.0,
+        "copper_enr_heng": 10.0
+      },
+      "out": {
+        "copper_bright": 5.0
+      },
+      "facilities": [
+        "magic_balancer_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_copper_xiranite_ming",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_ming_cmpt": 10.0,
+        "xiranite_ming": 5.0
+      },
+      "out": {
+        "copper_xiranite_ming": 5.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_copper_xiranite_hui",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_hui_cmpt": 15.0,
+        "xiranite_enr_powder": 2.0
+      },
+      "out": {
+        "copper_xiranite_hui": 5.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_copper_bright_cube",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_bright_cmpt": 5.0,
+        "originium_enr_powder": 5.0
+      },
+      "out": {
+        "copper_bright_cube": 5.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tools_proc_battery_6_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_enr_heng": 5.0,
+        "originium_enr_powder": 20.0
+      },
+      "out": {
+        "proc_battery_6": 1.0
+      },
+      "facilities": [
+        "tools_asm_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_copper_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_enr_heng": 1.0
+      },
+      "out": {
+        "copper_enr_heng": 2.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_gas_copper_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_heng": 2.0
+      },
+      "out": {
+        "gas_copper_enr_heng": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_gas_xiranite_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_enr_heng": 2.0
+      },
+      "out": {
+        "gas_xiranite_enr_heng": 1.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_xiranite_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_xiranite_enr_heng": 1.0
+      },
+      "out": {
+        "xiranite_enr_heng": 2.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_copper_bright_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_bright_clear": 2.0
+      },
+      "out": {
+        "copper_bright": 2.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_transmuter_2_gas_copper_bright_clear_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bright": 2.0
+      },
+      "out": {
+        "gas_copper_bright_clear": 2.0
+      },
+      "facilities": [
+        "phase_trans_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "power_proc_battery_6",
+      "category": "gen-power",
+      "time_s": 40.0,
+      "in": {
+        "proc_battery_6": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "power_sta_1"
+      ],
+      "power_kw": -6400.0,
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "liquid_cleaner_1-gas_copper_bright_turbid",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gas_copper_bright_turbid": 1.0
+      },
+      "out": {},
+      "facilities": [
+        "liquid_cleaner_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "formation_magic_ming_item_xiranite_ming_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_powder": 25.0
+      },
+      "out": {
+        "xiranite_ming": 25.0
+      },
+      "facilities": [
+        "magic_ming_1",
+        "magic_ming_2",
+        "magic_ming_3",
+        "magic_ming_4"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "formation_magic_ming_item_copper_ming_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_nugget": 25.0
+      },
+      "out": {
+        "copper_ming": 25.0
+      },
+      "facilities": [
+        "magic_ming_1",
+        "magic_ming_2",
+        "magic_ming_3",
+        "magic_ming_4"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "formation_magic_hui_item_xiranite_hui_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_powder": 25.0
+      },
+      "out": {
+        "xiranite_hui": 25.0
+      },
+      "facilities": [
+        "magic_hui_1",
+        "magic_hui_2",
+        "magic_hui_3",
+        "magic_hui_4"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "formation_magic_hui_item_copper_hui_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_nugget": 25.0
+      },
+      "out": {
+        "copper_hui": 25.0
+      },
+      "facilities": [
+        "magic_hui_1",
+        "magic_hui_2",
+        "magic_hui_3",
+        "magic_hui_4"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "formation_magic_heng_item_xiranite_enr_heng_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "xiranite_powder": 25.0
+      },
+      "out": {
+        "xiranite_enr_heng": 25.0
+      },
+      "facilities": [
+        "magic_heng_1",
+        "magic_heng_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "formation_magic_heng_item_copper_enr_heng_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "copper_nugget": 25.0
+      },
+      "out": {
+        "copper_enr_heng": 25.0
+      },
+      "facilities": [
+        "magic_heng_1",
+        "magic_heng_2"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_water",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "fbottle_glass_water": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_acid",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "fbottle_glass_acid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_sewage",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "out": {
+        "fbottle_glass_sewage": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_grass_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "out": {
+        "fbottle_glass_grass_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_grass_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "out": {
+        "fbottle_glass_grass_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_xiranite",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "fbottle_glass_xiranite": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_xiranite_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "out": {
+        "fbottle_glass_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_xiranite_poly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "out": {
+        "fbottle_glass_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_xiranite_lowpoly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "fbottle_glass_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_copper",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "out": {
+        "fbottle_glass_copper": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glass_copper_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "out": {
+        "fbottle_glass_copper_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_water": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_water": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_water",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_water": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_acid": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_acid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_acid",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_acid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_xiranite": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_xiranite": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_sewage",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_sewage": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_xiranite_enr": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_grass_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_grass_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_copper_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_copper_enr_heng": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_copper_enr_heng": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_inert_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_inert": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_inert": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_grass_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_grass_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_copper": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_copper": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_xiranite_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_xiranite_enr_heng": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_xiranite_enr_heng": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_xiranite",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_xiranite": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_copper_bright_turbid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_copper_bright_turbid": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_copper_bright_turbid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_copper_enr": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_copper_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_xiranite_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_xiranite_poly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_xiranite_lowpoly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_copper_enr2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_copper_enr2": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_copper_enr2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_copperjar_gas_copper_bright_clear_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_jar": 1.0,
+        "gas_copper_bright_clear": 1.0
+      },
+      "out": {
+        "gasjar_copper_gas_copper_bright_clear": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_copper",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_copper": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_glassenr_copper_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "glass_enr_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "out": {
+        "fbottle_glassenr_copper_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_water",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "fbottle_iron_water": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_acid",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "fbottle_iron_acid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_sewage",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "out": {
+        "fbottle_iron_sewage": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_grass_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "out": {
+        "fbottle_iron_grass_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_grass_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "out": {
+        "fbottle_iron_grass_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_xiranite",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "fbottle_iron_xiranite": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_xiranite_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "out": {
+        "fbottle_iron_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_xiranite_poly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "out": {
+        "fbottle_iron_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_xiranite_lowpoly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "fbottle_iron_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_copper",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "out": {
+        "fbottle_iron_copper": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_iron_copper_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "out": {
+        "fbottle_iron_copper_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_water",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_water": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_acid",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_acid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_sewage",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_sewage": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_grass_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_grass_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_grass_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_grass_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_xiranite",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_xiranite": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_xiranite_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_xiranite_poly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_xiranite_lowpoly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_copper",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_copper": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_ironenr_copper_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "out": {
+        "fbottle_ironenr_copper_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_water",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "fbottle_copper_water": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_acid",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "fbottle_copper_acid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_sewage",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "out": {
+        "fbottle_copper_sewage": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_grass_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "out": {
+        "fbottle_copper_grass_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_grass_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "out": {
+        "fbottle_copper_grass_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_xiranite",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "fbottle_copper_xiranite": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_xiranite_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "out": {
+        "fbottle_copper_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_xiranite_poly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "out": {
+        "fbottle_copper_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_xiranite_lowpoly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "fbottle_copper_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_copper",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "out": {
+        "fbottle_copper_copper": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copper_copper_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "out": {
+        "fbottle_copper_copper_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_water",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_water": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_acid",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_acid": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_sewage",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_sewage": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_grass_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_grass_1": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_grass_2",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_grass_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_xiranite",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_xiranite": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_xiranite_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_xiranite_poly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_xiranite_lowpoly",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_copper",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_copper": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_copperenr_copper_enr",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "out": {
+        "fbottle_copperenr_copper_enr": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "filling_bottled_xiranenr_grass_2",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "activity_xiranite_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 5.0
+      },
+      "out": {
+        "fbottle_xiranenr_grass_2": 1.0
+      },
+      "facilities": [
+        "filling_pd_mc_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_water": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_acid": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_sewage_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_sewage": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_grass_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_grass_1": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_grass_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_grass_2": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_xiranite": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_xiranite_enr": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_xiranite_poly": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_xiranite_lowpoly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_copper": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_water": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_water": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glass_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glass_copper_enr": 1.0
+      },
+      "out": {
+        "glass_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_acid": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_acid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_water": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_xiranite": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_xiranite": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_acid": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_xiranite_enr": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_sewage_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_sewage": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_inert_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_inert": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_inert": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_grass_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_grass_1": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_copper": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_copper": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_grass_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_grass_2": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_copper_enr": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_copper_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_xiranite": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_xiranite_enr": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_xiranite_poly": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_copper_enr2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_copper_enr2": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_copper_enr2": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_xiranite_lowpoly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_copper_bright_turbid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_copper_bright_turbid": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_copper_bright_turbid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_copper": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_copper_bright_clear_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_copper_bright_clear": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_copper_bright_clear": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_glassenr_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_glassenr_copper_enr": 1.0
+      },
+      "out": {
+        "glass_enr_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_xiranite_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_xiranite_enr_heng": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_xiranite_enr_heng": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_water": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperjar_gas_copper_enr_heng_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "gasjar_copper_gas_copper_enr_heng": 1.0
+      },
+      "out": {
+        "copper_jar": 1.0,
+        "gas_copper_enr_heng": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_acid": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_sewage_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_sewage": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_grass_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_grass_1": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_grass_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_grass_2": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_xiranite": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_xiranite_enr": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_xiranite_poly": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_xiranite_lowpoly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_copper": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_iron_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_iron_copper_enr": 1.0
+      },
+      "out": {
+        "iron_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_water": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_acid": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_sewage_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_sewage": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_grass_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_grass_1": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_grass_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_grass_2": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_xiranite": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_xiranite_enr": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_xiranite_poly": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_xiranite_lowpoly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_copper": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_ironenr_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_ironenr_copper_enr": 1.0
+      },
+      "out": {
+        "iron_enr_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_water": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_acid": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_sewage_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_sewage": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_grass_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_grass_1": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_grass_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_grass_2": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_xiranite": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_xiranite_enr": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_xiranite_poly": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_xiranite_lowpoly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_copper": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copper_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copper_copper_enr": 1.0
+      },
+      "out": {
+        "copper_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_water_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_water": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_water": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_acid_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_acid": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_acid": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_sewage_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_sewage": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_sewage": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_grass_1_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_grass_1": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_plant_grass_1": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_grass_2_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_grass_2": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_xiranite_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_xiranite": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_xiranite_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_xiranite_enr": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_xiranite_poly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_xiranite_poly": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite_poly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_xiranite_lowpoly_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_xiranite_lowpoly": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_xiranite_lowpoly": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_copper_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_copper": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_copper": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_copperenr_copper_enr_1",
+      "category": "type_4",
+      "time_s": 2.0,
+      "in": {
+        "fbottle_copperenr_copper_enr": 1.0
+      },
+      "out": {
+        "copper_enr_bottle": 1.0,
+        "liquid_copper_enr": 1.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "dismantler_xiranenr_grass_2_1",
+      "category": "type_4",
+      "time_s": 10.0,
+      "in": {
+        "fbottle_xiranenr_grass_2": 1.0
+      },
+      "out": {
+        "activity_xiranite_enr_bottle": 1.0,
+        "liquid_plant_grass_2": 5.0
+      },
+      "facilities": [
+        "dismantler_1"
+      ],
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "tundra_coupon-bottled_food_1",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_food_1": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 10.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-bottled_food_2",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_food_2": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 27.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-bottled_food_3",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_food_3": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 70.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-bottled_rec_hp_1",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_rec_hp_1": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 10.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-bottled_rec_hp_2",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_rec_hp_2": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 27.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-bottled_rec_hp_3",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_rec_hp_3": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 70.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-crystal_shell",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "crystal_shell": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 1.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-glass_bottle",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "glass_bottle": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 2.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-glass_cmpt",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "glass_cmpt": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 1.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-proc_battery_2",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "proc_battery_2": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 30.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-proc_battery_3",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "proc_battery_3": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 70.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-iron_cmpt",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "iron_cmpt": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 1.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-proc_battery_1",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "proc_battery_1": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 16.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "tundra_coupon-iron_enr_cmpt",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "iron_enr_cmpt": 1.0
+      },
+      "out": {
+        "domain_tundra_coupon": 3.0
+      },
+      "facilities": [
+        "settlement-tundra_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "tundra"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-activity_xiranite_enr_hulu",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "activity_xiranite_enr_hulu": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 120.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-activity_xiranite_enr_lung",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "activity_xiranite_enr_lung": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 200.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-activity_xiranite_hulu",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "activity_xiranite_hulu": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 40.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-activity_xiranite_lung",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "activity_xiranite_lung": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 100.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-bottled_food_4",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_food_4": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 16.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-bottled_food_5",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_food_5": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 22.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-bottled_rec_hp_4",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_rec_hp_4": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 16.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-bottled_rec_hp_5",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "bottled_rec_hp_5": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 22.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-copper_cmpt",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "copper_cmpt": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 1.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-copper_enr_cmpt",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr_cmpt": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 48.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-proc_battery_4",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "proc_battery_4": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 25.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-proc_battery_5",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "proc_battery_5": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 54.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-xiranite_enr_powder",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_enr_powder": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 27.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-xiranite_powder",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "xiranite_powder": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 1.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-copper_enr2_cmpt",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "copper_enr2_cmpt": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 70.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    },
+    {
+      "id": "jinlong_coupon-filter_core",
+      "category": "settlement",
+      "time_s": 2.0,
+      "in": {
+        "filter_core": 1.0
+      },
+      "out": {
+        "domain_jinlong_coupon": 1.0
+      },
+      "facilities": [
+        "settlement-jinlong_coupon"
+      ],
+      "kind": "trade",
+      "regions": [
+        "jinlong"
+      ]
+    }
+  ],
+  "aliases": {
+    "items": {
+      "iron_bottle-liquid_plant_grass_1": "fbottle_iron_grass_1",
+      "iron_bottle-liquid_plant_grass_2": "fbottle_iron_grass_2",
+      "copper_bottle-liquid_plant_grass_1": "fbottle_copper_grass_1",
+      "copper_bottle-liquid_plant_grass_2": "fbottle_copper_grass_2",
+      "tundra_coupon": "domain_tundra_coupon",
+      "jinlong_coupon": "domain_jinlong_coupon",
+      "__miner_water": "liquid_water"
+    },
+    "recipes": {
+      "plant_moss_seed_1": "seedcollector_plant_moss_1_1",
+      "plant_moss_1": "planter_plant_moss_1_1",
+      "plant_moss_powder_1": "grinder_plant_moss_powder_1_1",
+      "plant_moss_enr_powder_1": "thickener_plant_moss_enr_powder_1_1",
+      "plant_moss_seed_3": "seedcollector_plant_moss_3_1",
+      "plant_moss_3": "planter_plant_moss_3_1",
+      "plant_moss_powder_3": "grinder_plant_moss_powder_3_1",
+      "plant_grass_seed_1": "seedcollector_plant_grass_1_1",
+      "plant_grass_1": "planter_plant_grass_1_1",
+      "plant_grass_powder_1": "grinder_plant_grass_powder_1_1",
+      "liquid_plant_grass_1": "pool_liquid_plant_grass_1_1",
+      "carbon_powder-plant_moss_powder_1": "furnance_carbon_powder_1",
+      "carbon_powder-plant_moss_powder_2": "furnance_carbon_powder_2",
+      "carbon_powder-plant_moss_powder_3": "furnance_carbon_powder_3",
+      "carbon_powder-plant_grass_powder_1": "furnance_carbon_powder_4",
+      "carbon_powder-plant_grass_powder_2": "furnance_carbon_powder_5",
+      "carbon_powder-carbon_mtl": "grinder_carbon_powder_1",
+      "plant_moss_seed_2": "seedcollector_plant_moss_2_1",
+      "plant_moss_2": "planter_plant_moss_2_1",
+      "plant_moss_powder_2": "grinder_plant_moss_powder_2_1",
+      "plant_moss_enr_powder_2": "thickener_plant_moss_enr_powder_2_1",
+      "plant_bbflower_seed_1": "seedcollector_plant_bbflower_1",
+      "plant_bbflower_1": "planter_plant_bbflower_1",
+      "plant_bbflower_powder_1": "grinder_plant_bbflower_powder_1_1",
+      "plant_grass_seed_2": "seedcollector_plant_grass_2_1",
+      "plant_grass_2": "planter_plant_grass_2_1",
+      "plant_grass_powder_2": "grinder_plant_grass_powder_2_1",
+      "liquid_plant_grass_2": "pool_liquid_plant_grass_2_1",
+      "carbon_mtl-plant_moss_1": "furnance_carbon_material_1",
+      "carbon_mtl-plant_moss_2": "furnance_carbon_material_2",
+      "carbon_mtl-plant_moss_3": "furnance_carbon_material_3",
+      "carbon_mtl-plant_grass_1": "furnance_carbon_material_5",
+      "carbon_mtl-plant_grass_2": "furnance_carbon_material_6",
+      "crystal_powder-originium_powder": "furnance_crystal_powder_1",
+      "crystal_powder-crystal_shell": "grinder_crystal_powder_1",
+      "crystal_shell-originium_ore": "furnance_crystal_shell_1",
+      "crystal_shell-crystal_powder": "furnance_crystal_shell_2",
+      "crystal_enr_powder-crystal_powder": "thickener_crystal_enr_powder_1",
+      "crystal_enr": "furnance_crystal_enr_1",
+      "originium_powder": "grinder_originium_powder_1",
+      "originium_enr_powder": "thickener_originium_enr_powder_1",
+      "crystal_enr_powder-originium_enr_powder": "furnance_crystal_enr_powder_1",
+      "carbon_enr_powder-carbon_powder": "thickener_carbon_enr_powder_1",
+      "carbon_enr_powder-plant_moss_enr_powder_1": "furnance_carbon_enr_powder_1",
+      "carbon_enr_powder-plant_moss_enr_powder_2": "furnance_carbon_enr_powder_2",
+      "carbon_enr": "furnance_carbon_enr_1",
+      "quartz_powder": "grinder_quartz_powder_1",
+      "quartz_glass-quartz_sand": "furnance_quartz_glass_1",
+      "quartz_glass-quartz_powder": "furnance_quartz_glass_2",
+      "quartz_enr_powder": "thickener_quartz_enr_powder_1",
+      "quartz_enr": "furnance_quartz_enr_1",
+      "glass_bottle": "shaper_glass_bottle_1",
+      "glass_enr_bottle": "shaper_glass_enr_bottle_1",
+      "glass_cmpt": "component_glass_cmpt_1",
+      "glass_enr_cmpt": "component_glass_enr_cmpt_1",
+      "iron_powder": "grinder_iron_powder_1",
+      "iron_nugget-iron_ore": "furnance_iron_nugget_1",
+      "iron_nugget-iron_powder": "furnance_iron_nugget_2",
+      "iron_enr_powder": "thickener_iron_enr_powder_1",
+      "iron_enr": "furnance_iron_enr_1",
+      "iron_bottle": "shaper_iron_bottle_1",
+      "iron_enr_bottle": "shaper_iron_enr_bottle_1",
+      "iron_cmpt": "component_iron_cmpt_1",
+      "iron_enr_cmpt": "component_iron_enr_cmpt_1",
+      "iron_bottle-liquid_plant_grass_1": "filling_bottled_iron_grass_1",
+      "iron_bottle-liquid_plant_grass_2": "filling_bottled_iron_grass_2",
+      "copper_powder": "grinder_copper_powder_1",
+      "copper_nugget": "furnance_copper_nugget_1",
+      "phase_trans_2-copper_nugget": "liquid_transmuter_2_solid_copper_nugget_1",
+      "copper_enr": "pool_copper_enr_1",
+      "phase_trans_2-copper_enr": "liquid_transmuter_2_solid_copper_enr_1",
+      "phase_trans_2-copper_enr2": "liquid_transmuter_2_solid_copper_enr2_1",
+      "copper_bottle": "shaper_copper_bottle_1",
+      "copper_enr_bottle": "shaper_copper_enr_bottle_1",
+      "copper_cmpt": "component_copper_cmpt_1",
+      "copper_enr_cmpt": "component_copper_enr_cmpt_1",
+      "copper_enr2_cmpt": "component_copper_enr2_cmpt_1",
+      "copper_bottle-liquid_plant_grass_1": "filling_bottled_copper_grass_1",
+      "copper_bottle-liquid_plant_grass_2": "filling_bottled_copper_grass_2",
+      "copper_jar": "shaper_gas_copper_jar_1",
+      "filter_core": "tools_proc_filter_core_2",
+      "liquid_copper": "pool_liquid_copper_1",
+      "phase_trans_1-liquid_copper": "liquid_transmuter_1_liquid_liquid_copper_1",
+      "liquid_copper_enr": "liquid_purifier_copper_enr_1",
+      "phase_trans_1-liquid_copper_enr": "liquid_transmuter_1_liquid_liquid_copper_enr_1",
+      "phase_trans_1-gas_copper": "liquid_transmuter_1_gas_gas_copper_1",
+      "phase_trans_2-gas_copper": "liquid_transmuter_2_gas_gas_copper_1",
+      "phase_trans_1-gas_copper_enr": "liquid_transmuter_1_gas_gas_copper_enr_1",
+      "gas_copper_enr-gas_inert": "liquid_purifier_gas_copper_enr_2",
+      "gas_copper_enr": "liquid_purifier_gas_copper_enr_1",
+      "phase_trans_2-gas_copper_enr": "liquid_transmuter_2_gas_gas_copper_enr_1",
+      "gas_copper_enr2": "gas_reactor_gas_copper_enr2_1",
+      "phase_trans_2-gas_copper_enr2": "liquid_transmuter_2_gas_gas_copper_enr2_1",
+      "xiranite_powder-carbon_mtl": "xiranite_oven_xiranite_powder_2",
+      "xiranite_powder-carbon_enr": "xiranite_oven_xiranite_powder_1",
+      "phase_trans_2-xiranite_powder": "liquid_transmuter_2_solid_xiranite_powder_1",
+      "xiranite_poly": "pool_xiranite_poly_1",
+      "xiranite_enr_powder": "xiranite_oven_xiranite_enr_powder_1",
+      "phase_trans_2-xiranite_enr_powder": "liquid_transmuter_2_solid_xiranite_enr_powder_1",
+      "liquid_xiranite": "pool_liquid_liquid_xiranite_1",
+      "phase_trans_1-liquid_xiranite": "liquid_transmuter_1_liquid_liquid_xiranite_1",
+      "liquid_xiranite_enr": "pool_liquid_xiranite_enr_1",
+      "phase_trans_1-liquid_xiranite_enr": "liquid_transmuter_1_liquid_liquid_xiranite_enr_1",
+      "liquid_xiranite_poly": "pool_liquid_xiranite_poly_1",
+      "liquid_xiranite_poly-purifier": "liquid_purifier_xiranite_poly_1",
+      "phase_trans_1-liquid_water": "liquid_transmuter_1_liquid_liquid_water_1",
+      "phase_trans_1-liquid_acid": "liquid_transmuter_1_liquid_liquid_acid_1",
+      "phase_trans_1-gas_water": "liquid_transmuter_1_gas_gas_water_1",
+      "phase_trans_1-gas_xiranite": "liquid_transmuter_1_gas_gas_xiranite_1",
+      "phase_trans_2-gas_xiranite": "liquid_transmuter_2_gas_gas_xiranite_1",
+      "gas_xiranite_enr": "liquid_purifier_gas_xiranite_enr_1",
+      "gas_xiranite_enr-gas_inert": "liquid_purifier_gas_xiranite_enr_2",
+      "phase_trans_1-gas_xiranite_enr": "liquid_transmuter_1_gas_gas_xiranite_enr_1",
+      "phase_trans_2-gas_xiranite_enr": "liquid_transmuter_2_gas_gas_xiranite_enr_1",
+      "phase_trans_1-gas_acid": "liquid_transmuter_1_gas_gas_acid_1",
+      "liquid_cleaner_1-sewage": "liquid_cleaner_1-liquid_sewage",
+      "liquid_cleaner_1-xiranite_lowpoly": "liquid_cleaner_1-liquid_xiranite_lowpoly",
+      "liquid_cleaner_1-xiranite_poly": "liquid_cleaner_1-liquid_xiranite_poly",
+      "sewage-treat": "liquid_clean_gate-liquid_sewage",
+      "sewage-treat-export": "liquid_recycle_gate-liquid_xiranite_poly",
+      "bottled_food_1": "filling_bottled_food_1_1",
+      "bottled_food_2": "filling_bottled_food_2_1",
+      "bottled_food_3": "filling_bottled_food_3_1",
+      "bottled_food_4": "tools_proc_food_4_1",
+      "bottled_food_5": "tools_proc_food_5_1",
+      "bottled_rec_hp_1": "filling_bottled_rec_hp_1_1",
+      "bottled_rec_hp_2": "filling_bottled_rec_hp_2_1",
+      "bottled_rec_hp_3": "filling_bottled_rec_hp_3_1",
+      "bottled_rec_hp_4": "tools_proc_rec_hp_4_1",
+      "bottled_rec_hp_5": "tools_proc_rec_hp_5_1",
+      "equip_script_1": "winder_equip_script_1",
+      "equip_script_2": "winder_equip_script_2",
+      "equip_script_3": "winder_equip_script_3",
+      "equip_script_4": "winder_equip_script_4",
+      "equip_script_4_1": "winder_equip_script_4_1",
+      "equip_script_4_2": "winder_equip_script_4_2",
+      "equip_script_4_3": "winder_equip_script_4_3",
+      "proc_battery_1": "tools_proc_battery_1_1",
+      "proc_battery_2": "tools_proc_battery_2_1",
+      "proc_battery_3": "tools_proc_battery_3_1",
+      "proc_battery_4": "tools_proc_battery_4_1",
+      "proc_battery_5": "tools_proc_battery_5_1",
+      "proc_bomb_1": "tools_proc_bomb_1_1",
+      "activity_xiranite_lung": "tools_proc_activity_xiranite_lung",
+      "activity_xiranite_enr_lung": "tools_proc_activity_xiranite_enr_lung",
+      "activity_xiranite_nugget": "furnance_activity_xiranite_nugget_1",
+      "activity_xiranite_box": "shaper_activity_xiranite_box_1",
+      "activity_copper_xiranite_tool": "tools_proc_activity_xiranite_copper_tool_1",
+      "activity_copper_poly_gas": "gas_reactor_activity_copper_poly_gas_1",
+      "phase_trans_2-activity_copper_poly_gas": "liquid_transmuter_2_activity_copper_poly_gas_1",
+      "phase_trans_2-activity_copper_poly": "liquid_transmuter_2_activity_copper_poly_1",
+      "activity_copper_poly_cmpt": "component_activity_copper_poly_cmpt",
+      "activity_xiranite_enr_nugget": "furnance_activity_xiranite_enr_nugget_1",
+      "activity_copper_poly_tool": "tools_proc_activity_copper_poly_tool_1",
+      "activity_xiranite_enr_box": "shaper_gas_activity_xiranite_enr_box_1"
+    }
+  }
+}

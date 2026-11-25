@@ -229,10 +229,7 @@ fn data_choice(
                         text = strings.format("settings-newest", &[("version", &text)]);
                     }
                     if ui.selectable_label(option.name == version, text).clicked() {
-                        changed = Some(DataChoice {
-                            version: Some(option.name.clone()),
-                            ..choice.clone()
-                        });
+                        changed = Some(folder.pick_version(&choice, &option.name));
                     }
                 }
             });

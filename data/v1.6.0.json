@@ -1054,7 +1054,8 @@
       "id": "vaporizer_1",
       "regions": [
         "jinlong"
-      ]
+      ],
+      "whole_units": true
     },
     {
       "id": "dismantler_1",
@@ -2882,7 +2883,8 @@
       ],
       "regions": [
         "jinlong"
-      ]
+      ],
+      "creates_environment": "gas_water"
     },
     {
       "id": "liquid_transmuter_1_gas_gas_xiranite_1",
@@ -3019,7 +3021,8 @@
       ],
       "regions": [
         "jinlong"
-      ]
+      ],
+      "creates_environment": "gas_acid"
     },
     {
       "id": "gas_inert",
@@ -3050,7 +3053,8 @@
       ],
       "regions": [
         "jinlong"
-      ]
+      ],
+      "creates_environment": "gas_inert"
     },
     {
       "id": "gas_xiranite",
@@ -3081,7 +3085,8 @@
       ],
       "regions": [
         "jinlong"
-      ]
+      ],
+      "creates_environment": "gas_xiranite"
     },
     {
       "id": "liquid_cleaner_1-liquid_sewage",

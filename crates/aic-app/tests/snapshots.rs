@@ -1592,6 +1592,105 @@ fn switching_data_versions_keeps_the_graph_and_matches_recipes_by_id() {
     ));
 }
 
+/// The version picker marks the newest row. Picking an older version pins it; picking the newest
+/// again follows the newest, so a newer data version becomes the default when it ships.
+#[test]
+fn the_version_picker_pins_an_older_version_and_follows_the_newest() {
+    let mut harness = data_folder_app();
+    editor(&mut harness).set_settings_open(true);
+    harness.run();
+    // The picker shows the version in use as its value.
+    harness.get_by_value("v1.10.0").click();
+    harness.run();
+    harness.snapshot("settings_data_versions");
+    harness.get_by_label("v1.9.0").click();
+    harness.run();
+    let pinned = aic_app::data::DataChoice {
+        version: Some("v1.9.0".into()),
+        language: None,
+    };
+    assert_eq!(editor(&mut harness).catalog().version(), "v1.9.0");
+    assert_eq!(editor(&mut harness).data_choice(), Some(&pinned));
+
+    harness.get_by_value("v1.9.0").click();
+    harness.run();
+    harness.get_by_label("v1.10.0 (newest)").click();
+    harness.run();
+    assert_eq!(editor(&mut harness).catalog().version(), "v1.10.0");
+    assert_eq!(
+        editor(&mut harness).data_choice(),
+        Some(&aic_app::data::DataChoice::default()),
+        "the newest is followed, not pinned"
+    );
+}
+
+/// The app on the `aic-data` test folder (v1.10.0 newest, v1.9.0) with eframe storage `storage`;
+/// returns the data version it opened, its choice, and the storage it saves on its way out.
+fn start_and_save(
+    storage: MemoryStorage,
+) -> (String, Option<aic_app::data::DataChoice>, MemoryStorage) {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures/data");
+    let folder = aic_app::data::DataFolder::at(dir).map_err(|e| e.to_string());
+    let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
+        look_of_a_fixture(&cc.egui_ctx);
+        without_tutorial(steady(App::from_folder(
+            Strings::english(),
+            folder.clone(),
+            Some(&storage),
+        )))
+    });
+    harness.run();
+    let version = editor(&mut harness).catalog().version().to_owned();
+    let choice = editor(&mut harness).data_choice().cloned();
+    let mut saved = MemoryStorage::default();
+    eframe::App::save(harness.state_mut(), &mut saved);
+    (version, choice, saved)
+}
+
+/// Before the newest row of the version picker followed the newest, it pinned the version it
+/// named, so a choice kept the old way can't tell a pin from a pick of the newest. It comes back
+/// following the newest, with its language kept, and is saved the new way.
+#[test]
+fn a_data_choice_kept_the_old_way_follows_the_newest_and_keeps_its_language() {
+    let mut old = MemoryStorage::default();
+    // As eframe kept it under the old key.
+    old.0.insert(
+        "data-choice".into(),
+        r#"(version:Some("v1.9.0"),language:Some("en"))"#.into(),
+    );
+    let (version, choice, saved) = start_and_save(old);
+    let following = aic_app::data::DataChoice {
+        version: None,
+        language: Some("en".into()),
+    };
+    assert_eq!(version, "v1.10.0");
+    assert_eq!(choice.as_ref(), Some(&following));
+    let kept: Option<aic_app::data::DataChoice> =
+        eframe::get_value(&saved, aic_app::data::STORAGE_KEY);
+    assert_eq!(kept, Some(following));
+
+    // Saved the new way, it keeps following the newest the next time.
+    let (version, _, _) = start_and_save(saved);
+    assert_eq!(version, "v1.10.0");
+}
+
+/// A version picked in the new way, older than the newest, stays picked from one start to the next.
+#[test]
+fn an_older_data_version_kept_the_new_way_stays_pinned() {
+    let pinned = aic_app::data::DataChoice {
+        version: Some("v1.9.0".into()),
+        language: Some("en".into()),
+    };
+    let mut storage = MemoryStorage::default();
+    eframe::set_value(&mut storage, aic_app::data::STORAGE_KEY, &pinned);
+    let (version, choice, saved) = start_and_save(storage);
+    assert_eq!(version, "v1.9.0");
+    assert_eq!(choice.as_ref(), Some(&pinned));
+    let (version, choice, _) = start_and_save(saved);
+    assert_eq!(version, "v1.9.0");
+    assert_eq!(choice, Some(pinned));
+}
+
 #[test]
 fn an_outpost_order_from_an_output_port_earns_coupons() {
     let mut harness = harness(&aic_editor::testing::fixture_file());
@@ -2962,31 +3061,6 @@ fn the_status_bar_shows_the_version_author_github_link_and_license() {
     harness.get_by_label_contains("belong to Hypergryph / Gryphline");
 }
 
-/// A file made with another data version: its warning shares the bar's left with the app info.
-#[test]
-fn other_data_version() {
-    let mut harness = data_folder_app();
-    smelter(&mut harness, 0.0, 0.0);
-    let older = aic_app::data::DataChoice {
-        version: Some("v1.9.0".into()),
-        language: None,
-    };
-    editor(&mut harness).switch_data(older);
-    let dir = std::env::temp_dir().join(format!("aic-other-version-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let file = dir.join("older.aicm");
-    editor(&mut harness).save_to(&file);
-    editor(&mut harness).switch_data(aic_app::data::DataChoice::default());
-    editor(&mut harness).reopen(&file);
-    harness.run();
-    editor(&mut harness).fit_canvas();
-    harness.run();
-    harness.get_by_label_contains("This file was made with data v1.9.0");
-    harness.snapshot("other_data_version");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
 // M10: multiple views.
 
 use aic_app::views::{ViewAction, ViewKey};
@@ -3999,4 +4073,261 @@ fn one_undo_takes_back_a_card_picked_from_a_port() {
     harness.run();
     assert_eq!(node_count(&mut harness), 2, "only the move is undone");
     assert_eq!(node_pos(&mut harness, smelter), aligned);
+}
+
+// Gas environments and arrays (ADR 0015), on the v1.7.0 data in Wuling.
+
+/// A harness on the v1.7.0 data, with a graph in Wuling and the inspector open.
+fn v1_7_0_in_wuling() -> Harness<'static, App> {
+    let mut harness = harness(&fixture("../../data/v1.7.0.json"));
+    editor(&mut harness).new_graph("jinlong".into());
+    harness.run();
+    harness
+}
+
+fn recipe_on(recipe: &str, facility: &str, limit: Option<f64>) -> NodeKind {
+    NodeKind::Recipe {
+        recipe: recipe.into(),
+        facility: facility.into(),
+        limit,
+    }
+}
+
+/// A node's card in the canvas's view space, where its labels report their rects.
+fn card_in_view(harness: &mut Harness<'_, App>, node: NodeId) -> eframe::egui::Rect {
+    let card = node_rect(harness, node);
+    let view = aic_app::document::VIEW_SCALE;
+    eframe::egui::Rect::from_min_max(
+        graph_point(harness, card.min) * view,
+        graph_point(harness, card.max) * view,
+    )
+}
+
+/// A recipe that needs a gas environment says so on a tag beside its facility, whole, and the one
+/// whose environment nothing in the graph creates carries the warning sign before its title. The
+/// Gas Reactor Globe's Acrid Environment is there: a Gas Dispersing Unit runs on Acridgen.
+#[test]
+fn a_recipe_card_tags_the_gas_environment_it_needs() {
+    let mut harness = v1_7_0_in_wuling();
+    let purifier = add(
+        &mut harness,
+        recipe_on(
+            "liquid_purifier_gas_xiranite_enr_2",
+            "liquid_purifier_1",
+            Some(1.0),
+        ),
+        280.0,
+        60.0,
+    );
+    let reactor = add(
+        &mut harness,
+        recipe_on("gas_reactor_gas_copper_enr2_1", "gas_reactor_1", Some(1.0)),
+        280.0,
+        420.0,
+    );
+    let unit = add(
+        &mut harness,
+        recipe_on("vaporizer_1-gas_acid", "vaporizer_1", Some(1.0)),
+        640.0,
+        420.0,
+    );
+    harness.run();
+    let s = editor(&mut harness).document().solution().clone();
+    let missing: Vec<NodeId> = (s.warnings.iter())
+        .filter_map(|w| match w {
+            aic_core::Warning::EnvironmentMissing { node, .. } => Some(*node),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(missing, [purifier]);
+    assert_near(count(&s, unit), 1.0);
+    for (node, facility, tag) in [
+        (purifier, "Purification Unit", "Stable Environment"),
+        (reactor, "Gas Reactor Globe", "Acrid Environment"),
+    ] {
+        // Labels on the canvas report rects in the canvas's view space, the card is taken there
+        // too; the totals in the inspector name the facility as well, in the window's space.
+        let card = card_in_view(&mut harness, node);
+        let tag = (harness.get_all_by_label(tag).map(|n| n.rect()))
+            .find(|rect| card.contains(rect.center()))
+            .unwrap_or_else(|| panic!("{tag} is on the card"));
+        let facility = (harness.get_all_by_label(facility).map(|n| n.rect()))
+            .find(|rect| (rect.center().y - tag.center().y).abs() < 2.0)
+            .unwrap_or_else(|| panic!("{facility} is on the tag's row"));
+        assert!(card.contains_rect(tag), "{tag:?} is whole inside {card:?}");
+        assert!(
+            tag.left() >= facility.right(),
+            "{tag:?} is after {facility:?}"
+        );
+    }
+    snapshot_graph(&mut harness, "environment_tags");
+
+    // The inspector names it among the recipe node's facts.
+    editor(&mut harness).select_nodes(vec![purifier]);
+    harness.run();
+    harness.get_by_label("Environment");
+    assert!(
+        (harness.get_all_by_label("Stable Environment")).count() >= 2,
+        "on the card and in the inspector"
+    );
+    harness.snapshot("environment_in_inspector");
+}
+
+/// An array is a recipe node on its tier's facility; the forges that project arrays are units of
+/// their own, each running one.
+#[test]
+fn array_and_forge_cards() {
+    let mut harness = v1_7_0_in_wuling();
+    let array = add(
+        &mut harness,
+        recipe_on(
+            "formation_magic_ming_item_copper_ming_1",
+            "magic_ming_2",
+            Some(1.0),
+        ),
+        280.0,
+        60.0,
+    );
+    let forge = add(
+        &mut harness,
+        recipe_on("magic_spawner_1-magic_ming", "magic_spawner_1", Some(1.0)),
+        640.0,
+        60.0,
+    );
+    let bipolar = add(
+        &mut harness,
+        recipe_on(
+            "magic_spawner_2-magic_ming-magic_hui",
+            "magic_spawner_2",
+            Some(1.0),
+        ),
+        640.0,
+        420.0,
+    );
+    harness.run();
+    let s = editor(&mut harness).document().solution().clone();
+    // An L-Array T2 converts 60 Cuprium a minute.
+    assert_near(count(&s, array), 1.0);
+    assert_near(flow(&s, array, "copper_nugget", Side::Input), 60.0);
+    for unit in [forge, bipolar] {
+        assert_near(count(&s, unit), 1.0);
+        assert_near(flow(&s, unit, "gas_xiranite", Side::Input), 6.0);
+    }
+    // Two L projections needed, one from each forge.
+    assert!(
+        !(s.warnings.iter()).any(|w| matches!(w, aic_core::Warning::ProjectionsShort { .. })),
+        "{:?}",
+        s.warnings
+    );
+    let card = card_in_view(&mut harness, array);
+    assert!(
+        (harness.get_all_by_label("L-Array T2")).any(|n| card.contains(n.rect().center())),
+        "the array's card names its tier"
+    );
+    snapshot_graph(&mut harness, "arrays_and_forges");
+}
+
+/// Both of M14's warnings in the inspector's list.
+#[test]
+fn the_warnings_list_shows_a_missing_environment_and_short_projections() {
+    let mut harness = v1_7_0_in_wuling();
+    add(
+        &mut harness,
+        recipe_on(
+            "liquid_purifier_gas_xiranite_enr_2",
+            "liquid_purifier_1",
+            Some(1.0),
+        ),
+        280.0,
+        60.0,
+    );
+    add(
+        &mut harness,
+        recipe_on(
+            "formation_magic_ming_item_copper_ming_1",
+            "magic_ming_2",
+            Some(1.0),
+        ),
+        280.0,
+        420.0,
+    );
+    harness.run();
+    harness.get_by_label(
+        "Heavy Xiragen Purification (Inergen) needs the Stable Environment, and nothing in the \
+         graph creates it. Add a Gas Dispersing Unit with Inergen.",
+    );
+    harness.get_by_label(
+        "The arrays need 2 L-Array T1 projections, but the forges project 0. Add a Forge of \
+         Luminance.",
+    );
+    harness.snapshot("warnings_gas_and_arrays");
+}
+
+/// The picker places a Gas Dispersing Unit running one unit.
+#[test]
+fn a_unit_from_the_browser_runs_one() {
+    let mut harness = v1_7_0_in_wuling();
+    let node = add_from_browser(&mut harness, "Gas Dispersing Unit(Inergen)");
+    assert_eq!(limit_of(&mut harness, node), Some(1.0));
+}
+
+/// The recipe browser's panel is as wide on the first frames as it stays, on every built-in data
+/// version and in both regions, and the app then asks for no more frames. A truncated recipe name
+/// once made its row a fraction wider than the room it had, which widened the panel by some points
+/// a frame for about ten frames after start-up with v1.7.0's recipes in Valley IV.
+#[test]
+fn the_recipe_browser_keeps_its_width_from_the_first_frame() {
+    for version in ["v1.5.3", "v1.6.0", "v1.7.0"] {
+        for region in ["tundra", "jinlong"] {
+            let file = fixture(&format!("../../data/{version}.json"));
+            let catalog = aic_editor::testing::load(&file).expect("data loads");
+            let region_id = region.to_owned();
+            let mut harness = builder().with_size(WINDOW_SIZE).build_eframe(move |cc| {
+                aic_app::theme::install(&cc.egui_ctx);
+                aic_app::icons::install(&cc.egui_ctx);
+                let mut app = steady(App::new(Strings::english(), Ok(catalog), None));
+                if let Some(editor) = app.editor_mut() {
+                    editor.new_graph(region_id.as_str().into());
+                }
+                app
+            });
+            // The browser's search field, the window's first, spans the panel: its right edge is
+            // the panel's.
+            let mut edges = Vec::new();
+            for frame in 0..12 {
+                harness.step();
+                let field = (harness.get_all_by_role(eframe::egui::accesskit::Role::TextInput))
+                    .next()
+                    .expect("the search field")
+                    .rect();
+                edges.push(field.right());
+                // Every recipe row, under the field in the panel, is as wide as every other: no
+                // row is laid out wider than the list and widens it for the rows after it.
+                let widths: Vec<f32> = (harness
+                    .get_all_by_role(eframe::egui::accesskit::Role::Button))
+                .map(|row| row.rect())
+                .filter(|row| row.left() < field.right() && row.top() > field.bottom())
+                .map(|row| row.width())
+                .collect();
+                let (least, most) = widths
+                    .iter()
+                    .fold((f32::INFINITY, 0.0_f32), |(l, m), &w| (l.min(w), m.max(w)));
+                assert!(
+                    widths.len() > 100 && least == most,
+                    "{version} in {region}, frame {frame}: {} rows from {least} to {most} wide",
+                    widths.len()
+                );
+            }
+            assert!(
+                edges.iter().all(|&edge| edge == edges[0]),
+                "{version} in {region}: the panel's edge, frame by frame: {edges:?}"
+            );
+            harness.run();
+            assert_eq!(
+                next_frame_in(&harness),
+                std::time::Duration::MAX,
+                "{version} in {region}: idle after start-up"
+            );
+        }
+    }
 }

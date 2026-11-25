@@ -25,6 +25,8 @@ colors:
   depot-out: "#6CC77E"
   linked: "#9AA0AB"
   warn: "#E9A23B"
+  warn-fill: "#3A2B12"
+  warn-stroke: "#6E501F"
   positive: "#6CC77E"
   negative: "#EF6461"
   node-recipe: "#283349"
@@ -167,7 +169,7 @@ Cool-neutral graphite with semantic hues that each mean exactly one thing.
 - **Depot Pink** (`DEPOT_IN`): an open input port pulling from the depot; Source nodes share the family.
 - **Depot Green** (`DEPOT_OUT`): an open output port sending to the depot; Sink nodes share the family.
 - **Link Grey** (`LINKED`): linked ports and every wire.
-- **Throttle Amber** (`WARN`): throttle markers, a link over one belt, warnings. Mapped to `Visuals::warn_fg_color`.
+- **Throttle Amber** (`WARN`): throttle markers, a link over one belt, warnings. Mapped to `Visuals::warn_fg_color`. On a dim amber chip (`WARN_FILL`, outlined `WARN_STROKE`) it is a tag: the gas environment a recipe needs, a condition the player has to see to.
 - **Fill Green** (`POSITIVE`): a storage filling up.
 - **Drain Red** (`NEGATIVE`): a storage draining, input that doesn't parse, errors, a missing recipe. Mapped to `Visuals::error_fg_color`.
 
@@ -256,7 +258,7 @@ Quiet and flat. Rest: `CONTROL` fill, `DIVIDER` outline, `TEXT`. Hover/open: `CO
 `INSET` fill, radius small, 28pt high (`widgets::text_field`), on a card too. One as wide as its panel has its text in line with the buttons under it (`widgets::wide_field`); a label beside one goes in a `widgets::field_row`. Focus: `ACCENT_TEXT` outline, 2pt `ACCENT` cursor that doesn't blink. Unparseable input turns its text `NEGATIVE`; nothing pops up.
 
 ### Node Card (signature)
-`RAISED`, 1pt `BORDER`, radius medium, card shadow, 300pt wide; text never wraps and can't be selected (a drag moves the node). Header filled with its kind's tint: a 12pt muted kind line (omitted on recipe cards) over a `theme::strong` title; a recipe card puts its facility's name under the title instead, 12pt `TEXT_MUTED`, with the header's full width for long names (a frameless button that cycles facilities when the recipe has several). Body: facility image, the focal **Number**, a small limit button. Ports are item-icon pins at the edges with mono rates beside them, colored `LINKED`, `DEPOT_IN` or `DEPOT_OUT`; a throttled port gets a 10pt amber triangle. Selected: 2pt `ACCENT` outline.
+`RAISED`, 1pt `BORDER`, radius medium, card shadow, 300pt wide; text never wraps and can't be selected (a drag moves the node). Header filled with its kind's tint: a 12pt muted kind line (omitted on recipe cards) over a `theme::strong` title; a recipe card puts its facility's name under the title instead, 12pt `TEXT_MUTED`, with the header's full width for long names (a frameless button that cycles facilities when the recipe has several). A recipe that needs a gas environment has a tag beside the facility's name ("Stable Environment"): 12pt semibold `WARN` on `WARN_FILL`, radius small; it always shows whole, and the facility's name is cut short first. Body: facility image, the focal **Number**, a small limit button. Ports are item-icon pins at the edges with mono rates beside them, colored `LINKED`, `DEPOT_IN` or `DEPOT_OUT`; a throttled port gets a 10pt amber triangle. Selected: 2pt `ACCENT` outline.
 
 ### Links and Link Labels
 Wires 2pt `LINKED`. The label is 12pt text on `INSET` at 90%, radius 3, 3pt pad, at the wire's midpoint; amber when over one belt; 1.5pt `ACCENT` outline when selected.
@@ -277,7 +279,7 @@ A small window (`crates/aic-app/src/tutorial.rs`) that teaches four things in fo
 The top of the recipe browser's panel (`crates/aic-app/src/settings.rs`), above the Recipes title and the panel's 1pt separator. Closed by default, so it costs one row: an egui collapsing arrow, `Settings` in 13pt `TEXT` (`TEXT_STRONG` under the pointer; a click on it or the arrow opens or closes the section), and the graph's region right-aligned in `TEXT_MUTED` on the same baseline. egui remembers whether it is open. Open, indented 16pt with no frame or inner separator: label-and-picker rows for Region (the graph's; undo takes it back) and, when there is a data folder, Data version and Game names; the labels share one column and the combo boxes fill the rest of the row to one right edge. Then `theme::strong` "Raw resources", its long explanation as hover text, and one row per raw resource of the graph's region: 18pt icon, name cut short with the whole name on hover, a 56pt right-aligned mono supply field (red text when it doesn't parse) and a `TEXT_MUTED` `/min`, the fields in one column. Nothing overflows the panel at its 240pt default.
 
 ### Status Bar
-Left: the app info, `v0.1.1 · MaxConstruct · GitHub · MIT`, in 13pt `TEXT_FAINT` except the GitHub hyperlink (`TEXT_MUTED`, the repository URL on hover, opening in the system browser or a new tab). Version, author, repository and license come from the workspace's Cargo metadata; only the words around them are Fluent strings, and the license's hover text says the game's data, names and icons are not under it. After a separator, the data version warning and the status message in `WARN`, cut short (whole on hover) where they would reach the right side. Right: the frame rate and solve time, off by default and turned on in the View menu (the choice is kept), then the zoom control and the save state.
+Left: the app info, `v0.1.1 · MaxConstruct · GitHub · MIT`, in 13pt `TEXT_FAINT` except the GitHub hyperlink (`TEXT_MUTED`, the repository URL on hover, opening in the system browser or a new tab). Version, author, repository and license come from the workspace's Cargo metadata; only the words around them are Fluent strings, and the license's hover text says the game's data, names and icons are not under it. After a separator, the status message in `WARN`, cut short (whole on hover) where it would reach the right side. Right: the frame rate and solve time, off by default and turned on in the View menu (the choice is kept), then the zoom control and the save state.
 
 ## Do's and Don'ts
 

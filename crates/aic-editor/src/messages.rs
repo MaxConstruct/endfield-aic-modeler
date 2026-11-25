@@ -101,6 +101,55 @@ pub fn warning_text(
                 ("available", &format::short(Some(*available))),
             ],
         ),
+        Warning::EnvironmentMissing { node, gas } => {
+            let recipe = (graph.node(*node))
+                .map(|node| names::node_subject(catalog, strings, &node.kind))
+                .unwrap_or_default();
+            let environment = names::environment(catalog, strings, gas);
+            // The facility whose recipe spreads the gas: the Gas Dispersing Unit.
+            let unit = (catalog.recipes().values())
+                .find(|recipe| recipe.creates_environment.as_ref() == Some(gas))
+                .and_then(|recipe| recipe.facilities.first());
+            let args = [("recipe", recipe.as_str()), ("environment", &environment)];
+            match unit {
+                Some(unit) => strings.format(
+                    "warning-environment-missing",
+                    &[
+                        args[0],
+                        args[1],
+                        ("unit", names::facility(catalog, unit.as_str())),
+                        ("gas", names::item(catalog, gas.as_str())),
+                    ],
+                ),
+                None => strings.format("warning-environment-missing-no-unit", &args),
+            }
+        }
+        Warning::ProjectionsShort {
+            projection,
+            needed,
+            provided,
+        } => {
+            let (needed, provided) = (needed.to_string(), provided.to_string());
+            let args = [
+                ("array", names::facility(catalog, projection.as_str())),
+                ("needed", needed.as_str()),
+                ("provided", provided.as_str()),
+            ];
+            // The first facility whose recipe projects it: a Forge of Luminance.
+            let forge = (catalog.recipes().values())
+                .find(|recipe| recipe.projects.iter().any(|(p, _)| p == projection))
+                .and_then(|recipe| recipe.facilities.first());
+            match forge {
+                Some(forge) => {
+                    let forge = ("forge", names::facility(catalog, forge.as_str()));
+                    strings.format(
+                        "warning-projections-short",
+                        &[args[0], args[1], args[2], forge],
+                    )
+                }
+                None => strings.format("warning-projections-short-no-forge", &args),
+            }
+        }
         Warning::Issue(issue) => issue_text(catalog, strings, issue),
     }
 }
@@ -131,5 +180,61 @@ pub fn issue_text(catalog: &Catalog, strings: &Strings, issue: &Issue) -> String
             &[("facility", names::facility(catalog, facility.as_str()))],
         ),
         Issue::InvalidLimit { .. } => strings.get("warning-issue-invalid-limit"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aic_core::{NodeId, NodeKind, Pos};
+
+    use super::*;
+
+    fn recipe_node(graph: &mut Graph, recipe: &str, facility: &str) -> NodeId {
+        graph.add_node(
+            NodeKind::Recipe {
+                recipe: recipe.into(),
+                facility: facility.into(),
+                limit: None,
+            },
+            Pos::default(),
+        )
+    }
+
+    #[test]
+    fn a_missing_environment_names_it_and_what_to_add() {
+        let catalog = crate::testing::real_catalog().expect("the game's data is built in");
+        let strings = Strings::english();
+        let mut graph = Graph::new("jinlong".into());
+        let node = recipe_node(
+            &mut graph,
+            "xiranite_oven_xiranite_powder_2",
+            "xiranite_oven_1",
+        );
+        let warning = Warning::EnvironmentMissing {
+            node,
+            gas: "gas_inert".into(),
+        };
+        assert_eq!(
+            warning_text(&catalog, &strings, &graph, &warning),
+            "Xiranite Production (Carbon) needs the Stable Environment, and nothing in the graph \
+             creates it. Add a Gas Dispersing Unit with Inergen."
+        );
+    }
+
+    #[test]
+    fn short_projections_name_the_array_and_both_counts() {
+        let catalog = crate::testing::real_catalog().expect("the game's data is built in");
+        let strings = Strings::english();
+        let graph = Graph::new("jinlong".into());
+        let warning = Warning::ProjectionsShort {
+            projection: "magic_ming_1".into(),
+            needed: 2,
+            provided: 1,
+        };
+        assert_eq!(
+            warning_text(&catalog, &strings, &graph, &warning),
+            "The arrays need 2 L-Array T1 projections, but the forges project 1. Add a Forge of \
+             Luminance."
+        );
     }
 }

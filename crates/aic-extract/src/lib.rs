@@ -2,7 +2,7 @@
 //! `data/<version>.json`, and adds the English names it needs to the app's names table (ADR 0014).
 //!
 //! ```sh
-//! cargo run -p aic-extract -- <Table folder> --version v1.6.0 --previous data/v1.5.3.json
+//! cargo run -p aic-extract -- <Table folder> --version v1.7.0 --previous data/v1.6.0.json
 //! ```
 //!
 //! [`extract`] is the conversion itself, tables in and data file out; [`run`] reads and writes the
@@ -26,7 +26,9 @@ pub use extract::{
     TRADE_TIME_S, aliases, extract,
 };
 pub use names::{NameDifference, NameKind, NamesFile};
-pub use report::{AliasKind, DroppedAlias, PriceConflict, Report, SharedName, Summary, Unaliased};
+pub use report::{
+    AliasKind, ArraysReport, DroppedAlias, PriceConflict, Report, SharedName, Summary, Unaliased,
+};
 pub use tables::Tables;
 
 /// The command line, parsed.

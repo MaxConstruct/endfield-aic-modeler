@@ -133,5 +133,41 @@
   },
   "showingType": 4,
   "rarity": 1
+ },
+ "item_copper_ming": {
+  "id": "item_copper_ming",
+  "name": {
+   "id": 88,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_copper_hui": {
+  "id": "item_copper_hui",
+  "name": {
+   "id": 89,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_copper_enr_heng": {
+  "id": "item_copper_enr_heng",
+  "name": {
+   "id": 90,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
+ },
+ "item_copper_enr": {
+  "id": "item_copper_enr",
+  "name": {
+   "id": 91,
+   "text": ""
+  },
+  "showingType": 4,
+  "rarity": 1
  }
 }

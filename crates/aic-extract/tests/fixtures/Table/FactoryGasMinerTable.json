@@ -9,6 +9,14 @@
     },
     "miningItemId": "item_gas_inert",
     "produceRate": 1
+   },
+   {
+    "consumeItem": {
+     "count": 0,
+     "id": ""
+    },
+    "miningItemId": "item_gas_xiranite",
+    "produceRate": 1
    }
   ],
   "msPerRound": 3000

@@ -3,7 +3,7 @@
 //! regions that have it. A click adds the recipe's node to the middle of the canvas.
 
 use aic_data::{Catalog, CategoryId, RecipeId, RegionId};
-use eframe::egui::{self, Ui};
+use eframe::egui::{self, AtomExt as _, Ui};
 
 use crate::i18n::Strings;
 use crate::{theme, widgets};
@@ -56,6 +56,14 @@ impl Browser {
         egui::ScrollArea::vertical().show(ui, |ui| {
             // One line per recipe; a long name is cut short and shown whole on hover.
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+            // A name is cut short to the room its row leaves it. egui lays text out at a whole
+            // number of points (epaint rounds every wrap width to one), so a name left 124.5 points
+            // takes 125 and its row comes out wider than the list. That row widened the list for
+            // the rows after it and the panel for the next frame: the panel crept wider for about
+            // ten frames after start-up. The name's room is whole when everything else in its row
+            // is: the list here, the icon's slot (a third of the icons aren't square, and keep
+            // their shape inside it) and the badges' slot below; the margins and gaps are whole.
+            ui.set_max_width(ui.available_width().floor());
             let recipes =
                 aic_editor::browser::recipes(catalog, &self.query, self.category.as_ref());
             for recipe in recipes {
@@ -67,7 +75,8 @@ impl Browser {
                 let badge_id = egui::Id::new(("browser-badges", recipe.id.as_str()));
                 let mut atoms = egui::Atoms::default();
                 if let Some(image) = image {
-                    atoms.push_right(image);
+                    // A square slot, whatever the icon's shape.
+                    atoms.push_right(egui::Atom::from(image).atom_size(egui::Vec2::splat(ICON)));
                 }
                 if badges.is_empty() {
                     atoms.push_right(recipe.name.as_str());
@@ -75,7 +84,9 @@ impl Browser {
                     let name = egui::RichText::new(&recipe.name);
                     atoms.push_right(name.color(theme::color::TEXT_MUTED));
                     atoms.push_right(egui::Atom::grow());
-                    atoms.push_right(egui::Atom::custom(badge_id, badges.size()));
+                    let size = badges.size();
+                    let slot = egui::vec2(size.x.ceil(), size.y);
+                    atoms.push_right(egui::Atom::custom(badge_id, slot));
                 }
                 let button =
                     egui::Button::new(atoms).min_size(egui::vec2(ui.available_width(), 0.0));

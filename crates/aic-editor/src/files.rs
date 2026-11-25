@@ -254,8 +254,6 @@ impl Session {
                 .format("file-open-failed", &[("file", &file), ("error", &error)])
         })?;
         self.drop_empty_draft();
-        self.other_data_version =
-            (loaded.data_version != self.catalog.version()).then_some(loaded.data_version);
         let mut doc = Document::from_graph(loaded.graph, Some(path.to_owned()));
         let draft = self.files.is_in_drafts(path);
         doc.set_draft(draft);
@@ -311,7 +309,6 @@ impl Session {
             if let Some(old) = old_draft.filter(|old| old != path) {
                 self.files.store.remove(&old);
             }
-            self.other_data_version = None;
             if !draft {
                 self.files.remember_recent(path);
             }
@@ -446,6 +443,7 @@ mod tests {
     use aic_core::{NodeKind, Pos};
 
     use super::*;
+    use crate::data::{DataChoice, DataFolder};
     use crate::settings::Availability;
     use crate::testing::fixture_catalog;
 
@@ -604,6 +602,53 @@ mod tests {
         assert_eq!(opened.view, Some(view));
         assert_eq!(other.session.document().graph().nodes().len(), 1);
         assert!(!other.session.document().is_modified());
+    }
+
+    /// The test data folder of `aic-data`: `v1.10.0`, the newest, and `v1.9.0`.
+    fn versions() -> DataFolder {
+        DataFolder::at(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../aic-data/tests/fixtures/data"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_file_from_another_data_version_opens_by_id_and_says_nothing_about_it() {
+        let folder = versions();
+        let older = DataChoice {
+            version: Some("v1.9.0".into()),
+            language: None,
+        };
+        let catalog = folder.load(&older).unwrap();
+        let mut rig = Rig::new("other-version");
+        rig.session = Session::new(catalog, Availability::default());
+        rig.session.set_data_folder(folder, older);
+        let nugget = rig.session.add_node(
+            NodeKind::Recipe {
+                recipe: "copper_nugget".into(),
+                facility: "furnance_1".into(),
+                limit: Some(1.0),
+            },
+            Pos::default(),
+            None,
+        );
+        let target = rig.dir.join("older.aicm");
+        rig.session.save_to(&target, Instant::now(), None);
+        let saved = std::fs::read_to_string(&target).unwrap();
+        assert!(saved.contains(r#""data_version": "v1.9.0""#), "{saved}");
+
+        assert!(rig.session.switch_data(DataChoice::default()));
+        assert_eq!(rig.session.catalog().version(), "v1.10.0");
+        rig.session.open_file(&target).expect("opens");
+        let graph = rig.session.document().graph();
+        assert_eq!(graph.nodes().len(), 1);
+        // v1.10.0 has the recipe: the node is matched to it by ID.
+        assert!(matches!(
+            graph.node(nugget).map(|n| &n.kind),
+            Some(NodeKind::Recipe { recipe, .. }) if recipe.as_str() == "copper_nugget"
+        ));
+        // No notice that the file came from other data: the status bar stays empty.
+        assert_eq!(rig.session.status(), None);
     }
 
     #[test]

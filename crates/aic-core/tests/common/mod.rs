@@ -101,6 +101,51 @@ impl TestCatalog {
         self
     }
 
+    /// Marks `facility`, added before, as running in whole units (ADR 0015): every input of its
+    /// recipes is an activation input of which nothing scales.
+    pub fn whole_units(mut self, facility: &str) -> Self {
+        self.facility_entry(facility)["whole_units"] = json!(true);
+        self
+    }
+
+    /// Says what the array `facility`, added before, is stacked from: T1 arrays and how many.
+    pub fn stack(mut self, facility: &str, stack: &[(&str, u32)]) -> Self {
+        self.facility_entry(facility)["stack"] = counts(stack);
+        self
+    }
+
+    /// Says that `recipe`, added before, needs the environment of `gas`.
+    pub fn environment(mut self, recipe: &str, gas: &str) -> Self {
+        self.know(gas);
+        self.recipe_entry(recipe)["environment"] = json!(gas);
+        self
+    }
+
+    /// Says that `recipe`, added before, spreads the environment of `gas`.
+    pub fn creates_environment(mut self, recipe: &str, gas: &str) -> Self {
+        self.know(gas);
+        self.recipe_entry(recipe)["creates_environment"] = json!(gas);
+        self
+    }
+
+    /// Says what one facility running `recipe`, added before, projects: T1 arrays and how many.
+    pub fn projects(mut self, recipe: &str, projects: &[(&str, u32)]) -> Self {
+        self.recipe_entry(recipe)["projects"] = counts(projects);
+        self
+    }
+
+    fn facility_entry(&mut self, facility: &str) -> &mut Value {
+        (self.facilities.iter_mut())
+            .find(|entry| entry["id"] == facility)
+            .expect("the facility is added first")
+    }
+
+    fn recipe_entry(&mut self, recipe: &str) -> &mut Value {
+        (self.recipes.iter_mut())
+            .find(|entry| entry["id"] == recipe)
+            .expect("the recipe is added first")
+    }
+
     /// A mining recipe: no inputs, of kind `mining`, available in every region.
     pub fn mining(mut self, id: &str, facility: &str, time_s: f64, output: (&str, f64)) -> Self {
         self = self.recipe(id, facility, time_s, &[], &[output]);
@@ -154,6 +199,13 @@ impl TestCatalog {
         };
         Catalog::from_bytes(data.to_string().as_bytes(), names).expect("test catalog loads")
     }
+}
+
+/// `{ "magic_ming_1": 1, … }`
+fn counts(pairs: &[(&str, u32)]) -> Value {
+    (pairs.iter())
+        .map(|(id, n)| ((*id).to_owned(), json!(n)))
+        .collect()
 }
 
 /// An item whose ID starts with `liquid_` is a liquid and one with `gas_` a gas, as the game's IDs

@@ -195,15 +195,49 @@ pub struct Facility {
     pub power_kw: f64,
     /// Regions the facility can be built in. Empty means every region.
     pub regions: Vec<RegionId>,
-    /// What each running facility needs whatever its throughput, if anything. Every recipe of the
-    /// facility lists that item among its inputs at this rate or more.
-    pub activation: Option<ActivationInput>,
+    /// Which of its inputs scale with the facility count: all, all but an activation input, or
+    /// none (whole units). [`Facility::activation`] and [`Facility::whole_units`] read it.
+    pub inputs: FacilityInputs,
+    /// For an array (ADR 0015): the T1 arrays (projections) it is stacked from, by facility ID,
+    /// and how many of each, in data order. A T1 array is one of itself; `magic_heng_2` is two
+    /// `magic_ming_1` and two `magic_hui_1`. Empty for any other facility. Every ID is a facility
+    /// and every count positive.
+    pub stack: Vec<(FacilityId, u32)>,
 }
 
 impl Facility {
     pub fn available_in(&self, region: &RegionId) -> bool {
         self.regions.is_empty() || self.regions.contains(region)
     }
+
+    /// What each running facility needs of one input whatever its throughput, if anything. Every
+    /// recipe of the facility lists that item among its inputs at this rate or more. Never one
+    /// for a facility of [`whole units`](Facility::whole_units).
+    pub fn activation(&self) -> Option<&ActivationInput> {
+        match &self.inputs {
+            FacilityInputs::Activation(activation) => Some(activation),
+            FacilityInputs::Scaled | FacilityInputs::WholeUnits => None,
+        }
+    }
+
+    /// Whether the facility runs in whole units (ADR 0015): every input of its recipes is an
+    /// activation input of which nothing scales, so its count is a whole number. The Gas
+    /// Dispersing Unit and the Forges of Luminance.
+    pub fn whole_units(&self) -> bool {
+        self.inputs == FacilityInputs::WholeUnits
+    }
+}
+
+/// Which of a facility's inputs scale with its count (ADR 0013, ADR 0015). One of the three, so a
+/// facility of whole units can't also have an activation input.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum FacilityInputs {
+    /// Every input scales with the facility count.
+    Scaled,
+    /// One input is partly or wholly an activation input; the rest scale.
+    Activation(ActivationInput),
+    /// Whole units: every input is an activation input of which nothing scales.
+    WholeUnits,
 }
 
 /// An input a facility needs at a fixed rate for each facility that is running, whatever its
@@ -237,10 +271,10 @@ impl ActivationInput {
 /// The two add up to the recipe's rate for one facility running flat out.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InputRate {
-    /// Per facility, times the facility count.
+    /// Per facility, times the facility count. Zero on a facility of whole units.
     pub scaled: f64,
     /// Per running facility: the facility count rounded up. Zero for an item that is not the
-    /// facility's activation input.
+    /// facility's activation input; the whole rate on a facility of whole units.
     pub activation: f64,
 }
 
@@ -270,10 +304,16 @@ pub struct Recipe {
     pub is_trade: bool,
     /// Regions the recipe exists in. Empty means every region.
     pub regions: Vec<RegionId>,
-    /// The gas whose environment the recipe needs around its facility, if any. Carried in the
-    /// data only for now: neither the solver nor the UI looks at it yet (PLAN.md, Gas
-    /// environments).
+    /// The gas whose environment the recipe needs around its facility, if any (ADR 0015): a
+    /// condition, not a flow. The recipe runs either way; a graph without a running node that
+    /// creates it is warned about.
     pub environment: Option<ItemId>,
+    /// The gas whose environment the recipe spreads, if any: a Gas Dispersing Unit's recipe.
+    pub creates_environment: Option<ItemId>,
+    /// What one facility running the recipe projects (ADR 0015): T1 arrays by facility ID, and
+    /// how many, in data order. A Forge of Luminance's recipe; empty for any other. Every ID is a
+    /// facility and every count positive.
+    pub projects: Vec<(FacilityId, u32)>,
 }
 
 impl Recipe {
@@ -284,15 +324,19 @@ impl Recipe {
 
     /// Each input on `facility`, in data order, split into the part that scales with the facility
     /// count and the part that doesn't (the facility's activation input). Without an activation
-    /// input, every rate scales.
+    /// input, every rate scales; on a facility of whole units, none does.
     pub fn input_rates<'a>(
         &'a self,
         facility: &'a Facility,
     ) -> impl Iterator<Item = (&'a ItemId, InputRate)> + 'a {
         self.inputs.iter().map(move |(item, qty)| {
             let rate = self.rate_per_min(*qty, facility.speed);
-            let split = match &facility.activation {
-                Some(activation) if activation.item() == item => {
+            let split = match &facility.inputs {
+                FacilityInputs::WholeUnits => InputRate {
+                    scaled: 0.0,
+                    activation: rate,
+                },
+                FacilityInputs::Activation(activation) if activation.item() == item => {
                     let scaled = rate - activation.per_min();
                     InputRate {
                         // Rounding in `rate` doesn't leave a sliver that scales.

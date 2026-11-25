@@ -17,6 +17,7 @@ Decisions that are hard to reverse are in [`docs/adr/`](adr/):
 - [0011](adr/0011-canvas-on-our-own-copy-of-egui-graph.md): the canvas is drawn by `aic-node-graph`, our own copy of egui_graph, in place of egui-snarl (M11).
 - [0013](adr/0013-activation-inputs-run-whole-facilities.md): a facility's activation input is needed in full by every running facility; where links feed it, pass 1 settles the running facilities as whole numbers with a search capped at 200 nodes.
 - [0014](adr/0014-our-own-data-format-extracted-from-the-game.md): a data version is our own format, written by `aic-extract` from the game's tables, with aliases from an older version's IDs.
+- [0015](adr/0015-environments-are-a-condition-arrays-are-facilities.md): a gas environment is a condition that warns, an array is a facility per tier, and the units behind both (Gas Dispersing Unit, Forges of Luminance) run in whole units.
 
 Tech:
 
@@ -135,8 +136,9 @@ crates/aic-app/assets/icons/
   only: the names and icons stay the app's.
 - **Parsing works from bytes.** `aic-data` parses `Catalog` from byte slices and a names table, which
   every load takes from the caller. Folder discovery is a thin native-only layer on top.
-- **Saved graphs record the data version they were made with.** On load, if that version isn't the
-  active one, show a banner and still load by ID (see M2).
+- **Saved graphs record the data version they were made with.** On load, whatever that version, the
+  graph is loaded by ID against the active data, through its aliases (see M2), without a notice;
+  what the active data lacks shows as warnings on the cards.
 
 ### Facts about the game's tables (v1.6.0, verified 2026-11-25)
 
@@ -282,6 +284,18 @@ Links have no settings. They carry whatever flow the solver gives them.
     with the best answer found (`NODE_LIMIT`). If it found none, those nodes are switched off and
     pass 1 is solved again as a linear program. Pass 2 and the throttle analysis take `running` as
     given and keep each count within `(running − 1, running]`.
+- **Whole units (ADR 0015, M14):** a facility marked `whole_units` (the Gas Dispersing Unit, the
+  Forges of Luminance) takes every input as an activation input of which nothing scales, and its
+  count is a whole number: the largest the limit and the supply allow. Its limit is rounded down
+  first (`1.5` runs 1; a hair under a whole number counts as it), and that is the limit the
+  throttle analysis compares with, so a unit at `floor(limit)` is not throttled.
+  - With a link at any of its ports, pass 1 gives it a whole `running` as above, but tied by
+    `count = running`, so its count is the running units themselves; later programs fix
+    `count = running`. One `running` serves all of a node's activation inputs, linked or not.
+  - With no links it needs no whole number: its count, bounded by the whole limit and in the
+    objective only (an origin measured by its inputs), comes out at `floor(limit)`. Without a
+    limit it is undetermined like any recipe node.
+  - Counts within the solver's tolerance of a whole number are reported as that number.
 - **Linked output port:** the links must carry away everything. `Σ link flow = count · rate_out`. There is
   no surplus variable. A backed-up output **throttles** its facility, as the in-game stall does.
 - **Unconnected port:** depot I/O, unlimited (ADR 0001). `depot flow = count · rate`.
@@ -372,7 +386,15 @@ Warnings:
 - `ResourceOverUse { item, used, available }` (M4): from the resource check, not from `solve` itself.
 - `BeltOverCapacity { link, lanes }`: flow above 30/min (solid) or 120/min (fluid). Shown as a hint, not
   an error.
-- Load-time: data version mismatch, and missing recipe or item IDs.
+- `EnvironmentMissing { node, gas }` (ADR 0015, M14): a recipe node needs a gas environment and no
+  node of the graph that creates it runs at least one unit (count ≥ 1, or undetermined). Every node
+  that needs one is checked, whatever its count, in graph order. The recipe still runs.
+- `ProjectionsShort { projection, needed, provided }` (ADR 0015, M14): the graph's array nodes need
+  more projections of one kind than its forge nodes project. Needed: each array node's count
+  rounded up, times its stack; provided: each forge node's whole units, times what it projects. A
+  projection with an undetermined array or forge node is not checked. In the catalog's order of
+  facilities.
+- Load-time: missing recipe or item IDs. A file from another data version is not itself a warning.
 
 Power: `Σ count · (recipe.power_override_kw.unwrap_or(facility.power_kw))`, reported as draw and
 generation separately.
@@ -670,6 +692,9 @@ Done, except where noted.
   eframe storage. Switching keeps the open graph and its undo steps: recipe nodes are matched against the
   new data by ID (`Graph::rebind`), so a recipe the new data lacks shows as missing until switched back.
   A chosen version that is gone falls back to the newest, a language that is gone to English.
+  Picking the newest version follows the newest, so a new data version becomes the default when it
+  ships; picking an older one pins it. A choice kept before that rule (under `data-choice`, which
+  could not tell a pin from a pick of the newest) keeps only its language.
 - M13 made the overlay `data/<version>_overlay.json` and the languages the app's own names tables
   (ADR 0012).
 - **Workspaces** (ADR 0007, replacing groups and their copies mode): a workspace holds nodes and other
@@ -1858,11 +1883,19 @@ Looked at and left out:
 - **Loading the icons after the editor opens**, or each on first use: decided against, above.
 - **Names in Fluent**: the game's names stay in the format they come in.
 
-### M14: Gas environments
-Planned 2026-11-25; not started. Needs an ADR and the glossary term (**Gas environment**, added in
-M8) before code.
+### M14: Gas environments and arrays
+Planned 2026-11-25, decided the same day
+([ADR 0015](adr/0015-environments-are-a-condition-arrays-are-facilities.md)); done 2026-11-25. It
+grew from gas environments alone when v1.7.0 brought the Forge of Luminance, a second unit that
+takes 6 gas a minute and acts on an area. Glossary: **Gas environment**, **Array**, **Projection**.
 
-What the game does (v1.6.0 tables):
+**Done** (2026-11-25): the data, whole-unit counts and both warnings in the solver, the tag on a
+recipe card and the warnings' texts. Nothing in the solver changed beyond ADR 0015, and no existing
+golden test's numbers did. The frame budget was not measured: the game was running on the PC during
+the work, so `perf_app` was not run. The tag and the warnings' texts are worked out once per edit
+or solve, with the rest of a card's face.
+
+What the game does about gas environments (v1.6.0 tables, the same in v1.7.0):
 
 - The Gas Dispersing Unit (`vaporizer_1`) takes 6 a minute of one of four gases, Inergen
   (`gas_inert`), Aquagen (`gas_water`), Acridgen (`gas_acid`) or Xiragen (`gas_xiranite`), and sets
@@ -1886,16 +1919,153 @@ What M8 already put in the data: `Recipe::environment` (the gas's item ID, from 
 nothing out. The solver and the UI ignore `environment` today: those five recipes run as if the
 environment were there.
 
-Open questions:
+The game's names for the environments (`I18nTextTable_EN`): Inergen makes a **Stable** environment,
+Acridgen an **Acrid** one, Xiragen a **Xiranite** one. Aquagen's has no name in the text; no recipe
+needs it.
 
-- An environment is not a flow. The recipe doesn't consume it, and one unit serves every facility
-  in its range, which is spatial (ADR 0002 keeps layout out). So it can't be a port or a link.
-- Candidates: a badge on the card naming the gas a recipe needs, and a warning when a graph has such
-  a recipe and no dispersing unit of that gas anywhere in it (the solver's warnings, as for regions).
-  The unit's 6/min would be an input every running unit needs in full, whatever it serves: an
-  activation input of whole units (ADR 0013's machinery) of which nothing scales.
-- Whether a graph should say how many units it needs (it can't know the layout), or leave the count
-  to the player.
+What the game does about arrays (v1.7.0 tables):
+
+- **Forge of Luminance** (`magic_spawner_1`, `FactoryFormationStakeTable`): 6 Xiragen a minute
+  (`consumeRate`; `consumeRateUpperLimit` 30, as on the Gas Dispersing Unit), no power, Wuling only.
+  It projects one array, 5 × 5 tiles, 9 tiles in front of itself, of a kind the player picks: L
+  (`magic_ming`) or T (`magic_hui`). The **Bipolar Forge of Luminance** (`magic_spawner_2`) projects
+  two, to its front and side, each pole L or T, for the same 6 a minute.
+- **Tiers** (`FactoryFormationLevelTable`, `FactoryFormationTransferTable`): arrays of one kind
+  stacked completely make one of a higher tier. L and T: T1 to T4, a chance of 20 / 40 / 60 / 100%.
+  An L and a T stacked make an **E-Array** (`magic_heng`, `FactoryFormationCombinationTable`): T1
+  and T2, 40 / 80%.
+- **What an array does**: every 10 s (`FactoryConst.facFormationEffectInterval` 10000) each Cuprium
+  (`copper_nugget`) or Xiranite (`xiranite_powder`) on a belt in the area has that chance to turn, 1
+  for 1: L-Cuprium and Luminarite (`copper_ming`, `xiranite_ming`), T-Cuprium and Turbidarite
+  (`copper_hui`, `xiranite_hui`), Equprium and Equiranite (`copper_enr_heng`, `xiranite_enr_heng`).
+- The game lists those six conversions as crafts of the **Forge of Equilibrium**
+  (`magic_balancer_1`), `formation_<array>_<item>_<level>`, 1 in and 1 out over 10 s, one copy per
+  tier (20 rows). That building's own recipes are three: L + T Cuprium → Hetonite, Luminarite +
+  Turbidarite → Heavy Xiranite, Equprium + Equiranite → Lucidolite.
+- v1.7.0 otherwise adds 22 items and lifts the region limit of 13 facilities (`placeDomains` now
+  names both regions).
+
+`data/v1.7.0.json` as first extracted (before this milestone) has the six conversions as recipes of
+the Forge of Equilibrium, 6 a minute each at 50 kW, and neither forge.
+
+Decided (ADR 0015):
+
+- **Units run whole.** `vaporizer_1`, `magic_spawner_1` and `magic_spawner_2` are `whole_units`
+  facilities: gas in, nothing out, a whole facility count (the largest the limit and the supply
+  allow; `floor(limit)` on the depot), placed with a limit of 1.
+- **A gas environment is a condition.** The card of a recipe that needs one says so by the facility
+  name, in a small yellow label ("Stable Environment", "Acrid Environment", "Xiranite Environment";
+  the gas's name and "Environment" for one the game doesn't name). `EnvironmentMissing` warns when
+  no node creating that gas runs a unit. The recipe runs either way.
+- **An array is a facility per tier** (`magic_ming_1` … `magic_heng_2`), and each conversion one
+  recipe on its array's tiers: 25 in, 25 out per 10 s, the chance as the facility's speed. Per array
+  and minute: L and T 30 / 60 / 90 / 150, E 60 / 120. A ceiling: every tile holding an item not yet
+  converted.
+- **Projections are counted**: forge recipes say what they project, array facilities what they are
+  stacked from, and `ProjectionsShort` warns where the graph's forges project too few.
+
+Steps:
+
+1. **Data** (`aic-data`, `aic-extract`, `data/`): the format's four new optional keys and the
+   catalog's fields for them; `aic-extract` reads the formation tables, takes the conversions off
+   the Forge of Equilibrium, and writes the arrays, the forges' recipes and the dispersing unit's
+   `whole_units` and `creates_environment`; `v1.7.0.json` written again, `v1.6.0.json`'s dispersing
+   unit marked by hand; `data/README.md`; v1.7.0 the newest built-in version.
+   - **Done.** As built: `Facility::inputs` (`Scaled`, `Activation`, `WholeUnits`),
+     `Facility::whole_units()`, `Facility::stack`, `Recipe::environment`,
+     `Recipe::creates_environment`, `Recipe::projects`; on a facility of whole units
+     `Recipe::input_rates` gives every input as activation.
+   - Two things after it. `aic-extract` placed new recipes that anchor to the same item in
+     reverse (each went straight behind the anchor), so the five forge recipes came out Bipolar
+     T + T first. New ones anchored to one item now follow one another in the game's order
+     (fixture test `new_recipes_placed_by_one_item_keep_the_games_order`; the fixture's gas pump
+     mines Xiragen too). `v1.7.0.json` was written again: the five forge recipes are the only ones
+     that moved. And six recipe names in `en.json` still said "Water Treatment Unit(…)" after the
+     game renamed `liquid_cleaner_1` to Waste Treatment Unit: the three of v1.6.0 and later, which
+     the extractor reported as differing from the game, and the three older IDs of v1.5.3, one of
+     which shows in the snapshot `centered_bodies`. All six now say "Waste Treatment Unit(…)"; the
+     extractor reports no difference.
+2. **Solver** (`aic-core`): whole-unit counts, and the two warnings.
+   - **Done.** As built (section 5 has the rules):
+     - `model.rs` builds one way of running per node (`Activation`), shared by all its activation
+       inputs, where it made one per input; a facility of whole units with two inputs would
+       otherwise have had two whole numbers. A whole-units node gets its limit rounded down
+       (`whole_within`), and, with a link at any port, a whole `running` tied by
+       `count = running` in pass 1 and `count = running` fixed after it. Pass 2 and the throttle
+       analysis stay linear; the throttle analysis lets the node it asks about scale, as before,
+       so a forge on a short supply names its input. `passes::run` reports a whole-units count
+       within tolerance of a whole number as that number.
+     - `Graph::port_limit` shows a fractional limit on a unit's port as the units it runs (1.5
+       units: 6 a minute); typing a rate already gave the most units it covers.
+     - `Warning::EnvironmentMissing { node, gas }` and `Warning::ProjectionsShort { projection,
+       needed: u32, provided: u32 }`, after the other warnings of `solve`.
+   - Golden tests (`tests/whole_units.rs`, `tests/environments_and_arrays.rs`): those below, and
+     more. A forge with limit 2 on 9 a minute runs 1, throttled on its input with no limiting
+     node. Two forges sharing 20 a minute run three whole units between them. A unit with two
+     inputs (a made-up one) runs on both or not at all. A unit inside a workspace sets its
+     environment, an undetermined one counts as running, and a unit of another gas doesn't. Every
+     node needing an environment is warned about, whatever its count. An idle array needs no
+     projection, and a count a hair above a whole number rounds up to it, not past it. A
+     projection with an undetermined node is not checked.
+3. **App** (`aic-editor`, `aic-app`): the environment label on the card, the warnings' texts, the
+   picker's limit of 1 for a unit, snapshots of a card with a label and of an array node.
+   - **Done.** As built:
+     - `aic_editor::names::environment(catalog, strings, gas)`, from one Fluent message
+       (`environment`) that selects on the gas's ID: Stable, Acrid, Xiranite, or the gas's name
+       and "Environment". `messages::warning_text` words both warnings and names what to add: the
+       facility of the first recipe that creates the gas or projects the array (the Gas Dispersing
+       Unit, the Forge of Luminance).
+     - On the card the tag sits beside the facility's name, under the title: `widgets::Tag`,
+       `WARN` text on a new `WARN_FILL` chip outlined `WARN_STROKE`. It is laid out first and the
+       facility's name gets what is left, so a long name is cut short, never the tag. The longest
+       facilities with such a recipe (Purification Unit, Gas Reactor Globe) fit beside it with
+       room to spare at the card's width. `EnvironmentMissing` puts the warning sign before the
+       title with its text on hover, as the region warnings do. Both are in `Face`, worked out once
+       per edit or solve. The inspector lists the environment under the facility.
+     - `picker::recipe_node` places a node on a facility of whole units with a limit of 1. It
+       makes every new recipe node of the picker (from the canvas and from a port) and of the
+       recipe browser. Paste keeps the copied limit, and a facility switch keeps the limit: no
+       recipe of the game runs both on a facility of whole units and on another.
+     - Snapshots: `environment_tags`, `environment_in_inspector`, `arrays_and_forges`,
+       `warnings_gas_and_arrays`; `centered_bodies` changed for the renamed recipe.
+   - **The recipe browser crept wider at start-up**, found while building the v1.7.0 snapshots
+     and fixed. With v1.7.0's recipes in Valley IV the panel widened from 241 to 256 points over
+     its first eleven frames, asking for a frame each time. v1.6.0 did too, by 0.125 points once.
+     - The cause: epaint lays text out at a whole number of points, rounding every wrap width to
+       one (`GalleyCache::layout_internal`, against wrap loops). A recipe's name, cut short to
+       the room its row leaves it, took up to half a point more where that room was fractional,
+       so its row came out wider than the list. That widened the list for the rows after it and
+       the panel for the next frame. The room was fractional because 72 of the 251 icons are
+       not square and kept their shape at a fractional width, and the list's width and the
+       region badges' could be fractional too.
+     - The fix (`browser.rs`): each icon in a 32 × 32 slot, the badges in a slot of whole points
+       and the list a whole number of points wide, so the name's room is whole and no row is
+       wider than the list. The icon slot is what the bug needed; the other two hold the room
+       whole whatever the widths. All rows are now one height, and all names start at one x.
+     - Test: `the_recipe_browser_keeps_its_width_from_the_first_frame` (every built-in version,
+       both regions): every recipe row is as wide as every other on each of the first twelve frames,
+       the panel keeps its width from the first, and the app is idle after start-up.
+   - The arrays, the forges and L-Cuprium have no icons (the cards show initials).
+
+Golden tests:
+
+- A Gas Dispersing Unit on the depot with a limit of 2 runs 2 and draws 12 a minute; with 1.5, 1 and
+  6. Without a limit its section is undetermined.
+- A source of 20 Xiragen a minute into a Forge of Luminance without a limit: 3 units, 18 a minute.
+- `xiranite_oven_xiranite_powder_2` alone warns of its missing Inergen environment; with a running
+  `vaporizer_1-gas_inert` node in the graph it doesn't; with that unit starved of its gas it does.
+- A Lucidolite line: 30 Cuprium and 30 Xiranite a minute, each through an E-Array T1 (half an array
+  each), into `magic_balancer_1_copper_bright_1`: half a Forge of Equilibrium, 15 Lucidolite a
+  minute. The two array nodes need two L and two T projections: one Bipolar Forge (L + T) leaves
+  both short, two leave neither.
+- Extracting the v1.7.0 tables: the Forge of Equilibrium has three recipes; each conversion is one
+  recipe on its array's tiers; the forges have two and three recipes.
+
+To confirm in the game (assumptions, also in `data/README.md`):
+
+- one pulse every 10 s reaches every item in the area at once;
+- an E-Array T2 is two L and two T projections;
+- more than 6 Xiragen a minute changes nothing.
 
 ---
 

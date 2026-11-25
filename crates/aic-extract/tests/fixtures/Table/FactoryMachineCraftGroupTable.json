@@ -19,6 +19,12 @@
    "liquid_transmuter_2_xiranite_powder_1"
   ]
  },
+ "group_balancer": {
+  "msPerRound": 1000,
+  "craftList": [
+   "magic_balancer_1_copper_enr"
+  ]
+ },
  "group_oven": {
   "msPerRound": 500,
   "craftList": [

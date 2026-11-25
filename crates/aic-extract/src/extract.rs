@@ -10,7 +10,9 @@ use indexmap::IndexMap;
 
 use crate::error::ExtractError;
 use crate::names::{NameKind, NamesFile};
-use crate::report::{AliasKind, DroppedAlias, PriceConflict, Report, SharedName, Unaliased};
+use crate::report::{
+    AliasKind, ArraysReport, DroppedAlias, PriceConflict, Report, SharedName, Unaliased,
+};
 use crate::tables::{Stacks, Tables};
 
 /// The game's domains and the region IDs the app has always used for them.
@@ -75,6 +77,7 @@ pub fn extract(
         tables,
         facilities: IndexMap::new(),
         renamed: HashSet::new(),
+        array_crafts: IndexMap::new(),
         report: Report::default(),
     };
     let mut drafts = Vec::new();
@@ -84,6 +87,7 @@ pub fn extract(
     extractor.liquid_sinks(&mut drafts)?;
     extractor.sewage_export(&mut drafts)?;
     extractor.vaporizers(&mut drafts)?;
+    extractor.arrays(&mut drafts)?;
     extractor.trades(&mut drafts)?;
     extractor.packaging(&mut drafts);
     extractor.finish(drafts, previous, names, version)
@@ -105,6 +109,10 @@ struct Draft {
     kind: Option<RecipeKind>,
     /// A gas item, game ID.
     environment: Option<String>,
+    /// The gas whose environment it spreads (a Gas Dispersing Unit's), game ID.
+    creates_environment: Option<String>,
+    /// What one facility running it projects (a forge's): T1 arrays by facility ID, how many.
+    projects: Vec<(String, u32)>,
     /// Set for trades; otherwise worked out from the items.
     regions: Option<Vec<String>>,
     /// Which part of the file the recipe goes in: mining, crafts, the other buildings, trades.
@@ -148,6 +156,8 @@ impl Draft {
             && self.inputs == other.inputs
             && self.outputs == other.outputs
             && self.environment == other.environment
+            && self.creates_environment == other.creates_environment
+            && self.projects == other.projects
             && self.power_kw == other.power_kw
     }
 }
@@ -184,6 +194,9 @@ struct Extractor<'a> {
     facilities: IndexMap<String, FacilityDraft>,
     /// Recipes whose name is of our making and takes the place of one the names table has.
     renamed: HashSet<String>,
+    /// The crafts the game lists for the arrays' conversions, one per tier, left out: by the
+    /// facility they were on, how many.
+    array_crafts: IndexMap<String, usize>,
     report: Report,
 }
 
@@ -267,6 +280,8 @@ impl Extractor<'_> {
             },
             regions,
             activation,
+            whole_units: false,
+            stack: IndexMap::new(),
         };
         let name = tables.text(&row.name).map(str::to_owned);
         self.facilities.insert(
@@ -364,6 +379,8 @@ impl Extractor<'_> {
                         power_kw: None,
                         kind: Some(RecipeKind::Mining),
                         environment: None,
+                        creates_environment: None,
+                        projects: Vec::new(),
                         regions: None,
                         group: Group::Mining,
                         sort_id: 0,
@@ -392,6 +409,8 @@ impl Extractor<'_> {
                         power_kw: None,
                         kind: Some(RecipeKind::Mining),
                         environment: None,
+                        creates_environment: None,
+                        projects: Vec::new(),
                         regions: None,
                         group: Group::Mining,
                         sort_id: 0,
@@ -414,7 +433,14 @@ impl Extractor<'_> {
         const TABLE: &str = "FactoryMachineCraftTable";
         let tables = self.tables;
         let environments = self.environments();
+        let array_crafts = array_craft_ids(tables);
         for (id, craft) in &tables.crafts {
+            if array_crafts.contains(id.as_str()) {
+                // An array's conversion at one tier: `arrays` writes it, once, on the array.
+                let facility = self.facility(&craft.machine_id)?;
+                *self.array_crafts.entry(facility).or_default() += 1;
+                continue;
+            }
             let group = tables
                 .craft_groups
                 .get(&craft.formula_group_id)
@@ -452,6 +478,8 @@ impl Extractor<'_> {
                     power_kw: None,
                     kind: None,
                     environment,
+                    creates_environment: None,
+                    projects: Vec::new(),
                     regions: None,
                     group: Group::Craft,
                     sort_id: craft.sort_id,
@@ -482,6 +510,8 @@ impl Extractor<'_> {
                         power_kw: Some(-fuel.power_provide),
                         kind: None,
                         environment: None,
+                        creates_environment: None,
+                        projects: Vec::new(),
                         regions: None,
                         group: Group::Other,
                         sort_id: 0,
@@ -521,6 +551,8 @@ impl Extractor<'_> {
             power_kw: None,
             kind: None,
             environment: None,
+            creates_environment: None,
+            projects: Vec::new(),
             regions: None,
             group: Group::Other,
             sort_id: 0,
@@ -612,6 +644,8 @@ impl Extractor<'_> {
                     power_kw: None,
                     kind: None,
                     environment: None,
+                    creates_environment: None,
+                    projects: Vec::new(),
                     regions: None,
                     group: Group::Other,
                     sort_id: 0,
@@ -621,7 +655,8 @@ impl Extractor<'_> {
         Ok(())
     }
 
-    /// The Gas Dispersing Unit: per group, its gas at `consumeRate` a minute, nothing out.
+    /// The Gas Dispersing Unit: per group, its gas at `consumeRate` a minute, nothing out, and the
+    /// gas's environment spread. It runs in whole units (ADR 0015).
     ///
     /// `consumeRate` is taken as per minute, as the transmuting units' is (their 6 matches the
     /// 6/min of ADR 0013). Nothing in the tables says so for this unit.
@@ -629,17 +664,301 @@ impl Extractor<'_> {
         let tables = self.tables;
         for (building, vaporizer) in &tables.vaporizers {
             for group in &vaporizer.groups {
-                let draft = self.sink(
+                let mut draft = self.sink(
                     "FactoryVaporizerTable",
                     building,
                     &group.consumption.consume_item,
                     group.consumption.consume_rate,
                     60.0,
                 )?;
+                draft.creates_environment = Some(group.consumption.consume_item.clone());
+                self.whole_units(&draft.facilities[0]);
                 push_merging(drafts, draft);
             }
         }
         Ok(())
+    }
+
+    /// Marks a facility as running in whole units (ADR 0015). One with an activation input too
+    /// would not load, which `run` checks.
+    fn whole_units(&mut self, facility: &str) {
+        self.facilities[facility].entry.whole_units = true;
+    }
+
+    /// The arrays (ADR 0015), from the tables v1.7.0 brought; nothing for a version without them.
+    ///
+    /// - An array facility per kind and tier, `<kind>_<tier>` (`magic_ming_3`), its speed the
+    ///   tier's chance per pulse, no power, built where the forges are, and stacked from T1 arrays:
+    ///   n of its own T1 at tier n, or, for a kind the combination table makes of others (an E of
+    ///   an L and a T), n of each of theirs.
+    /// - A recipe per conversion, under the game's craft ID at tier 1, on every tier of its kind,
+    ///   lowest first: one item of each tile of the area in and out per pulse, at speed 1.
+    /// - Per forge, a recipe for each choice of its arrays (`<forge>-<kind>-<kind>`), each taking
+    ///   `consumeRate` of its gas a minute, as the Gas Dispersing Unit does, and projecting the
+    ///   chosen T1 arrays. A forge runs in whole units.
+    fn arrays(&mut self, drafts: &mut Vec<Draft>) -> Result<(), ExtractError> {
+        const STAKES: &str = "FactoryFormationStakeTable";
+        const CONVERSIONS: &str = "FactoryFormationTransferTable";
+        const TIERS: &str = "FactoryFormationLevelTable";
+        const COMBINATIONS: &str = "FactoryFormationCombinationTable";
+        let tables = self.tables;
+        if tables.forges.is_empty() && tables.array_conversions.is_empty() {
+            return Ok(());
+        }
+        let tiles = area_tiles(tables)?;
+        let pulse_s = match tables.constants.array_pulse_ms {
+            Some(ms) if ms.is_finite() && ms > 0.0 => ms / 1000.0,
+            other => {
+                return Err(ExtractError::table(
+                    "FactoryConst",
+                    "facFormationEffectInterval",
+                    format!("the arrays' pulse is {other:?}; expected a positive number of ms"),
+                ));
+            }
+        };
+        let regions = self.forge_regions()?;
+
+        // The chance at each tier, by kind: every conversion of a kind must agree.
+        let mut chances: IndexMap<&str, &[f64]> = IndexMap::new();
+        for (key, conversion) in &tables.array_conversions {
+            let kind = conversion.kind.as_str();
+            if !tables.array_kinds.contains_key(kind) {
+                return Err(ExtractError::table(
+                    CONVERSIONS,
+                    key,
+                    format!("`{kind}` is no kind of FactoryFormationTable"),
+                ));
+            }
+            let valid = |c: &f64| *c > 0.0 && *c <= 10_000.0;
+            if conversion.chances.is_empty() || !conversion.chances.iter().all(valid) {
+                return Err(ExtractError::table(
+                    CONVERSIONS,
+                    key,
+                    format!(
+                        "chances {:?}; expected one per tier, each above 0 and at most 10000",
+                        conversion.chances
+                    ),
+                ));
+            }
+            match chances.get(kind) {
+                None => {
+                    chances.insert(kind, &conversion.chances);
+                }
+                Some(earlier) if *earlier == conversion.chances.as_slice() => {}
+                Some(earlier) => {
+                    return Err(ExtractError::table(
+                        CONVERSIONS,
+                        key,
+                        format!(
+                            "chances {:?}, where another conversion of `{kind}` has {earlier:?}; \
+                             an array's tier has one speed",
+                            conversion.chances
+                        ),
+                    ));
+                }
+            }
+        }
+
+        // An array facility per kind and tier.
+        let mut tier_facilities: IndexMap<&str, Vec<String>> = IndexMap::new();
+        let mut kind_names: HashMap<&str, String> = HashMap::new();
+        for (&kind, &kind_chances) in &chances {
+            let tiers = tables
+                .array_tiers
+                .get(kind)
+                .ok_or_else(|| Self::missing(TIERS, kind, "the tiers of an array"))?;
+            if tiers.tiers.len() != kind_chances.len() {
+                return Err(ExtractError::table(
+                    TIERS,
+                    kind,
+                    format!(
+                        "{} tiers, where FactoryFormationTransferTable gives {} chances",
+                        tiers.tiers.len(),
+                        kind_chances.len()
+                    ),
+                ));
+            }
+            let sources: Vec<&str> = match tables
+                .array_combinations
+                .iter()
+                .find(|(_, c)| c.target == kind)
+            {
+                Some((key, combination)) => {
+                    for source in &combination.sources {
+                        if !chances.contains_key(source.as_str()) {
+                            return Err(ExtractError::table(
+                                COMBINATIONS,
+                                key,
+                                format!("`{source}` is no kind of array with conversions"),
+                            ));
+                        }
+                    }
+                    combination.sources.iter().map(String::as_str).collect()
+                }
+                None => vec![kind],
+            };
+            let mut ids = Vec::new();
+            for (tier, chance) in (1u32..).zip(kind_chances) {
+                let row = (tiers.tiers.values())
+                    .find(|row| row.tier == tier)
+                    .ok_or_else(|| Self::missing(TIERS, kind, &format!("tier {tier}")))?;
+                let id = format!("{kind}_{tier}");
+                if self.facilities.contains_key(&id) {
+                    return Err(ExtractError::table(
+                        TIERS,
+                        kind,
+                        format!("array `{id}` has the ID of another facility"),
+                    ));
+                }
+                let name = tables.text(&row.name).map(str::to_owned);
+                if tier == 1
+                    && let Some(name) = &name
+                {
+                    // "L-Array T1" is a T1 of the L-Array.
+                    let kind_name = name.strip_suffix(" T1").unwrap_or(name);
+                    kind_names.insert(kind, kind_name.to_owned());
+                }
+                let stack = (sources.iter())
+                    .map(|source| (format!("{source}_1"), tier))
+                    .collect();
+                self.facilities.insert(
+                    id.clone(),
+                    FacilityDraft {
+                        entry: FacilityEntry {
+                            id: id.clone(),
+                            speed: chance / 10_000.0,
+                            power_kw: 0.0,
+                            regions: regions.clone(),
+                            activation: None,
+                            whole_units: false,
+                            stack,
+                        },
+                        name,
+                        named_by_game: true,
+                        // After every building.
+                        order: usize::MAX,
+                    },
+                );
+                ids.push(id);
+            }
+            tier_facilities.insert(kind, ids);
+        }
+
+        // A recipe per conversion, on every tier of its kind.
+        for (key, conversion) in &tables.array_conversions {
+            item_id(CONVERSIONS, key, &conversion.from_item_id)?;
+            item_id(CONVERSIONS, key, &conversion.to_item_id)?;
+            let id = format!("formation_{}_{}_1", conversion.kind, conversion.to_item_id);
+            let name = (tables.crafts.get(&id))
+                .and_then(|craft| tables.text(&craft.formula_desc))
+                .map(str::to_owned);
+            let inputs = vec![(conversion.from_item_id.clone(), tiles)];
+            let outputs = vec![(conversion.to_item_id.clone(), tiles)];
+            let category = self.category_of_work(&inputs, &outputs, &id)?;
+            drafts.push(Draft {
+                id,
+                name,
+                category,
+                time_s: pulse_s,
+                inputs,
+                outputs,
+                facilities: tier_facilities[conversion.kind.as_str()].clone(),
+                power_kw: None,
+                kind: None,
+                environment: None,
+                creates_environment: None,
+                projects: Vec::new(),
+                regions: None,
+                group: Group::Other,
+                sort_id: 0,
+            });
+        }
+
+        // Per forge, a recipe for each choice of the arrays it projects.
+        let mut forge_recipes = 0;
+        for (building, forge) in &tables.forges {
+            for kind in &forge.kinds {
+                if !chances.contains_key(kind.as_str()) {
+                    return Err(ExtractError::table(
+                        STAKES,
+                        building,
+                        format!("`{kind}` is no kind of array with conversions"),
+                    ));
+                }
+            }
+            let facility = self.facility(building)?;
+            self.whole_units(&facility);
+            let gas = &forge.consumption.consume_item;
+            item_id(STAKES, building, gas)?;
+            let inputs = vec![(gas.clone(), forge.consumption.consume_rate)];
+            for choice in choices(&forge.kinds, forge.areas.len()) {
+                let id = format!("{facility}-{}", choice.join("-"));
+                let mut projects: Vec<(String, u32)> = Vec::new();
+                for kind in &choice {
+                    let t1 = format!("{kind}_1");
+                    match projects.iter_mut().find(|(id, _)| *id == t1) {
+                        Some((_, n)) => *n += 1,
+                        None => projects.push((t1, 1)),
+                    }
+                }
+                let arrays: Option<Vec<&str>> = (choice.iter())
+                    .map(|kind| kind_names.get(kind).map(String::as_str))
+                    .collect();
+                let name = match (&self.facilities[&facility].name, arrays) {
+                    (Some(forge), Some(arrays)) => Some(format!("{forge}({})", arrays.join(" + "))),
+                    _ => None,
+                };
+                let category = self.category_of_work(&inputs, &[], &id)?;
+                drafts.push(Draft {
+                    id,
+                    name,
+                    category,
+                    time_s: 60.0,
+                    inputs: inputs.clone(),
+                    outputs: vec![],
+                    facilities: vec![facility.clone()],
+                    power_kw: None,
+                    kind: None,
+                    environment: None,
+                    creates_environment: None,
+                    projects,
+                    regions: None,
+                    group: Group::Other,
+                    sort_id: 0,
+                });
+                forge_recipes += 1;
+            }
+        }
+
+        self.report.arrays = Some(ArraysReport {
+            kinds: tier_facilities.len(),
+            arrays: tier_facilities.values().map(Vec::len).sum(),
+            conversions: tables.array_conversions.len(),
+            forge_recipes,
+            tiles,
+            pulse_s,
+            crafts_taken_off: std::mem::take(&mut self.array_crafts).into_iter().collect(),
+        });
+        Ok(())
+    }
+
+    /// The regions the forges can be built in, which their arrays are in.
+    fn forge_regions(&self) -> Result<Vec<String>, ExtractError> {
+        let mut regions = BTreeSet::new();
+        for building in self.tables.forges.keys() {
+            let row = (self.tables.buildings.get(building)).ok_or_else(|| {
+                Self::missing("FactoryBuildingTable", building, "a Forge of Luminance")
+            })?;
+            let domains = if row.place_domains.is_empty() {
+                &row.recommend_domains
+            } else {
+                &row.place_domains
+            };
+            for domain in domains {
+                regions.insert(region_of("FactoryBuildingTable", building, domain)?);
+            }
+        }
+        Ok(ordered_regions(&regions))
     }
 
     /// Settlement trades: per region, every item its outposts take at their highest level, for
@@ -686,6 +1005,8 @@ impl Extractor<'_> {
                             power_kw: 0.0,
                             regions: vec![region.to_owned()],
                             activation: None,
+                            whole_units: false,
+                            stack: IndexMap::new(),
                         },
                         name: (tables.text(&domain.domain_name))
                             .map(|n| format!("Outpost Supplies({n})")),
@@ -722,6 +1043,8 @@ impl Extractor<'_> {
                     power_kw: None,
                     kind: Some(RecipeKind::Trade),
                     environment: None,
+                    creates_environment: None,
+                    projects: Vec::new(),
                     regions: Some(vec![region.to_owned()]),
                     group: Group::Trade,
                     sort_id: 0,
@@ -900,7 +1223,10 @@ impl Extractor<'_> {
         let mut item_ids: IndexMap<String, ()> = IndexMap::new();
         for draft in &drafts {
             let items = (draft.inputs.iter().chain(&draft.outputs)).map(|(item, _)| item);
-            for item in items.chain(&draft.environment) {
+            for item in items
+                .chain(&draft.environment)
+                .chain(&draft.creates_environment)
+            {
                 item_ids.insert(item.clone(), ());
             }
         }
@@ -909,6 +1235,25 @@ impl Extractor<'_> {
             for facility in &draft.facilities {
                 facility_ids.insert(facility.clone(), ());
             }
+        }
+        // And the T1 arrays that recipes project and arrays are stacked from, should no recipe
+        // run on one.
+        let named: Vec<String> = (drafts.iter().flat_map(|d| &d.projects))
+            .map(|(facility, _)| facility.clone())
+            .chain(
+                (facility_ids.keys())
+                    .flat_map(|id| self.facilities[id].entry.stack.keys().cloned()),
+            )
+            .collect();
+        for facility in named {
+            if !self.facilities.contains_key(&facility) {
+                return Err(ExtractError::table(
+                    "FactoryFormationLevelTable",
+                    &facility,
+                    "a projection no array of the tables is",
+                ));
+            }
+            facility_ids.insert(facility, ());
         }
         for facility in facility_ids.keys() {
             if let Some(activation) = &self.facilities[facility].entry.activation {
@@ -1006,6 +1351,11 @@ impl Extractor<'_> {
                     Some(gas) => Some(item_id("FactoryVaporizerTable", gas, gas)?),
                     None => None,
                 },
+                creates_environment: match &draft.creates_environment {
+                    Some(gas) => Some(item_id("FactoryVaporizerTable", gas, gas)?),
+                    None => None,
+                },
+                projects: draft.projects.iter().cloned().collect(),
             });
         }
 
@@ -1148,6 +1498,76 @@ impl Extractor<'_> {
     }
 }
 
+/// The craft IDs under which the game lists the arrays' conversions, one per tier
+/// (`formation_<kind>_<to item>_<tier>`, on the Forge of Equilibrium). The extractor writes each
+/// conversion once, on the arrays, instead.
+fn array_craft_ids(tables: &Tables) -> HashSet<String> {
+    (tables.array_conversions.values())
+        .flat_map(|conversion| {
+            (1..=conversion.chances.len()).map(move |tier| {
+                format!(
+                    "formation_{}_{}_{tier}",
+                    conversion.kind, conversion.to_item_id
+                )
+            })
+        })
+        .collect()
+}
+
+/// The tiles of an array's area (width × depth): one item on a belt on each is what an array
+/// converts at most per pulse. Every area of every forge must be the same size.
+fn area_tiles(tables: &Tables) -> Result<f64, ExtractError> {
+    const STAKES: &str = "FactoryFormationStakeTable";
+    let mut tiles = None;
+    for (building, forge) in &tables.forges {
+        if forge.areas.is_empty() {
+            return Err(ExtractError::table(STAKES, building, "projects no area"));
+        }
+        for area in &forge.areas {
+            let here = area.width * area.depth;
+            match tiles {
+                None => tiles = Some(here),
+                Some(seen) if seen == here => {}
+                Some(seen) => {
+                    return Err(ExtractError::table(
+                        STAKES,
+                        building,
+                        format!(
+                            "an area of {here} tiles, where another has {seen}; the extractor \
+                             takes every array to be the same size"
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    match tiles {
+        Some(tiles) if tiles > 0.0 => Ok(tiles),
+        _ => Err(ExtractError::table(
+            STAKES,
+            "",
+            "no forge with an area, so the arrays of FactoryFormationTransferTable have no size",
+        )),
+    }
+}
+
+/// Every choice of `count` arrays from `kinds`, the same kind more than once allowed and the
+/// order not mattering, in the order of `kinds`: for L and T, two at a time, L + L, L + T, T + T.
+fn choices(kinds: &[String], count: usize) -> Vec<Vec<&str>> {
+    if count == 0 {
+        return vec![Vec::new()];
+    }
+    let mut all = Vec::new();
+    for (i, kind) in kinds.iter().enumerate() {
+        for rest in choices(&kinds[i..], count - 1) {
+            let mut choice = vec![kind.as_str()];
+            choice.extend(rest);
+            all.push(choice);
+        }
+    }
+    all
+}
+
 fn has_item(list: &[(String, f64)], item: &str) -> bool {
     list.iter().any(|(i, _)| i == item)
 }
@@ -1188,8 +1608,8 @@ fn pipe_per_min(tables: &Tables) -> Result<f64, ExtractError> {
 ///
 /// A recipe the previous version had, under the same ID or one that is now its alias, goes where
 /// it was. One it lacked goes right after the last recipe placed so far whose main product is the
-/// same item, or, when it makes nothing, the item it takes; with none, after them all, in the
-/// game's order. Fillings and emptyings, then trades, stay at the end wherever they were.
+/// same item, or, when it makes nothing, the item it takes, and after the new ones already placed
+/// by that item, so they stay in the game's order; with none, after them all, in the game's order. Fillings and emptyings, then trades, stay at the end wherever they were.
 fn ordered_like(
     previous: &DataFile,
     aliases: &Aliases,
@@ -1218,14 +1638,27 @@ fn ordered_like(
         }
     }
     known.sort_by_key(|recipe| rank[&recipe.id]);
+    // The item a new recipe is placed by: its main product, or what it takes if it makes nothing.
+    let anchor = |recipe: &RecipeEntry| -> Option<String> {
+        (recipe.outputs.keys().next())
+            .or(recipe.inputs.keys().next())
+            .cloned()
+    };
+    // New recipes placed so far, by ID, with the item each was placed by: the next one placed by
+    // the same item goes after them, so they keep the game's order among themselves.
+    let mut placed_new: HashMap<String, Option<String>> = HashMap::new();
     let mut unplaced = Vec::new();
     for recipe in new {
-        let item = (recipe.outputs.keys().next()).or(recipe.inputs.keys().next());
-        let after = known
-            .iter()
-            .rposition(|placed| placed.outputs.keys().next() == item);
+        let item = anchor(&recipe);
+        let after = known.iter().rposition(|placed| {
+            placed.outputs.keys().next() == item.as_ref()
+                || placed_new.get(&placed.id).is_some_and(|by| *by == item)
+        });
         match after {
-            Some(at) => known.insert(at + 1, recipe),
+            Some(at) => {
+                placed_new.insert(recipe.id.clone(), item);
+                known.insert(at + 1, recipe);
+            }
             None => unplaced.push(recipe),
         }
     }

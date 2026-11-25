@@ -350,5 +350,59 @@
     },
     "sortId": 6,
     "signal": 0
+  },
+  "formation_magic_ming_item_copper_ming_1": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_ming", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 84, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "formation_magic_ming_item_copper_ming_2": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_ming", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 92, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "formation_magic_ming_item_copper_ming_3": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_ming", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 92, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "formation_magic_ming_item_copper_ming_4": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_ming", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 92, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "formation_magic_hui_item_copper_hui_1": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_hui", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 85, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "formation_magic_hui_item_copper_hui_2": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_hui", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 85, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "formation_magic_heng_item_copper_enr_heng_1": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_enr_heng", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 86, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "formation_magic_heng_item_copper_enr_heng_2": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_nugget", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_enr_heng", "count": 1 }] }],
+    "progressRound": 10, "gasEnv": 0, "formulaDesc": { "id": 86, "text": "" }, "sortId": 1, "signal": 0
+  },
+  "magic_balancer_1_copper_enr": {
+    "machineId": "magic_balancer_1", "formulaGroupId": "group_balancer",
+    "ingredients": [{ "group": [{ "id": "item_copper_ming", "count": 1 }, { "id": "item_copper_hui", "count": 1 }] }],
+    "outcomes": [{ "group": [{ "id": "item_copper_enr", "count": 1 }] }],
+    "progressRound": 2, "gasEnv": 0, "formulaDesc": { "id": 87, "text": "" }, "sortId": 2, "signal": 0
   }
 }

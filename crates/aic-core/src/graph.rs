@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use thiserror::Error;
 
-use crate::solve::RoundUp;
+use crate::solve::{RoundUp, whole_within};
 use crate::workspace::Workspace;
 
 new_key_type! {
@@ -495,8 +495,9 @@ impl Graph {
 
     /// The node's limit as a flow through `port`, per minute. On a recipe node that is what the
     /// port carries at the facility count limit: its rate per facility times the limit, plus, on a
-    /// port of an activation input, that input for every running facility (ADR 0013). `None` when
-    /// the node has no limit.
+    /// port of an activation input, that input for every running facility (ADR 0013): the limit
+    /// rounded up, or down on a facility of whole units (ADR 0015). `None` when the node has no
+    /// limit.
     pub fn port_limit(&self, catalog: &Catalog, port: &Port) -> Option<f64> {
         let rate = self.port_rate(catalog, port).ok()?;
         Some(rate.flow(self.nodes.get(port.node)?.kind.limit()?))
@@ -544,6 +545,7 @@ impl Graph {
                         .map(|(_, rate)| PortRate {
                             scaled: rate.scaled,
                             activation: rate.activation,
+                            whole_units: facility.whole_units(),
                         }),
                     Side::Output => recipe
                         .outputs
@@ -787,6 +789,8 @@ struct PortRate {
     /// Per running facility: the facility count rounded up. Zero but on a port of an activation
     /// input.
     activation: f64,
+    /// On a facility of whole units (ADR 0015), which runs its limit rounded down.
+    whole_units: bool,
 }
 
 impl PortRate {
@@ -794,6 +798,7 @@ impl PortRate {
         Self {
             scaled: rate,
             activation: 0.0,
+            whole_units: false,
         }
     }
 
@@ -802,7 +807,11 @@ impl PortRate {
         if self.activation == 0.0 {
             return limit * self.scaled;
         }
-        let running = f64::from(RoundUp::of(limit).facilities);
+        let running = if self.whole_units {
+            whole_within(limit)
+        } else {
+            f64::from(RoundUp::of(limit).facilities)
+        };
         limit * self.scaled + running * self.activation
     }
 

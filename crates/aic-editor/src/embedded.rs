@@ -59,18 +59,39 @@ mod tests {
         let names = super::names("en").expect("English names are built in");
         let catalog = super::bundle().load("v1.5.3", names).expect("v1.5.3 loads");
         let unit = catalog.facility("phase_trans_2").expect("facility exists");
-        let activation = unit.activation.as_ref().expect("has an activation input");
+        let activation = unit.activation().expect("has an activation input");
         assert_eq!(activation.item().as_str(), "gas_xiranite");
     }
 
-    /// The newest built-in version is the game's v1.6.0, extracted from its tables.
+    /// The newest built-in version is the game's v1.7.0, extracted from its tables.
     #[test]
-    fn the_newest_built_in_version_is_v1_6_0() {
+    fn the_newest_built_in_version_is_v1_7_0() {
         let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
-        if !data.join("v1.6.0.json").is_file() {
+        if !data.join("v1.7.0.json").is_file() {
             return;
         }
-        assert_eq!(super::bundle().versions()[0].name, "v1.6.0");
+        assert_eq!(super::bundle().versions()[0].name, "v1.7.0");
+    }
+
+    /// The built-in v1.7.0 loads with the built-in names, its units of whole units and arrays
+    /// as ADR 0015 has them.
+    #[test]
+    fn the_built_in_v1_7_0_has_its_arrays_and_whole_units() {
+        let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data");
+        if !data.join("v1.7.0.json").is_file() {
+            return;
+        }
+        let names = super::names("en").expect("English names are built in");
+        let catalog = super::bundle().load("v1.7.0", names).expect("v1.7.0 loads");
+        assert!(catalog.warnings().is_empty(), "{:?}", catalog.warnings());
+        for unit in ["vaporizer_1", "magic_spawner_1", "magic_spawner_2"] {
+            let facility = catalog.facility(unit).expect("facility exists");
+            assert!(facility.whole_units(), "{unit}");
+        }
+        assert_eq!(
+            catalog.facility("magic_ming_1").expect("an array").speed,
+            0.2
+        );
     }
 
     #[test]

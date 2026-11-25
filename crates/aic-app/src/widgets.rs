@@ -334,6 +334,59 @@ impl RegionBadges {
     }
 }
 
+/// The least space inside a tag around its text, at 100%.
+const TAG_PADDING: Vec2 = Vec2::new(4.0, 1.0);
+
+/// A short text in the warning's amber on a dim amber chip: the gas environment a recipe needs
+/// (ADR 0015). Laid out first, so what shares its row can make room for all of it. `scale` is how
+/// big 100% is where it is drawn; the text size comes from the `Ui`'s small style.
+pub struct Tag {
+    text: Arc<egui::Galley>,
+    scale: f32,
+}
+
+impl Tag {
+    pub fn new(ui: &Ui, text: &str, scale: f32) -> Self {
+        let font = FontId::new(
+            egui::TextStyle::Small.resolve(ui.style()).size,
+            crate::theme::semibold(),
+        );
+        let text = ui
+            .painter()
+            .layout_no_wrap(text.to_owned(), font, colors::WARN);
+        Self { text, scale }
+    }
+
+    /// The space it takes.
+    pub fn size(&self) -> Vec2 {
+        self.text.size() + 2.0 * TAG_PADDING * self.scale
+    }
+
+    /// Lays it out as one widget.
+    pub fn ui(&self, ui: &mut Ui) -> egui::Response {
+        let (rect, response) = ui.allocate_exact_size(self.size(), egui::Sense::hover());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), self.text.text())
+        });
+        if ui.is_rect_visible(rect) {
+            let painter = ui.painter();
+            painter.rect(
+                rect,
+                f32::from(crate::theme::radius::SMALL) * self.scale,
+                colors::WARN_FILL,
+                egui::Stroke::new(self.scale, colors::WARN_STROKE),
+                egui::StrokeKind::Inside,
+            );
+            painter.galley(
+                rect.center() - self.text.size() / 2.0,
+                self.text.clone(),
+                colors::WARN,
+            );
+        }
+        response
+    }
+}
+
 /// Was it double-clicked? egui counts a double-click soon after another click as a triple click,
 /// not a double one; either counts here.
 pub fn double_clicked(response: &egui::Response) -> bool {

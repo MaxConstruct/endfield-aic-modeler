@@ -30,6 +30,28 @@ pub struct Report {
     pub regionless: Vec<String>,
     /// The sewage plant's inlets and the outlet's seconds per craft, as worked out.
     pub sewage_export: Option<(usize, f64)>,
+    /// What the extractor made of the array tables; `None` for a version without them.
+    pub arrays: Option<ArraysReport>,
+}
+
+/// What became of the array tables (`FactoryFormation*`, ADR 0015).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArraysReport {
+    /// Kinds of array (L, T, E).
+    pub kinds: usize,
+    /// Array facilities written, one per kind and tier.
+    pub arrays: usize,
+    /// Conversion recipes written, one per conversion of the tables.
+    pub conversions: usize,
+    /// Forge recipes written, one per forge and choice of its arrays.
+    pub forge_recipes: usize,
+    /// Tiles of an array's area.
+    pub tiles: f64,
+    /// Seconds between two pulses.
+    pub pulse_s: f64,
+    /// The crafts the game lists for the conversions, one per tier, left out: by the facility
+    /// they were on, how many.
+    pub crafts_taken_off: Vec<(String, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +120,25 @@ impl fmt::Display for Summary<'_> {
                 f,
                 "sewage outlet: {inlets} inlets per plant, {time_s} s per craft"
             )?;
+        }
+        if let Some(arrays) = &report.arrays {
+            writeln!(
+                f,
+                "arrays: {} arrays of {} kinds, {} conversions, {} forge recipes; an area of {} \
+                 tiles, a pulse every {} s",
+                arrays.arrays,
+                arrays.kinds,
+                arrays.conversions,
+                arrays.forge_recipes,
+                arrays.tiles,
+                arrays.pulse_s
+            )?;
+            for (facility, crafts) in &arrays.crafts_taken_off {
+                writeln!(
+                    f,
+                    "  {crafts} array crafts taken off {facility} (a conversion per tier)"
+                )?;
+            }
         }
         writeln!(f, "names added: {}", report.names_added)?;
         section(

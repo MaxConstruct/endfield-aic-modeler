@@ -90,8 +90,6 @@ pub struct Session {
     availability: Availability,
     /// The last refused action or file message, shown until the next one.
     pub(crate) status: Option<String>,
-    /// The data version of the open file, when it isn't the active one.
-    pub(crate) other_data_version: Option<String>,
     /// Show whole facilities and how busy they are instead of fractional counts.
     round_up: bool,
     last_solve: Option<Duration>,
@@ -118,7 +116,6 @@ impl Session {
             clipboard: None,
             availability,
             status: None,
-            other_data_version: None,
             round_up: false,
             last_solve: None,
         }
@@ -178,15 +175,6 @@ impl Session {
         self.round_up = on;
     }
 
-    /// The data version of the open file, when it isn't the active one.
-    pub fn other_data_version(&self) -> Option<&str> {
-        self.other_data_version.as_deref()
-    }
-
-    pub fn set_other_data_version(&mut self, version: Option<String>) {
-        self.other_data_version = version;
-    }
-
     /// How long the last solve took.
     pub fn last_solve(&self) -> Option<Duration> {
         self.last_solve
@@ -237,7 +225,6 @@ impl Session {
     /// Starts an empty graph in `region`, dropping the open one.
     pub fn new_graph(&mut self, region: RegionId) {
         self.replace_document(Document::new(region));
-        self.other_data_version = None;
     }
 
     /// Shows another document; the selection belonged to the old one.

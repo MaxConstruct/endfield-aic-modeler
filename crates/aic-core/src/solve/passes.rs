@@ -221,6 +221,7 @@ fn run(
         running,
         open_running,
         depot_activation,
+        whole_units,
         ..
     } = model;
     // good_lp's variables in the order it made them, which is the order microlp's are made in.
@@ -269,6 +270,15 @@ fn run(
             .map(|(node, running)| (node, solution.value(running).round() as u32))
             .collect(),
     };
+    // A count of whole units is a whole number: solver noise around one is that number.
+    for node in whole_units {
+        if let Some(count) = values.activity.get_mut(&node) {
+            let whole = count.round();
+            if (*count - whole).abs() <= tolerance(whole) {
+                *count = whole;
+            }
+        }
+    }
     // An activation input from the depot: each running facility needs all of it.
     for (port, count, per_running) in depot_activation {
         let running = RoundUp::of(clean(solution.value(count))).facilities;

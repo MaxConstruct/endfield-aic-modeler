@@ -202,6 +202,87 @@ fn facilities_that_share_a_recipe_must_agree_on_its_activation_input() {
 }
 
 #[test]
+fn a_whole_units_facility_has_no_activation_input() {
+    let data = data_with(|v| {
+        v["facilities"][0]["whole_units"] = json!(true);
+        v["facilities"][0]["activation"] = json!({ "item": "liquid_water", "per_min": 6 });
+    });
+    let error = error_for(&data);
+    assert_eq!(invalid_path(&error), "facilities[0].whole_units");
+    assert!(error.to_string().contains("activation"), "{error}");
+}
+
+#[test]
+fn facilities_that_share_a_recipe_must_agree_on_whole_units() {
+    // `liquid_sewage-mix` runs on both mixing pools.
+    let data = data_with(|v| v["facilities"][5]["whole_units"] = json!(true));
+    let error = error_for(&data);
+    assert_eq!(invalid_path(&error), "recipes[5].facilities");
+    assert!(
+        error.to_string().contains("`mix_pool_1` and `mix_pool_2`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_stack_is_of_existing_facilities_each_a_positive_whole_number() {
+    let cases = [
+        (
+            json!({ "nope_1": 1 }),
+            "facilities[6].stack.nope_1",
+            "unknown facility `nope_1`",
+        ),
+        (
+            json!({ "mix_pool_1": 0 }),
+            "facilities[6].stack.mix_pool_1",
+            "positive",
+        ),
+    ];
+    for (stack, expected, message) in cases {
+        let data = data_with(|v| v["facilities"][6]["stack"] = stack.clone());
+        let error = error_for(&data);
+        assert_eq!(invalid_path(&error), expected, "{stack}");
+        assert!(error.to_string().contains(message), "{error}");
+    }
+    // Not a whole number: the JSON doesn't read.
+    let data = data_with(|v| v["facilities"][6]["stack"] = json!({ "mix_pool_1": 1.5 }));
+    let LoadError::Json { path, .. } = error_for(&data) else {
+        panic!("expected a Json error");
+    };
+    assert_eq!(path, "facilities[6].stack.mix_pool_1");
+}
+
+#[test]
+fn what_a_recipe_projects_is_existing_facilities_each_a_positive_whole_number() {
+    let cases = [
+        (
+            json!({ "nope_1": 1 }),
+            "recipes[5].projects.nope_1",
+            "unknown facility `nope_1`",
+        ),
+        (
+            json!({ "mix_pool_1": 0 }),
+            "recipes[5].projects.mix_pool_1",
+            "positive",
+        ),
+    ];
+    for (projects, expected, message) in cases {
+        let data = data_with(|v| v["recipes"][5]["projects"] = projects.clone());
+        let error = error_for(&data);
+        assert_eq!(invalid_path(&error), expected, "{projects}");
+        assert!(error.to_string().contains(message), "{error}");
+    }
+}
+
+#[test]
+fn a_created_environment_must_be_an_item() {
+    let data = data_with(|v| v["recipes"][4]["creates_environment"] = json!("gas_nope"));
+    let error = error_for(&data);
+    assert_eq!(invalid_path(&error), "recipes[4].creates_environment");
+    assert!(error.to_string().contains("unknown item `gas_nope`"));
+}
+
+#[test]
 fn an_alias_goes_from_an_id_that_is_gone_to_one_that_exists() {
     let cases = [
         (

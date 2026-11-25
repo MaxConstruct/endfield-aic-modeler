@@ -317,6 +317,76 @@ fn an_activation_input_is_added_to_every_recipe_of_its_facility() {
 }
 
 #[test]
+fn every_input_of_a_whole_units_facility_is_an_activation_input_of_which_nothing_scales() {
+    use serde_json::json;
+    // The Thermal Bank as if it ran in whole units: its battery recipe takes 1 per 40 s.
+    let catalog = fixture_with(|v| v["facilities"][4]["whole_units"] = json!(true));
+    let bank = catalog.facility("power_sta_1").unwrap();
+    assert!(bank.whole_units());
+    assert_eq!(bank.activation(), None);
+    let battery = catalog.recipe("power_proc_battery_1").unwrap();
+    // The recipe's own quantities are as the file has them: nothing is added.
+    assert_eq!(battery.inputs, items(&[("proc_battery_1", 1.0)]));
+    let rates: Vec<(&str, f64, f64)> = (battery.input_rates(bank))
+        .map(|(item, rate)| (item.as_str(), rate.scaled, rate.activation))
+        .collect();
+    assert_eq!(rates, [("proc_battery_1", 0.0, 1.5)]);
+    // A file without the key runs every facility as before.
+    let fixture = fixture();
+    assert!(fixture.facilities().values().all(|f| !f.whole_units()));
+    let bank = fixture.facility("power_sta_1").unwrap();
+    let battery = fixture.recipe("power_proc_battery_1").unwrap();
+    let rate = battery.input_rates(bank).next().unwrap().1;
+    assert_eq!((rate.scaled, rate.activation), (1.5, 0.0));
+}
+
+#[test]
+fn a_dispersing_recipe_names_the_gas_whose_environment_it_creates() {
+    let catalog = fixture_with(|v| v["recipes"][4]["creates_environment"] = "gas_inert".into());
+    let recipe = catalog.recipe("power_proc_battery_1").unwrap();
+    assert_eq!(recipe.creates_environment, Some(ItemId::from("gas_inert")));
+    assert_eq!(
+        fixture()
+            .recipe("power_proc_battery_1")
+            .unwrap()
+            .creates_environment,
+        None
+    );
+}
+
+#[test]
+fn an_array_says_what_it_is_stacked_from_and_a_forge_recipe_what_it_projects() {
+    use serde_json::json;
+    let catalog = fixture_with(|v| {
+        // As `magic_heng_2` is two of each T1, and `magic_ming_1` one of itself.
+        v["facilities"][6]["stack"] = json!({ "furnance_1": 2, "mix_pool_1": 2 });
+        v["facilities"][5]["stack"] = json!({ "mix_pool_1": 1 });
+        v["recipes"][5]["projects"] = json!({ "furnance_1": 1, "mix_pool_1": 1 });
+    });
+    let stack = |id: &str| -> Vec<(&str, u32)> {
+        (catalog.facility(id).unwrap().stack.iter())
+            .map(|(facility, n)| (facility.as_str(), *n))
+            .collect()
+    };
+    assert_eq!(stack("mix_pool_2"), [("furnance_1", 2), ("mix_pool_1", 2)]);
+    assert_eq!(stack("mix_pool_1"), [("mix_pool_1", 1)]);
+    assert_eq!(stack("furnance_1"), []);
+    let projects: Vec<(FacilityId, u32)> = catalog
+        .recipe("liquid_sewage-mix")
+        .unwrap()
+        .projects
+        .clone();
+    assert_eq!(
+        projects,
+        [
+            (FacilityId::from("furnance_1"), 1),
+            (FacilityId::from("mix_pool_1"), 1)
+        ]
+    );
+    assert!(catalog.recipe("copper_nugget").unwrap().projects.is_empty());
+}
+
+#[test]
 fn a_trade_is_hidden_and_a_mining_recipe_is_mining() {
     let catalog = fixture();
     let trade = catalog.recipe("tundra_coupon-copper_nugget").unwrap();

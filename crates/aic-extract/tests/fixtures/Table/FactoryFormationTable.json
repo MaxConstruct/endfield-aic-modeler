@@ -1,0 +1,20 @@
+{
+  "magic_heng": {
+    "attrName": { "id": 83, "text": "" },
+    "id": "magic_heng",
+    "itemId": "",
+    "name": { "id": 79, "text": "" }
+  },
+  "magic_hui": {
+    "attrName": { "id": 82, "text": "" },
+    "id": "magic_hui",
+    "itemId": "",
+    "name": { "id": 77, "text": "" }
+  },
+  "magic_ming": {
+    "attrName": { "id": 81, "text": "" },
+    "id": "magic_ming",
+    "itemId": "",
+    "name": { "id": 73, "text": "" }
+  }
+}

@@ -72,7 +72,6 @@ file-save-as-hint = The file is kept in this browser and downloaded.
 file-save-as-confirm = Save
 file-save-as-cancel = Cancel
 export-downloaded = Downloaded the canvas as { $file }.
-file-other-data-version = This file was made with data { $file }; the app uses { $active }. Recipes are matched by ID.
 
 ## Top bar
 
@@ -154,6 +153,14 @@ node-remove = Remove node
 round-up-utilization = { $percent }% busy
 outpost-earns = earns { $rate } /min
 throttle-marker-hint = This port holds the node below its limit.
+# The gas environment a recipe needs, by the gas's item ID, as the game names it. $name is the
+# gas's name, for a gas whose environment the game doesn't name.
+environment = { $gas ->
+    [gas_inert] Stable Environment
+    [gas_acid] Acrid Environment
+    [gas_xiranite] Xiranite Environment
+   *[other] { $name } Environment
+}
 
 ## Port menu (double-click a port)
 
@@ -192,6 +199,7 @@ browser-add-hint = Click to add to the canvas.
 inspector-title = Inspector
 inspector-nothing = Select a node or link to see it here.
 inspector-facility = Facility
+inspector-environment = Environment
 recipe-regions = { $regions } only
 inspector-count = Facility count
 inspector-round-up = Rounded up
@@ -259,6 +267,10 @@ warning-failed = The solver failed on a part of the graph: { $message }
 warning-belt-over = A link of { $item } needs { $lanes } belts.
 warning-pipe-over = A link of { $item } needs { $lanes } pipes.
 warning-resource-over = { $item }: using { $used } /min, but the region supplies { $available } /min.
+warning-environment-missing = { $recipe } needs the { $environment }, and nothing in the graph creates it. Add a { $unit } with { $gas }.
+warning-environment-missing-no-unit = { $recipe } needs the { $environment }, and nothing in the graph creates it.
+warning-projections-short = The arrays need { $needed } { $array } projections, but the forges project { $provided }. Add a { $forge }.
+warning-projections-short-no-forge = The arrays need { $needed } { $array } projections, but the forges project { $provided }.
 warning-issue-bad-link = A link breaks a linking rule: { $error }
 warning-issue-missing-recipe = Recipe { $recipe } is not in this data version.
 warning-issue-unknown-item = Item { $item } is not in this data version.

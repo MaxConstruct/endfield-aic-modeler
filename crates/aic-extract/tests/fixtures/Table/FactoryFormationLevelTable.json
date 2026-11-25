@@ -1,0 +1,28 @@
+{
+  "magic_heng": {
+    "formationId": "magic_heng",
+    "id": "magic_heng",
+    "levels": {
+      "1": { "level": 1, "name": { "id": 79, "text": "" } },
+      "2": { "level": 2, "name": { "id": 80, "text": "" } }
+    }
+  },
+  "magic_hui": {
+    "formationId": "magic_hui",
+    "id": "magic_hui",
+    "levels": {
+      "1": { "level": 1, "name": { "id": 77, "text": "" } },
+      "2": { "level": 2, "name": { "id": 78, "text": "" } }
+    }
+  },
+  "magic_ming": {
+    "formationId": "magic_ming",
+    "id": "magic_ming",
+    "levels": {
+      "1": { "level": 1, "name": { "id": 73, "text": "" } },
+      "2": { "level": 2, "name": { "id": 74, "text": "" } },
+      "3": { "level": 3, "name": { "id": 75, "text": "" } },
+      "4": { "level": 4, "name": { "id": 76, "text": "" } }
+    }
+  }
+}

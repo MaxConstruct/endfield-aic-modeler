@@ -111,9 +111,7 @@ impl App {
         folder: Result<DataFolder, String>,
         storage: Option<&dyn eframe::Storage>,
     ) -> Self {
-        let choice = storage
-            .and_then(|s| eframe::get_value::<DataChoice>(s, data::STORAGE_KEY))
-            .unwrap_or_default();
+        let choice = DataChoice::restore(|key| storage.and_then(|s| eframe::get_value(s, key)));
         let folder = match folder {
             Ok(folder) => folder,
             Err(message) => return Self::new(strings, Err(message), storage),

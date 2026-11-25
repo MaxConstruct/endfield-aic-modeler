@@ -139,6 +139,20 @@ pub enum Warning {
         port: NodeId,
         outside: bool,
     },
+    /// A recipe node needs the environment of `gas`, and no node of the graph that creates it runs
+    /// a unit (ADR 0015). The recipe runs anyway; its numbers are as without the warning.
+    EnvironmentMissing {
+        node: NodeId,
+        gas: ItemId,
+    },
+    /// The graph's array nodes need more of one projection, a T1 array by facility ID, than its
+    /// forge nodes project (ADR 0015): each array node's count rounded up, times what its array is
+    /// stacked from, against each forge node's units times what its recipe projects.
+    ProjectionsShort {
+        projection: FacilityId,
+        needed: u32,
+        provided: u32,
+    },
     /// A problem with the graph itself. The nodes and links involved are left out of the solve.
     Issue(Issue),
 }
@@ -315,8 +329,111 @@ pub fn solve_keeping(catalog: &Catalog, graph: &Graph, kept: &mut KeptSections) 
     record_storage(graph, &nodes, &mut solution);
     record_coupons(catalog, graph, &mut solution);
     count_belts(catalog, graph, &mut solution);
+    let area_warnings: Vec<Warning> = environments_missing(catalog, graph, &solution)
+        .chain(projections_short(catalog, graph, &solution))
+        .collect();
+    solution.warnings.extend(area_warnings);
     solution.totals = totals(catalog, graph, &solution);
     solution
+}
+
+/// A warning for every recipe node, in graph order, that needs a gas environment no node of the
+/// graph creates: none whose recipe spreads that gas runs a unit, or may (its count undetermined).
+fn environments_missing<'a>(
+    catalog: &'a Catalog,
+    graph: &'a Graph,
+    solution: &'a Solution,
+) -> impl Iterator<Item = Warning> + 'a {
+    let recipes = || {
+        (graph.nodes().iter()).filter_map(|(id, node)| match &node.kind {
+            NodeKind::Recipe { recipe, .. } => Some((id, catalog.recipe(recipe.as_str())?)),
+            _ => None,
+        })
+    };
+    let created: HashSet<&ItemId> = recipes()
+        .filter_map(|(id, recipe)| {
+            let gas = recipe.creates_environment.as_ref()?;
+            let runs = match solution.facility_count.get(&id) {
+                Some(Some(count)) => *count >= 1.0 - passes::tolerance(1.0),
+                // Undetermined: it may run.
+                Some(None) => true,
+                // Left out of the solve.
+                None => false,
+            };
+            runs.then_some(gas)
+        })
+        .collect();
+    recipes().filter_map(move |(node, recipe)| {
+        let gas = recipe.environment.as_ref()?;
+        (!created.contains(gas)).then(|| Warning::EnvironmentMissing {
+            node,
+            gas: gas.clone(),
+        })
+    })
+}
+
+/// What the graph's array and forge nodes come to for one projection.
+#[derive(Default)]
+struct Projection {
+    needed: u32,
+    provided: u32,
+    /// Some array or forge node of it is undetermined, so it isn't checked.
+    unknown: bool,
+}
+
+/// A warning for every projection the arrays need more of than the forges project, in the
+/// catalog's order of facilities. A projection with an undetermined node isn't checked.
+fn projections_short<'a>(
+    catalog: &'a Catalog,
+    graph: &Graph,
+    solution: &Solution,
+) -> impl Iterator<Item = Warning> + 'a {
+    let mut projections: HashMap<&FacilityId, Projection> = HashMap::new();
+    for (id, node) in graph.nodes() {
+        let NodeKind::Recipe {
+            recipe, facility, ..
+        } = &node.kind
+        else {
+            continue;
+        };
+        let (Some(recipe), Some(facility), Some(&count)) = (
+            catalog.recipe(recipe.as_str()),
+            catalog.facility(facility.as_str()),
+            solution.facility_count.get(&id),
+        ) else {
+            // Left out of the solve: it neither needs nor projects anything.
+            continue;
+        };
+        // An array needs its stack for each facility its count rounds up to; a forge projects for
+        // each whole unit it runs.
+        let arrays = count.map(|count| RoundUp::of(count).facilities);
+        for (projection, n) in &facility.stack {
+            let tally = projections.entry(projection).or_default();
+            match arrays {
+                Some(arrays) => tally.needed += arrays * n,
+                None => tally.unknown = true,
+            }
+        }
+        let units = count.map(|count| whole_within(count) as u32);
+        for (projection, n) in &recipe.projects {
+            let tally = projections.entry(projection).or_default();
+            match units {
+                Some(units) => tally.provided += units * n,
+                None => tally.unknown = true,
+            }
+        }
+    }
+    let mut short: Vec<(&FacilityId, Projection)> = (projections.into_iter())
+        .filter(|(_, tally)| !tally.unknown && tally.needed > tally.provided)
+        .collect();
+    short.sort_by_key(|(projection, _)| catalog.facilities().get_index_of(*projection));
+    short
+        .into_iter()
+        .map(|(projection, tally)| Warning::ProjectionsShort {
+            projection: projection.clone(),
+            needed: tally.needed,
+            provided: tally.provided,
+        })
 }
 
 /// A warning for each workspace port with an end that has no links: its outside end first.
@@ -605,6 +722,12 @@ impl RoundUp {
             utilization,
         }
     }
+}
+
+/// The whole facilities `count` holds, rounded down: a limit of 1.5 runs one unit of a facility of
+/// whole units (ADR 0015). Solver noise just below a whole number counts as that number.
+pub(crate) fn whole_within(count: f64) -> f64 {
+    (count + passes::tolerance(count)).floor().max(0.0)
 }
 
 /// Compares raw resource use with what the region can supply per minute. A resource missing from

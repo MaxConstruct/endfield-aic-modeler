@@ -19,8 +19,20 @@ An input a facility needs at a fixed rate for each facility that is running, wha
 _Avoid_: Fuel, upkeep, idle cost, base input
 
 **Gas environment**:
-A gas that a Gas Dispersing Unit (`vaporizer_1`) spreads around itself, which some recipes need in place to run (e.g. Inergen for `xiranite_oven_xiranite_powder_2`). It is not a flow: the recipe doesn't consume it, and one unit serves every facility in its range. Named by the gas's item ID.
+A gas that a Gas Dispersing Unit (`vaporizer_1`) spreads around itself, which some recipes need in place to run (e.g. Inergen for `xiranite_oven_xiranite_powder_2`). It is not a flow: the recipe doesn't consume it, and one unit serves every facility in its range. Named by the gas's item ID; shown under the game's name for it (Inergen's is the Stable Environment).
 _Avoid_: Atmosphere, gas mode, aura, field
+
+**Array**:
+An area that a Forge of Luminance projects, in which items on belts turn into another form (e.g. Cuprium into L-Cuprium in an L-Array). In the data it is a facility, one for each kind and tier (`magic_ming_1` is the L-Array T1), whose rate is that of a fully belted area.
+_Avoid_: Formation, field, aura, zone
+
+**Projection**:
+One T1 array as a forge projects it. Stacking projections makes an array of a higher tier, or of another kind (an L and a T make an E-Array). A graph counts what its arrays need against what its forges project.
+_Avoid_: Beam, stake, pole
+
+**Whole units**:
+How a facility runs whose inputs are all activation inputs: the Gas Dispersing Unit and the Forges of Luminance. Its facility count is a whole number.
+_Avoid_: Integer facility, on/off facility
 
 **Byproduct**:
 Any output of a recipe other than the one the player is producing it for (e.g. `liquid_sewage` from `copper_nugget`).

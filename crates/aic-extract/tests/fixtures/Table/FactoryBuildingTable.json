@@ -69,6 +69,51 @@
   "recommendDomains": [],
   "type": 6
  },
+ "magic_balancer_1": {
+  "name": {
+   "id": 72,
+   "text": ""
+  },
+  "needPower": true,
+  "powerConsume": 50,
+  "placeDomains": [
+   "domain_2"
+  ],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 6
+ },
+ "magic_spawner_1": {
+  "name": {
+   "id": 70,
+   "text": ""
+  },
+  "needPower": false,
+  "powerConsume": 0,
+  "placeDomains": [
+   "domain_2"
+  ],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 45
+ },
+ "magic_spawner_2": {
+  "name": {
+   "id": 71,
+   "text": ""
+  },
+  "needPower": false,
+  "powerConsume": 0,
+  "placeDomains": [
+   "domain_2"
+  ],
+  "recommendDomains": [
+   "domain_2"
+  ],
+  "type": 45
+ },
  "miner_2": {
   "name": {
    "id": 37,

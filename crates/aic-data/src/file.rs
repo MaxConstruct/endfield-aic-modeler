@@ -81,6 +81,14 @@ pub struct FacilityEntry {
     /// the inputs its recipes list here; the loader adds it to them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activation: Option<ActivationEntry>,
+    /// The facility runs in whole units (ADR 0015): every input of its recipes is an activation
+    /// input of which nothing scales, as listed in the recipe. Not with `activation`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub whole_units: bool,
+    /// For an array: the T1 arrays (projections) it is stacked from, by facility ID, and how many
+    /// of each (ADR 0015). A T1 array is one of itself.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub stack: IndexMap<String, u32>,
 }
 
 /// `{ "item": "gas_xiranite", "per_min": 6 }`
@@ -121,6 +129,13 @@ pub struct RecipeEntry {
     /// The item ID of the gas whose environment the recipe needs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,
+    /// The item ID of the gas whose environment the recipe spreads: a Gas Dispersing Unit's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creates_environment: Option<String>,
+    /// What one facility running the recipe projects: T1 arrays by facility ID, and how many
+    /// (ADR 0015). A Forge of Luminance's.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub projects: IndexMap<String, u32>,
 }
 
 /// What sets a recipe apart from an ordinary craft.

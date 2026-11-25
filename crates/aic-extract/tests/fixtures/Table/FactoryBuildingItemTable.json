@@ -15,6 +15,18 @@
   "buildingId": "liquid_cleaner_1",
   "itemId": "item_port_liquid_cleaner_1"
  },
+ "item_port_magic_balancer_1": {
+  "buildingId": "magic_balancer_1",
+  "itemId": "item_port_magic_balancer_1"
+ },
+ "item_port_magic_spawner_1": {
+  "buildingId": "magic_spawner_1",
+  "itemId": "item_port_magic_spawner_1"
+ },
+ "item_port_magic_spawner_2": {
+  "buildingId": "magic_spawner_2",
+  "itemId": "item_port_magic_spawner_2"
+ },
  "item_port_miner_2": {
   "buildingId": "miner_2",
   "itemId": "item_port_miner_2"

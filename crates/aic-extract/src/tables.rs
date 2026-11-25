@@ -225,6 +225,82 @@ pub struct Rounds {
     pub ms_per_round: f64,
 }
 
+/// A Forge of Luminance (`FactoryFormationStakeTable`): the gas it takes, and the arrays it
+/// projects, one per area, each of a kind the player picks.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Forge {
+    /// Per minute, as the Gas Dispersing Unit's (`consumeRateUpperLimit` only caps the intake).
+    #[serde(flatten)]
+    pub consumption: Consumption,
+    /// One area per array it projects.
+    #[serde(rename = "ranges")]
+    pub areas: Vec<Area>,
+    /// The kinds of array (`FactoryFormationTable` IDs) each area can be.
+    #[serde(rename = "selectableFormationIds")]
+    pub kinds: Vec<String>,
+}
+
+/// An array's area, in tiles.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Area {
+    pub width: f64,
+    pub depth: f64,
+}
+
+/// A kind of array (`FactoryFormationTable`). Only its ID is used.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArrayKind {}
+
+/// A kind of array's tiers (`FactoryFormationLevelTable`), keyed by tier, `"1"`, `"2"`, …
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArrayTiers {
+    #[serde(rename = "levels")]
+    pub tiers: IndexMap<String, ArrayTier>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArrayTier {
+    #[serde(rename = "level")]
+    pub tier: u32,
+    /// "L-Array T1".
+    pub name: Text,
+}
+
+/// What an array of one kind turns an item into (`FactoryFormationTransferTable`), with the
+/// chance per pulse at each tier.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArrayConversion {
+    #[serde(rename = "formationId")]
+    pub kind: String,
+    pub from_item_id: String,
+    pub to_item_id: String,
+    /// In ten-thousandths, lowest tier first.
+    #[serde(rename = "transferChances")]
+    pub chances: Vec<f64>,
+}
+
+/// Arrays of several kinds stacked to make one of another (`FactoryFormationCombinationTable`):
+/// an L and a T make an E.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArrayCombination {
+    #[serde(rename = "sourceFormationIds")]
+    pub sources: Vec<String>,
+    #[serde(rename = "targetFormationId")]
+    pub target: String,
+}
+
+/// `FactoryConst`: one object of the factory's constants. Only those the extractor uses.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FactoryConst {
+    /// Milliseconds between two pulses of an array.
+    #[serde(rename = "facFormationEffectInterval")]
+    pub array_pulse_ms: Option<f64>,
+}
+
 /// Every table the extractor reads, from one folder of exported tables.
 #[derive(Debug, Clone)]
 pub struct Tables {
@@ -250,6 +326,19 @@ pub struct Tables {
     pub showing_types: Table<ShowingType>,
     pub belts: Table<Belt>,
     pub pipes: Table<Pipe>,
+    /// The array tables, which versions before v1.7.0 lack: empty where a version has none.
+    /// `FactoryFormationStakeTable`.
+    pub forges: Table<Forge>,
+    /// `FactoryFormationTable`.
+    pub array_kinds: Table<ArrayKind>,
+    /// `FactoryFormationLevelTable`, by kind.
+    pub array_tiers: Table<ArrayTiers>,
+    /// `FactoryFormationTransferTable`.
+    pub array_conversions: Table<ArrayConversion>,
+    /// `FactoryFormationCombinationTable`.
+    pub array_combinations: Table<ArrayCombination>,
+    /// `FactoryConst`; all defaults where a version has none.
+    pub constants: FactoryConst,
     /// `I18nTextTable_<LANG>`: text ID to string.
     pub text: HashMap<String, String>,
     /// The text table's file name, for errors.
@@ -283,6 +372,12 @@ impl Tables {
             showing_types: read(dir, "ItemShowingTypeTable")?,
             belts: read(dir, "FactoryGridBeltTable")?,
             pipes: read(dir, "FactoryLiquidPipeTable")?,
+            forges: read_optional(dir, "FactoryFormationStakeTable")?,
+            array_kinds: read_optional(dir, "FactoryFormationTable")?,
+            array_tiers: read_optional(dir, "FactoryFormationLevelTable")?,
+            array_conversions: read_optional(dir, "FactoryFormationTransferTable")?,
+            array_combinations: read_optional(dir, "FactoryFormationCombinationTable")?,
+            constants: read_optional(dir, "FactoryConst")?,
             text: read(dir, &text_table)?,
             text_table: format!("{text_table}.json"),
         })
@@ -306,4 +401,14 @@ fn read<T: DeserializeOwned>(dir: &Path, name: &str) -> Result<T, ExtractError> 
         source,
     })?;
     serde_json::from_slice(&bytes).map_err(|source| ExtractError::Json { file, source })
+}
+
+/// `<dir>/<name>.json`, or the default (an empty table) when the folder has no such file: a table
+/// an older version of the game doesn't have.
+fn read_optional<T: DeserializeOwned + Default>(dir: &Path, name: &str) -> Result<T, ExtractError> {
+    if dir.join(format!("{name}.json")).is_file() {
+        read(dir, name)
+    } else {
+        Ok(T::default())
+    }
 }
