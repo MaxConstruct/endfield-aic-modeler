@@ -1,0 +1,11 @@
+# The image is built from the workspace, the data and the scripts only (see Dockerfile).
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+!data/
+!scripts/
+!deploy/
+# Not needed to build: the UI snapshots and any build output.
+crates/*/tests/snapshots/
+**/target/
